@@ -17,6 +17,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ChevronDown, ChevronsUpDown } from 'lucide-react';
+
 
 // Type for a corporate KPI
 interface CorporateKpi {
@@ -188,6 +191,42 @@ const DepartmentLevel = ({ cascadedKpis }: { cascadedKpis: CascadedKpi[] }) => {
     );
 }
 
+const AssignedKpiGrid = ({ kpis }: { kpis: IndividualKpi[] }) => (
+    <div className="px-6 py-4 bg-gray-50/50">
+        {kpis.length > 0 ? (
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead>Type</TableHead>
+                        <TableHead>KPI/Task</TableHead>
+                        <TableHead>Target</TableHead>
+                        <TableHead>Weight</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {kpis.map(kpi => (
+                        <TableRow key={kpi.kpiId}>
+                            <TableCell>
+                                <Badge variant={kpi.type === 'cascaded' ? 'secondary' : 'default'}>{kpi.type}</Badge>
+                            </TableCell>
+                            <TableCell className="font-medium">
+                                {kpi.type === 'committed' ? kpi.task : kpi.kpiMeasure}
+                            </TableCell>
+                            <TableCell>
+                                {kpi.type === 'cascaded' ? kpi.target : "5-level scale"}
+                            </TableCell>
+                            <TableCell>{kpi.weight}%</TableCell>
+                        </TableRow>
+                    ))}
+                </TableBody>
+            </Table>
+        ) : (
+            <p className="text-sm text-center text-gray-500 py-4">No KPIs assigned to this individual yet.</p>
+        )}
+    </div>
+);
+
+
 const IndividualLevel = ({ cascadedKpis, individualKpis, onAssignKpi }: { cascadedKpis: CascadedKpi[], individualKpis: IndividualKpi[], onAssignKpi: (employee: Employee) => void }) => {
     const { orgData } = useKpiData();
 
@@ -214,36 +253,33 @@ const IndividualLevel = ({ cascadedKpis, individualKpis, onAssignKpi }: { cascad
                         <CardHeader>
                             <CardTitle>Manager: {manager}</CardTitle>
                         </CardHeader>
-                        <CardContent>
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Name</TableHead>
-                                        <TableHead>Position</TableHead>
-                                        <TableHead>Department</TableHead>
-                                        <TableHead>KPIs Assigned</TableHead>
-                                        <TableHead>Actions</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {directReports.map(person => {
-                                        const assignedCount = individualKpis.filter(ik => ik.employeeId === person.id).length;
-                                        return (
-                                            <TableRow key={person.id}>
-                                                <TableCell className="font-medium">{person.name}</TableCell>
-                                                <TableCell>{person.position}</TableCell>
-                                                <TableCell>{person.department}</TableCell>
-                                                <TableCell><Badge variant="outline">{assignedCount} KPIs</Badge></TableCell>
-                                                <TableCell>
-                                                    <Button variant="outline" size="sm" onClick={() => onAssignKpi(person)}>
-                                                        Assign KPI
-                                                    </Button>
-                                                </TableCell>
-                                            </TableRow>
-                                        )
-                                    })}
-                                </TableBody>
-                            </Table>
+                        <CardContent className="p-0 divide-y">
+                            {directReports.map(person => {
+                                const assignedForPerson = individualKpis.filter(ik => ik.employeeId === person.id);
+                                return (
+                                    <Collapsible key={person.id}>
+                                        <CollapsibleTrigger className="w-full">
+                                            <div className="flex items-center justify-between p-4 hover:bg-gray-50/80 transition-colors w-full text-left">
+                                                <div className="grid grid-cols-4 gap-4 flex-1">
+                                                    <span className="font-medium">{person.name}</span>
+                                                    <span>{person.position}</span>
+                                                    <span>{person.department}</span>
+                                                    <Badge variant="outline" className="w-fit">{assignedForPerson.length} KPIs</Badge>
+                                                </div>
+                                                <ChevronsUpDown className="h-4 w-4 text-gray-500 ml-4" />
+                                            </div>
+                                        </CollapsibleTrigger>
+                                        <CollapsibleContent>
+                                            <AssignedKpiGrid kpis={assignedForPerson} />
+                                            <div className="p-4 bg-gray-50/50 border-t flex justify-end">
+                                                 <Button variant="outline" size="sm" onClick={() => onAssignKpi(person)}>
+                                                    Assign KPI
+                                                </Button>
+                                            </div>
+                                        </CollapsibleContent>
+                                    </Collapsible>
+                                )
+                            })}
                         </CardContent>
                     </Card>
                 )
