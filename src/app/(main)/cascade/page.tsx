@@ -11,9 +11,10 @@ import { cn } from '@/lib/utils';
 import { useKpiData } from '@/context/KpiDataContext';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 // Type for a corporate KPI
 interface CorporateKpi {
@@ -209,25 +210,33 @@ const CascadeDialog = ({
     departments: string[];
     onConfirm: (cascadedKpi: CascadedKpi) => void;
 }) => {
-    const [department, setDepartment] = useState('');
+    const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
     const [target, setTarget] = useState('');
     const [weight, setWeight] = useState('');
 
     useEffect(() => {
         if (!isOpen) {
-            setDepartment('');
+            setSelectedDepartments([]);
             setTarget('');
             setWeight('');
         }
     }, [isOpen]);
+    
+    const handleDepartmentToggle = (department: string, checked: boolean) => {
+        setSelectedDepartments(prev => 
+            checked ? [...prev, department] : prev.filter(d => d !== department)
+        );
+    };
 
     const handleSubmit = () => {
-        if (kpi && department && target && weight) {
-            onConfirm({
-                ...kpi,
-                department,
-                departmentTarget: target,
-                weight: parseInt(weight, 10),
+        if (kpi && selectedDepartments.length > 0 && target && weight) {
+            selectedDepartments.forEach(department => {
+                onConfirm({
+                    ...kpi,
+                    department,
+                    departmentTarget: target,
+                    weight: parseInt(weight, 10),
+                });
             });
             onClose();
         }
@@ -243,17 +252,21 @@ const CascadeDialog = ({
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                     <div className="space-y-2">
-                        <Label htmlFor="department-select">Department</Label>
-                        <Select onValueChange={setDepartment} value={department}>
-                            <SelectTrigger id="department-select">
-                                <SelectValue placeholder="Select a department" />
-                            </SelectTrigger>
-                            <SelectContent>
+                        <Label>Departments</Label>
+                        <ScrollArea className="h-32 w-full rounded-md border p-4">
+                            <div className="space-y-2">
                                 {departments.map(dept => (
-                                    <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                                    <div key={dept} className="flex items-center space-x-2">
+                                        <Checkbox
+                                            id={`dept-${dept}`}
+                                            checked={selectedDepartments.includes(dept)}
+                                            onCheckedChange={(checked) => handleDepartmentToggle(dept, !!checked)}
+                                        />
+                                        <Label htmlFor={`dept-${dept}`} className="font-normal">{dept}</Label>
+                                    </div>
                                 ))}
-                            </SelectContent>
-                        </Select>
+                            </div>
+                        </ScrollArea>
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="department-target">Target</Label>
@@ -295,7 +308,16 @@ export default function CascadePage() {
   };
 
   const handleConfirmCascade = (cascadedKpi: CascadedKpi) => {
-      setCascadedKpis(prev => [...prev, cascadedKpi]);
+      setCascadedKpis(prev => {
+        // Avoid adding duplicates
+        const existingIndex = prev.findIndex(k => k.id === cascadedKpi.id && k.department === cascadedKpi.department);
+        if (existingIndex > -1) {
+            const newKpis = [...prev];
+            newKpis[existingIndex] = cascadedKpi;
+            return newKpis;
+        }
+        return [...prev, cascadedKpi];
+      });
   };
 
   return (
