@@ -34,6 +34,7 @@ export function useAppLayout() {
 
 const AppSidebar = () => {
   const pathname = usePathname();
+  const { settings } = useKpiData();
 
   return (
     <nav className="w-72 bg-card border-r border-border flex-col hidden lg:flex">
@@ -44,7 +45,7 @@ const AppSidebar = () => {
           </div>
           <div>
             <h1 className="text-lg font-bold">{appConfig.title}</h1>
-            <p className="text-sm opacity-90">{appConfig.companyName}</p>
+            <p className="text-sm opacity-90">{settings.orgName}</p>
           </div>
         </div>
       </div>
@@ -84,7 +85,7 @@ const AppSidebar = () => {
 const AppHeader = () => {
   const { pageTitle } = useAppLayout();
   const currentNavItem = navItems.find(item => item.label === pageTitle);
-  const currentPeriod = currentNavItem ? headerData.currentPeriod : '';
+  const { settings } = useKpiData();
 
   return (
     <header className="bg-card shadow-sm border-b border-border px-4 sm:px-6 py-4 sticky top-0 z-10">
@@ -106,7 +107,7 @@ const AppHeader = () => {
                     </div>
                     <div>
                       <h1 className="text-lg font-bold">{appConfig.title}</h1>
-                      <p className="text-sm opacity-90">{appConfig.companyName}</p>
+                      <p className="text-sm opacity-90">{settings.orgName}</p>
                     </div>
                   </div>
                 </div>
