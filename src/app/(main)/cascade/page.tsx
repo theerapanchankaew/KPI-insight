@@ -437,7 +437,7 @@ const AssignKpiDialog = ({
     };
     
     const handleCreateCommitted = () => {
-        if (employee && committedTask && committedMeasure && committedWeight && Object.values(committedTargets).every(t => t)) {
+        if (employee && committedTask && committedMeasure && committedWeight) {
              onConfirm({
                 type: 'committed',
                 employeeId: employee.id,
