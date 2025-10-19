@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { kpiPortfolioData } from '@/lib/kpi-data';
 import { useToast } from '@/hooks/use-toast';
 import { CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 
 const statusConfig = {
     Committed: { icon: CheckCircle, color: 'text-success', badge: 'success' },
@@ -17,7 +19,15 @@ const statusConfig = {
     Rejected: { icon: AlertCircle, color: 'text-destructive', badge: 'destructive' },
 };
 
-const KpiCommitDialog = ({ isOpen, onClose, kpi, onConfirm, onReject }: { isOpen: boolean, onClose: () => void, kpi: any, onConfirm: (id: string) => void, onReject: (id: string) => void }) => {
+const KpiCommitDialog = ({ isOpen, onClose, kpi, onConfirm, onReject }: { isOpen: boolean, onClose: () => void, kpi: any, onConfirm: (id: string) => void, onReject: (id: string, reason: string) => void }) => {
+    const [rejectionReason, setRejectionReason] = useState('');
+
+    useEffect(() => {
+        if (isOpen) {
+            setRejectionReason('');
+        }
+    }, [isOpen]);
+
     if (!kpi) return null;
 
     return (
@@ -30,19 +40,29 @@ const KpiCommitDialog = ({ isOpen, onClose, kpi, onConfirm, onReject }: { isOpen
                     </DialogDescription>
                 </DialogHeader>
                 <div className="py-4 space-y-4">
-                    <div className="p-4 bg-gray-50/50 rounded-lg">
+                    <div className="p-4 bg-gray-50/50 rounded-lg space-y-2">
                         <p><strong>Type:</strong> <Badge variant={kpi.type === 'cascaded' ? 'secondary' : 'default'}>{kpi.type}</Badge></p>
                         <p><strong>Measure:</strong> {kpi.kpi}</p>
                         <p><strong>Weight:</strong> {kpi.weight}%</p>
                         <p><strong>Target:</strong> {kpi.target}</p>
                     </div>
-                     <p className="text-sm text-gray-600">By clicking "Confirm Commitment," you agree that you understand this KPI and will work towards achieving the set target for the current performance period. If you do not agree, you can reject it to discuss with your manager.</p>
+                     <p className="text-sm text-gray-600">By clicking "Confirm Commitment," you agree that you understand this KPI and will work towards achieving the set target for the current performance period.</p>
+                    
+                    <div className="space-y-2">
+                        <Label htmlFor="rejection-reason">Reason for Rejection (if applicable)</Label>
+                        <Textarea
+                            id="rejection-reason"
+                            placeholder="Provide a reason if you are rejecting this KPI..."
+                            value={rejectionReason}
+                            onChange={(e) => setRejectionReason(e.target.value)}
+                        />
+                    </div>
                 </div>
                 <DialogFooter>
                     <DialogClose asChild>
                         <Button variant="outline">Cancel</Button>
                     </DialogClose>
-                    <Button onClick={() => onReject(kpi.id)} variant="destructive">Reject</Button>
+                    <Button onClick={() => onReject(kpi.id, rejectionReason)} variant="destructive" disabled={rejectionReason.trim() === ''}>Reject</Button>
                     <Button onClick={() => onConfirm(kpi.id)}>Confirm Commitment</Button>
                 </DialogFooter>
             </DialogContent>
@@ -81,10 +101,10 @@ export default function PortfolioPage() {
         setIsCommitModalOpen(false);
     };
     
-    const handleRejectCommitment = (kpiId: string) => {
+    const handleRejectCommitment = (kpiId: string, reason: string) => {
         setPortfolioData(prevData =>
             prevData.map(kpi =>
-                kpi.id === kpiId ? { ...kpi, status: 'Rejected' } : kpi
+                kpi.id === kpiId ? { ...kpi, status: 'Rejected', rejectionReason: reason } : kpi
             )
         );
         toast({
