@@ -17,7 +17,7 @@ const statusConfig = {
     Rejected: { icon: AlertCircle, color: 'text-destructive', badge: 'destructive' },
 };
 
-const KpiCommitDialog = ({ isOpen, onClose, kpi, onConfirm }: { isOpen: boolean, onClose: () => void, kpi: any, onConfirm: (id: string) => void }) => {
+const KpiCommitDialog = ({ isOpen, onClose, kpi, onConfirm, onReject }: { isOpen: boolean, onClose: () => void, kpi: any, onConfirm: (id: string) => void, onReject: (id: string) => void }) => {
     if (!kpi) return null;
 
     return (
@@ -36,12 +36,13 @@ const KpiCommitDialog = ({ isOpen, onClose, kpi, onConfirm }: { isOpen: boolean,
                         <p><strong>Weight:</strong> {kpi.weight}%</p>
                         <p><strong>Target:</strong> {kpi.target}</p>
                     </div>
-                     <p className="text-sm text-gray-600">By clicking "Confirm Commitment," you agree that you understand this KPI and will work towards achieving the set target for the current performance period.</p>
+                     <p className="text-sm text-gray-600">By clicking "Confirm Commitment," you agree that you understand this KPI and will work towards achieving the set target for the current performance period. If you do not agree, you can reject it to discuss with your manager.</p>
                 </div>
                 <DialogFooter>
                     <DialogClose asChild>
                         <Button variant="outline">Cancel</Button>
                     </DialogClose>
+                    <Button onClick={() => onReject(kpi.id)} variant="destructive">Reject</Button>
                     <Button onClick={() => onConfirm(kpi.id)}>Confirm Commitment</Button>
                 </DialogFooter>
             </DialogContent>
@@ -79,6 +80,20 @@ export default function PortfolioPage() {
         });
         setIsCommitModalOpen(false);
     };
+    
+    const handleRejectCommitment = (kpiId: string) => {
+        setPortfolioData(prevData =>
+            prevData.map(kpi =>
+                kpi.id === kpiId ? { ...kpi, status: 'Rejected' } : kpi
+            )
+        );
+        toast({
+            title: "KPI Rejected",
+            description: "This KPI has been flagged for renegotiation with your manager.",
+            variant: "destructive"
+        });
+        setIsCommitModalOpen(false);
+    };
 
 
     return (
@@ -106,7 +121,8 @@ export default function PortfolioPage() {
                         </TableHeader>
                         <TableBody>
                             {portfolioData.map(kpi => {
-                                const { icon: Icon, color, badge } = statusConfig[kpi.status as keyof typeof statusConfig];
+                                const config = statusConfig[kpi.status as keyof typeof statusConfig] || statusConfig.Pending;
+                                const { icon: Icon, color, badge } = config;
                                 return (
                                     <TableRow key={kpi.id}>
                                         <TableCell className="font-medium">{kpi.kpi}</TableCell>
@@ -124,11 +140,14 @@ export default function PortfolioPage() {
                                         <TableCell>
                                             {kpi.status === 'Pending' ? (
                                                 <Button size="sm" onClick={() => handleCommitClick(kpi)}>
-                                                    Commit
+                                                    Review
                                                 </Button>
+                                            ) : kpi.status === 'Rejected' ? (
+                                                 <Button size="sm" variant="outline" onClick={() => handleCommitClick(kpi)}>Review Again</Button>
                                             ) : (
                                                  <Button size="sm" variant="outline" disabled>Committed</Button>
-                                            )}
+                                            )
+                                          }
                                         </TableCell>
                                     </TableRow>
                                 );
@@ -143,6 +162,7 @@ export default function PortfolioPage() {
                 onClose={() => setIsCommitModalOpen(false)}
                 kpi={selectedKpi}
                 onConfirm={handleConfirmCommitment}
+                onReject={handleRejectCommitment}
             />
         </div>
     );
