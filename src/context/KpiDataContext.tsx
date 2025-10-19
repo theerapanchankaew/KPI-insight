@@ -33,6 +33,10 @@ interface OrgData {
   employees: Employee[];
 }
 
+interface AppSettings {
+  orgName: string;
+}
+
 
 // Define the context shape
 interface KpiDataContextType {
@@ -40,6 +44,8 @@ interface KpiDataContextType {
   setKpiData: (data: KpiData) => void;
   orgData: OrgData | null;
   setOrgData: (data: OrgData) => void;
+  settings: AppSettings;
+  setSettings: (settings: AppSettings) => void;
 }
 
 // Create the context
@@ -49,9 +55,10 @@ const KpiDataContext = createContext<KpiDataContextType | undefined>(undefined);
 export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   const [kpiData, setKpiData] = useState<KpiData | null>(null);
   const [orgData, setOrgData] = useState<OrgData | null>(null);
+  const [settings, setSettings] = useState<AppSettings>({ orgName: 'บริษัท ABC จำกัด' });
 
   return (
-    <KpiDataContext.Provider value={{ kpiData, setKpiData, orgData, setOrgData }}>
+    <KpiDataContext.Provider value={{ kpiData, setKpiData, orgData, setOrgData, settings, setSettings }}>
       {children}
     </KpiDataContext.Provider>
   );

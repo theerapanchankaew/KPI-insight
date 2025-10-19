@@ -23,7 +23,7 @@ export default function SettingsPage() {
   const { settings, setSettings } = useKpiData();
 
   // State for General Settings
-  const [orgName, setOrgName] = useState(settings.orgName);
+  const [orgName, setOrgName] = useState('');
   const [currentPeriod, setCurrentPeriod] = useState<Date | undefined>(new Date());
   const [defaultCurrency, setDefaultCurrency] = useState("thb");
 
@@ -36,8 +36,14 @@ export default function SettingsPage() {
     setPageTitle('Settings');
   }, [setPageTitle]);
 
+  useEffect(() => {
+    if (settings) {
+      setOrgName(settings.orgName);
+    }
+  }, [settings]);
+
   const handleGeneralSave = () => {
-    setSettings({ ...settings, orgName });
+    setSettings({ orgName });
     toast({
       title: "Settings Saved",
       description: "Your general settings have been updated.",
