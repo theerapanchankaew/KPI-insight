@@ -1,0 +1,342 @@
+{
+  "entities": {
+    "UserProfile": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "UserProfile",
+      "type": "object",
+      "description": "Represents a user profile within the KPI Insights application.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the user profile."
+        },
+        "firstName": {
+          "type": "string",
+          "description": "The first name of the user."
+        },
+        "lastName": {
+          "type": "string",
+          "description": "The last name of the user."
+        },
+        "email": {
+          "type": "string",
+          "description": "The email address of the user.",
+          "format": "email"
+        },
+        "title": {
+          "type": "string",
+          "description": "The job title of the user (e.g., CEO, Manager)."
+        },
+        "departmentId": {
+          "type": "string",
+          "description": "Reference to the Department the user belongs to. (Relationship: Department 1:N UserProfile)"
+        },
+        "roleId": {
+          "type": "string",
+          "description": "Reference to the Role assigned to the user. (Relationship: Role 1:N UserProfile)"
+        }
+      },
+      "required": [
+        "id",
+        "firstName",
+        "lastName",
+        "email",
+        "title",
+        "departmentId",
+        "roleId"
+      ]
+    },
+    "Department": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Department",
+      "type": "object",
+      "description": "Represents a department within the organization.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the department."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the department (e.g., Sales, Operations)."
+        },
+        "description": {
+          "type": "string",
+          "description": "A brief description of the department's function."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description"
+      ]
+    },
+    "Role": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Role",
+      "type": "object",
+      "description": "Represents a user role within the organization, defining access permissions.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the role."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the role (e.g., Administrator, Manager, User)."
+        },
+        "permissions": {
+          "type": "array",
+          "description": "A list of permissions granted to this role.",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "permissions"
+      ]
+    },
+    "Kpi": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Kpi",
+      "type": "object",
+      "description": "Represents a Key Performance Indicator.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the KPI."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the KPI (e.g., Monthly Revenue, Customer Satisfaction)."
+        },
+        "description": {
+          "type": "string",
+          "description": "A detailed description of the KPI and its importance."
+        },
+        "target": {
+          "type": "number",
+          "description": "The target value for the KPI for a given period."
+        },
+        "unit": {
+          "type": "string",
+          "description": "The unit of measurement for the KPI (e.g., THB, %, Count)."
+        },
+        "period": {
+          "type": "string",
+          "description": "The reporting period for the KPI (e.g., monthly, quarterly, yearly)."
+        },
+        "departmentId": {
+          "type": "string",
+          "description": "Reference to the Department responsible for the KPI. (Relationship: Department 1:N Kpi)"
+        },
+        "kpiCategoryId": {
+          "type": "string",
+          "description": "Reference to the KpiCategory this KPI belongs to. (Relationship: KpiCategory 1:N Kpi)"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "target",
+        "unit",
+        "period",
+        "departmentId",
+        "kpiCategoryId"
+      ]
+    },
+    "KpiSubmission": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "KpiSubmission",
+      "type": "object",
+      "description": "Represents a submission of KPI data for a specific period.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the KPI submission."
+        },
+        "kpiId": {
+          "type": "string",
+          "description": "Reference to the KPI being submitted. (Relationship: Kpi 1:N KpiSubmission)"
+        },
+        "submittedByUserId": {
+          "type": "string",
+          "description": "Reference to the UserProfile who submitted the data. (Relationship: UserProfile 1:N KpiSubmission)"
+        },
+        "submissionDate": {
+          "type": "string",
+          "description": "The date and time when the KPI data was submitted.",
+          "format": "date-time"
+        },
+        "actualValue": {
+          "type": "number",
+          "description": "The actual value achieved for the KPI during the reporting period."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional notes or comments related to the KPI submission."
+        },
+        "status": {
+          "type": "string",
+          "description": "The status of the KPI submission (e.g., Pending, Approved, Rejected)."
+        }
+      },
+      "required": [
+        "id",
+        "kpiId",
+        "submittedByUserId",
+        "submissionDate",
+        "actualValue",
+        "status"
+      ]
+    },
+    "KpiCategory": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "KpiCategory",
+      "type": "object",
+      "description": "Represents a category of Key Performance Indicators.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the KPI Category."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the KPI Category (e.g., Financial, Operational, ESG)."
+        },
+        "description": {
+          "type": "string",
+          "description": "A detailed description of the KPI Category."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "UserProfile",
+          "schema": {
+            "$ref": "#/backend/entities/UserProfile"
+          },
+          "description": "Stores user profile information. Uses path-based ownership. The `roleId` and `departmentId` are used for authorization independence.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier for the user.  Corresponds to the Firebase Auth UID."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/departments/{departmentId}",
+        "definition": {
+          "entityName": "Department",
+          "schema": {
+            "$ref": "#/backend/entities/Department"
+          },
+          "description": "Stores department information.",
+          "params": [
+            {
+              "name": "departmentId",
+              "description": "The unique identifier for the department."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/roles/{roleId}",
+        "definition": {
+          "entityName": "Role",
+          "schema": {
+            "$ref": "#/backend/entities/Role"
+          },
+          "description": "Stores role information and permissions.",
+          "params": [
+            {
+              "name": "roleId",
+              "description": "The unique identifier for the role."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/kpi_categories/{kpiCategoryId}",
+        "definition": {
+          "entityName": "KpiCategory",
+          "schema": {
+            "$ref": "#/backend/entities/KpiCategory"
+          },
+          "description": "Stores KPI category information.",
+          "params": [
+            {
+              "name": "kpiCategoryId",
+              "description": "The unique identifier for the KPI category."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/departments/{departmentId}/kpis/{kpiId}",
+        "definition": {
+          "entityName": "Kpi",
+          "schema": {
+            "$ref": "#/backend/entities/Kpi"
+          },
+          "description": "Stores KPI information, organized by department.",
+          "params": [
+            {
+              "name": "departmentId",
+              "description": "The unique identifier for the department."
+            },
+            {
+              "name": "kpiId",
+              "description": "The unique identifier for the KPI."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/departments/{departmentId}/kpis/{kpiId}/submissions/{kpiSubmissionId}",
+        "definition": {
+          "entityName": "KpiSubmission",
+          "schema": {
+            "$ref": "#/backend/entities/KpiSubmission"
+          },
+          "description": "Stores KPI submission data for a specific KPI.",
+          "params": [
+            {
+              "name": "kpiId",
+              "description": "The unique identifier for the KPI."
+            },
+            {
+              "name": "departmentId",
+              "description": "The unique identifier for the department."
+            },
+            {
+              "name": "kpiSubmissionId",
+              "description": "The unique identifier for the KPI Submission."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore data structure is designed to support the KPI Insights application, focusing on authorization independence, clarity, and scalability. User profile data is stored under `/users/{userId}` using path-based ownership. This approach simplifies security rules and ensures that each user's data is isolated and secure. Departments, roles and KPI categories are stored in root-level collections. KPIs and KPI Submissions are stored as subcollections of the related entity to make querying and data management easier. To enforce authorization independence, the `UserProfile` data includes `roleId` and `departmentId` which can be used to determine permissions without needing to perform additional `get()` operations in the security rules.\n\nThe structure uses Structural Segregation (Homogeneous Security Posture) by storing data with similar access requirements in the same collections. Path-Based ownership is used for private user data (`/users/{userId}/...`). Data clarity is enhanced using explicit state modeling through the `status` field in `KpiSubmission` documents.\n\nThis structure effectively supports the required QAPs:\n\n*   **Secure List Operations:** Due to the segregation of data and the denormalization of roles within user documents, `list` operations can be secured efficiently without complex filtering.\n*   **Authorization Independence:** The design avoids hierarchical authorization dependencies by denormalizing authorization context, eliminating the need for `get()` calls in security rules. This design ensures that atomic operations (transactions/batches) are not broken and that debugging is simplified."
+  }
+}
