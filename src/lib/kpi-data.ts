@@ -54,8 +54,8 @@ export const navItems = [
   },
   {
     href: '/kpi-import',
-    label: 'Import KPIs',
-    description: 'นำเข้าข้อมูล KPI',
+    label: 'Intake Data',
+    description: 'นำเข้าข้อมูล',
     icon: FileUp,
   },
   {
@@ -94,7 +94,6 @@ export const summaryCardsData = [
     title: 'EBITDA %',
     value: '18.5%',
     target: 'เป้า: 15%',
-    trend: '+3.2%',
     trendDirection: 'up' as const,
     rag: 'green' as const,
     icon: TrendingUp,

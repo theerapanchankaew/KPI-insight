@@ -279,13 +279,13 @@ export default function KpiImportPage() {
   const [currentTab, setCurrentTab] = useState("kpi");
 
   useEffect(() => {
-    setPageTitle('Import Data');
+    setPageTitle('Intake Data');
   }, [setPageTitle]);
 
   return (
     <div className="fade-in space-y-6">
       <div>
-        <h3 className="text-xl font-semibold text-gray-800">Import Data</h3>
+        <h3 className="text-xl font-semibold text-gray-800">Intake Data</h3>
         <p className="text-gray-600 mt-1">นำเข้าข้อมูล KPI, โครงสร้างองค์กร และข้อมูลพนักงาน</p>
       </div>
       <Tabs defaultValue="kpi" className="w-full" onValueChange={setCurrentTab}>
