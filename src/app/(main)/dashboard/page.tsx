@@ -9,6 +9,7 @@ import { Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import { ChartContainer } from '@/components/ui/chart';
 import { Button } from '@/components/ui/button';
 import KpiInsights from './components/kpi-insights';
+import { TrendingUp, TrendingDown } from 'lucide-react';
 
 const SummaryCards = () => (
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -115,7 +116,6 @@ const DepartmentPerformance = () => (
 
 export default function DashboardPage() {
   const { setPageTitle } = useAppLayout();
-  const { TrendingUp, TrendingDown } = require('lucide-react');
 
   useEffect(() => {
     setPageTitle('Dashboard');

@@ -119,7 +119,7 @@ const CorporateLevel = ({ onCascadeClick }: { onCascadeClick: (kpi: CorporateKpi
                                     <div className="flex items-center justify-between">
                                         <span className="text-2xl font-bold text-gray-800">{kpi.target} {kpi.unit && `(${kpi.unit})`}</span>
                                     </div>
-                                    <Progress value={Math.random() * 100} className="h-2 mt-2" />
+                                    <Progress value={75} className="h-2 mt-2" />
                                     <div className="flex justify-end mt-4">
                                       <Button size="sm" onClick={() => onCascadeClick(kpi)}>Cascade</Button>
                                     </div>
