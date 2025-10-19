@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 // Type for a corporate KPI
 interface CorporateKpi {
@@ -33,6 +34,25 @@ interface CascadedKpi extends CorporateKpi {
   departmentTarget: string;
 }
 
+// Type for an Employee
+interface Employee {
+  id: string;
+  name: string;
+  department: string;
+  position: string;
+  manager: string;
+}
+
+// Type for individual KPI assignment
+interface IndividualKpi {
+    employeeId: string;
+    kpiId: string;
+    kpiMeasure: string;
+    weight: number;
+    target: string;
+}
+
+
 const CorporateLevel = ({ onCascadeClick }: { onCascadeClick: (kpi: CorporateKpi) => void }) => {
     const { kpiData } = useKpiData();
     
@@ -44,7 +64,7 @@ const CorporateLevel = ({ onCascadeClick }: { onCascadeClick: (kpi: CorporateKpi
                 </CardHeader>
                 <CardContent className="p-6 text-center text-gray-500">
                     <p>No KPI data has been imported.</p>
-                    <p className="mt-2">Please go to the "Import Data" page to upload a KPI data file.</p>
+                    <p className="mt-2">Please go to the "Intake Data" page to upload a KPI data file.</p>
                 </CardContent>
             </Card>
         );
@@ -101,7 +121,7 @@ const DepartmentLevel = ({ cascadedKpis }: { cascadedKpis: CascadedKpi[] }) => {
                 </CardHeader>
                 <CardContent className="p-6 text-center text-gray-500">
                     <p>No Organization data has been imported.</p>
-                    <p className="mt-2">Please go to the "Import Data" page to upload an organization data file.</p>
+                    <p className="mt-2">Please go to the "Intake Data" page to upload an organization data file.</p>
                 </CardContent>
             </Card>
         );
@@ -147,7 +167,7 @@ const DepartmentLevel = ({ cascadedKpis }: { cascadedKpis: CascadedKpi[] }) => {
     );
 }
 
-const IndividualLevel = () => {
+const IndividualLevel = ({ cascadedKpis, individualKpis, onAssignKpi }: { cascadedKpis: CascadedKpi[], individualKpis: IndividualKpi[], onAssignKpi: (employee: Employee) => void }) => {
     const { orgData } = useKpiData();
 
     if (!orgData || !orgData.employees || orgData.employees.length === 0) {
@@ -156,46 +176,60 @@ const IndividualLevel = () => {
                 <CardHeader><CardTitle>Individual Performance</CardTitle></CardHeader>
                 <CardContent className="p-6 text-center text-gray-500">
                     <p>No Organization data has been imported.</p>
-                    <p className="mt-2">Please go to the "Import Data" page to upload an organization data file.</p>
+                    <p className="mt-2">Please go to the "Intake Data" page to upload an organization data file.</p>
                 </CardContent>
             </Card>
         );
     }
     
+    const managers = [...new Set(orgData.employees.map(e => e.manager))].filter(Boolean); // Filter out empty manager names
+
     return (
-    <div className="grid grid-cols-1 gap-6">
-        <Card>
-            <CardHeader>
-                <CardTitle>Individual Performance</CardTitle>
-            </CardHeader>
-            <CardContent>
-                 <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Name</TableHead>
-                            <TableHead>Department</TableHead>
-                            <TableHead>Position</TableHead>
-                            <TableHead>Manager</TableHead>
-                            <TableHead>KPIs Assigned</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {orgData.employees.map(person => (
-                            <TableRow key={person.id}>
-                                <TableCell className="font-medium">{person.name}</TableCell>
-                                <TableCell>{person.department}</TableCell>
-                                <TableCell>{person.position}</TableCell>
-                                <TableCell>{person.manager}</TableCell>
-                                <TableCell><Badge variant="outline">0 KPIs</Badge></TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            </CardContent>
-        </Card>
-    </div>
-);
-}
+        <div className="space-y-8">
+            {managers.map(manager => {
+                const directReports = orgData.employees.filter(e => e.manager === manager);
+                return (
+                    <Card key={manager}>
+                        <CardHeader>
+                            <CardTitle>Manager: {manager}</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Name</TableHead>
+                                        <TableHead>Position</TableHead>
+                                        <TableHead>Department</TableHead>
+                                        <TableHead>KPIs Assigned</TableHead>
+                                        <TableHead>Actions</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {directReports.map(person => {
+                                        const assignedCount = individualKpis.filter(ik => ik.employeeId === person.id).length;
+                                        return (
+                                            <TableRow key={person.id}>
+                                                <TableCell className="font-medium">{person.name}</TableCell>
+                                                <TableCell>{person.position}</TableCell>
+                                                <TableCell>{person.department}</TableCell>
+                                                <TableCell><Badge variant="outline">{assignedCount} KPIs</Badge></TableCell>
+                                                <TableCell>
+                                                    <Button variant="outline" size="sm" onClick={() => onAssignKpi(person)}>
+                                                        Assign KPI
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        )
+                                    })}
+                                </TableBody>
+                            </Table>
+                        </CardContent>
+                    </Card>
+                )
+            })}
+        </div>
+    );
+};
 
 const CascadeDialog = ({
     isOpen,
@@ -288,13 +322,104 @@ const CascadeDialog = ({
     );
 };
 
+const AssignKpiDialog = ({
+    isOpen,
+    onClose,
+    employee,
+    departmentKpis,
+    onConfirm,
+}: {
+    isOpen: boolean;
+    onClose: () => void;
+    employee: Employee | null;
+    departmentKpis: CascadedKpi[];
+    onConfirm: (assignment: IndividualKpi) => void;
+}) => {
+    const [selectedKpiId, setSelectedKpiId] = useState<string>('');
+    const [target, setTarget] = useState('');
+    const [weight, setWeight] = useState('');
+
+    useEffect(() => {
+        if (!isOpen) {
+            setSelectedKpiId('');
+            setTarget('');
+            setWeight('');
+        }
+    }, [isOpen]);
+
+    const handleSubmit = () => {
+        const selectedKpi = departmentKpis.find(k => k.id === selectedKpiId);
+        if (employee && selectedKpi && target && weight) {
+            onConfirm({
+                employeeId: employee.id,
+                kpiId: selectedKpi.id,
+                kpiMeasure: selectedKpi.measure,
+                target: target,
+                weight: parseInt(weight, 10),
+            });
+            onClose();
+        }
+    };
+
+    if (!employee) return null;
+
+    const relevantKpis = departmentKpis.filter(kpi => kpi.department === employee.department);
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Assign KPI to {employee.name}</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                        <Label>Department KPI</Label>
+                        <Select value={selectedKpiId} onValueChange={setSelectedKpiId}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select a KPI to assign" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {relevantKpis.length > 0 ? (
+                                    relevantKpis.map(kpi => (
+                                        <SelectItem key={kpi.id} value={kpi.id}>{kpi.measure}</SelectItem>
+                                    ))
+                                ) : (
+                                    <div className="p-4 text-sm text-gray-500">No KPIs cascaded to {employee.department} yet.</div>
+                                )}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="individual-target">Individual Target</Label>
+                        <Input id="individual-target" value={target} onChange={e => setTarget(e.target.value)} placeholder="Enter target value" />
+                    </div>
+                     <div className="space-y-2">
+                        <Label htmlFor="individual-weight">Weight (%)</Label>
+                        <Input id="individual-weight" type="number" value={weight} onChange={e => setWeight(e.target.value)} placeholder="e.g., 10" />
+                    </div>
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+                    <Button onClick={handleSubmit}>Assign KPI</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 
 export default function CascadePage() {
   const { setPageTitle } = useAppLayout();
   const { orgData } = useKpiData();
-  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const [isCascadeModalOpen, setIsCascadeModalOpen] = useState(false);
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  
   const [selectedKpi, setSelectedKpi] = useState<CorporateKpi | null>(null);
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+
   const [cascadedKpis, setCascadedKpis] = useState<CascadedKpi[]>([]);
+  const [individualKpis, setIndividualKpis] = useState<IndividualKpi[]>([]);
 
   useEffect(() => {
     setPageTitle('Cascade KPI');
@@ -304,12 +429,16 @@ export default function CascadePage() {
 
   const handleCascadeClick = (kpi: CorporateKpi) => {
       setSelectedKpi(kpi);
-      setIsModalOpen(true);
+      setIsCascadeModalOpen(true);
+  };
+
+  const handleAssignKpiClick = (employee: Employee) => {
+      setSelectedEmployee(employee);
+      setIsAssignModalOpen(true);
   };
 
   const handleConfirmCascade = (cascadedKpi: CascadedKpi) => {
       setCascadedKpis(prev => {
-        // Avoid adding duplicates
         const existingIndex = prev.findIndex(k => k.id === cascadedKpi.id && k.department === cascadedKpi.department);
         if (existingIndex > -1) {
             const newKpis = [...prev];
@@ -317,6 +446,18 @@ export default function CascadePage() {
             return newKpis;
         }
         return [...prev, cascadedKpi];
+      });
+  };
+
+  const handleConfirmAssignment = (assignment: IndividualKpi) => {
+      setIndividualKpis(prev => {
+           const existingIndex = prev.findIndex(k => k.employeeId === assignment.employeeId && k.kpiId === assignment.kpiId);
+            if (existingIndex > -1) {
+                const newKpis = [...prev];
+                newKpis[existingIndex] = assignment;
+                return newKpis;
+            }
+            return [...prev, assignment];
       });
   };
 
@@ -339,18 +480,23 @@ export default function CascadePage() {
           <DepartmentLevel cascadedKpis={cascadedKpis} />
         </TabsContent>
         <TabsContent value="individual" className="mt-6">
-          <IndividualLevel />
+          <IndividualLevel cascadedKpis={cascadedKpis} individualKpis={individualKpis} onAssignKpi={handleAssignKpiClick} />
         </TabsContent>
       </Tabs>
       <CascadeDialog 
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        isOpen={isCascadeModalOpen}
+        onClose={() => setIsCascadeModalOpen(false)}
         kpi={selectedKpi}
         departments={departments}
         onConfirm={handleConfirmCascade}
       />
+      <AssignKpiDialog
+        isOpen={isAssignModalOpen}
+        onClose={() => setIsAssignModalOpen(false)}
+        employee={selectedEmployee}
+        departmentKpis={cascadedKpis}
+        onConfirm={handleConfirmAssignment}
+      />
     </div>
   );
 }
-
-    
