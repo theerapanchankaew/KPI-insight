@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 
 // Type for a corporate KPI
 interface CorporateKpi {
@@ -43,14 +44,34 @@ interface Employee {
   manager: string;
 }
 
-// Type for individual KPI assignment
-interface IndividualKpi {
+// Base type for any individual KPI
+interface IndividualKpiBase {
     employeeId: string;
     kpiId: string;
     kpiMeasure: string;
     weight: number;
+}
+
+// Type for individual KPI assignment from a cascaded KPI
+interface AssignedCascadedKpi extends IndividualKpiBase {
+    type: 'cascaded';
     target: string;
 }
+
+// Type for a new, committed KPI
+interface CommittedKpi extends IndividualKpiBase {
+    type: 'committed';
+    task: string;
+    targets: {
+        level1: string;
+        level2: string;
+        level3: string;
+        level4: string;
+        level5: string;
+    };
+}
+
+type IndividualKpi = AssignedCascadedKpi | CommittedKpi;
 
 
 const CorporateLevel = ({ onCascadeClick }: { onCascadeClick: (kpi: CorporateKpi) => void }) => {
@@ -335,27 +356,60 @@ const AssignKpiDialog = ({
     departmentKpis: CascadedKpi[];
     onConfirm: (assignment: IndividualKpi) => void;
 }) => {
+    const [assignmentType, setAssignmentType] = useState<'cascaded' | 'committed'>('cascaded');
+    
+    // State for assigning cascaded KPI
     const [selectedKpiId, setSelectedKpiId] = useState<string>('');
-    const [target, setTarget] = useState('');
-    const [weight, setWeight] = useState('');
+    const [cascadedTarget, setCascadedTarget] = useState('');
+    const [cascadedWeight, setCascadedWeight] = useState('');
+
+    // State for creating a committed KPI
+    const [committedTask, setCommittedTask] = useState('');
+    const [committedMeasure, setCommittedMeasure] = useState('');
+    const [committedWeight, setCommittedWeight] = useState('');
+    const [committedTargets, setCommittedTargets] = useState({
+        level1: '', level2: '', level3: '', level4: '', level5: ''
+    });
 
     useEffect(() => {
         if (!isOpen) {
+            // Reset all state on close
+            setAssignmentType('cascaded');
             setSelectedKpiId('');
-            setTarget('');
-            setWeight('');
+            setCascadedTarget('');
+            setCascadedWeight('');
+            setCommittedTask('');
+            setCommittedMeasure('');
+            setCommittedWeight('');
+            setCommittedTargets({ level1: '', level2: '', level3: '', level4: '', level5: '' });
         }
     }, [isOpen]);
 
-    const handleSubmit = () => {
+    const handleAssignCascaded = () => {
         const selectedKpi = departmentKpis.find(k => k.id === selectedKpiId);
-        if (employee && selectedKpi && target && weight) {
+        if (employee && selectedKpi && cascadedTarget && cascadedWeight) {
             onConfirm({
+                type: 'cascaded',
                 employeeId: employee.id,
                 kpiId: selectedKpi.id,
                 kpiMeasure: selectedKpi.measure,
-                target: target,
-                weight: parseInt(weight, 10),
+                target: cascadedTarget,
+                weight: parseInt(cascadedWeight, 10),
+            });
+            onClose();
+        }
+    };
+    
+    const handleCreateCommitted = () => {
+        if (employee && committedTask && committedMeasure && committedWeight && Object.values(committedTargets).every(t => t)) {
+             onConfirm({
+                type: 'committed',
+                employeeId: employee.id,
+                kpiId: `committed-${Date.now()}`, // Generate a unique ID
+                kpiMeasure: committedMeasure,
+                task: committedTask,
+                targets: committedTargets,
+                weight: parseInt(committedWeight, 10),
             });
             onClose();
         }
@@ -367,41 +421,75 @@ const AssignKpiDialog = ({
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent>
+            <DialogContent className="max-w-3xl">
                 <DialogHeader>
                     <DialogTitle>Assign KPI to {employee.name}</DialogTitle>
                 </DialogHeader>
-                <div className="space-y-4 py-4">
-                    <div className="space-y-2">
-                        <Label>Department KPI</Label>
-                        <Select value={selectedKpiId} onValueChange={setSelectedKpiId}>
-                            <SelectTrigger>
-                                <SelectValue placeholder="Select a KPI to assign" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {relevantKpis.length > 0 ? (
-                                    relevantKpis.map(kpi => (
-                                        <SelectItem key={kpi.id} value={kpi.id}>{kpi.measure}</SelectItem>
-                                    ))
-                                ) : (
-                                    <div className="p-4 text-sm text-gray-500">No KPIs cascaded to {employee.department} yet.</div>
-                                )}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="individual-target">Individual Target</Label>
-                        <Input id="individual-target" value={target} onChange={e => setTarget(e.target.value)} placeholder="Enter target value" />
-                    </div>
-                     <div className="space-y-2">
-                        <Label htmlFor="individual-weight">Weight (%)</Label>
-                        <Input id="individual-weight" type="number" value={weight} onChange={e => setWeight(e.target.value)} placeholder="e.g., 10" />
-                    </div>
-                </div>
-                <DialogFooter>
-                    <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                    <Button onClick={handleSubmit}>Assign KPI</Button>
-                </DialogFooter>
+                <Tabs value={assignmentType} onValueChange={(value) => setAssignmentType(value as 'cascaded' | 'committed')} className="w-full pt-4">
+                    <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="cascaded">Assign Cascaded KPI</TabsTrigger>
+                        <TabsTrigger value="committed">Create Committed KPI</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="cascaded" className="mt-6 space-y-4">
+                        <div className="space-y-2">
+                            <Label>Department KPI</Label>
+                            <Select value={selectedKpiId} onValueChange={setSelectedKpiId}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select a KPI to assign" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {relevantKpis.length > 0 ? (
+                                        relevantKpis.map(kpi => (
+                                            <SelectItem key={kpi.id} value={kpi.id}>{kpi.measure}</SelectItem>
+                                        ))
+                                    ) : (
+                                        <div className="p-4 text-sm text-gray-500">No KPIs cascaded to {employee.department} yet.</div>
+                                    )}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="individual-target">Individual Target</Label>
+                            <Input id="individual-target" value={cascadedTarget} onChange={e => setCascadedTarget(e.target.value)} placeholder="Enter target value" />
+                        </div>
+                         <div className="space-y-2">
+                            <Label htmlFor="individual-weight">Weight (%)</Label>
+                            <Input id="individual-weight" type="number" value={cascadedWeight} onChange={e => setCascadedWeight(e.target.value)} placeholder="e.g., 10" />
+                        </div>
+                        <DialogFooter>
+                            <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+                            <Button onClick={handleAssignCascaded}>Assign KPI</Button>
+                        </DialogFooter>
+                    </TabsContent>
+                    <TabsContent value="committed" className="mt-6 space-y-4">
+                         <div className="space-y-2">
+                            <Label htmlFor="committed-task">Task / Project Name</Label>
+                            <Input id="committed-task" value={committedTask} onChange={e => setCommittedTask(e.target.value)} placeholder="e.g., Monthly Report Submission" />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="committed-measure">KPI Measure</Label>
+                            <Input id="committed-measure" value={committedMeasure} onChange={e => setCommittedMeasure(e.target.value)} placeholder="e.g., On-time Submission Rate" />
+                        </div>
+                         <div className="space-y-2">
+                            <Label>Target Levels (5-point scale)</Label>
+                            <div className="grid grid-cols-5 gap-2">
+                                <Input placeholder="Level 1 (<85%)" value={committedTargets.level1} onChange={e => setCommittedTargets({...committedTargets, level1: e.target.value})} />
+                                <Input placeholder="Level 2 (85-95%)" value={committedTargets.level2} onChange={e => setCommittedTargets({...committedTargets, level2: e.target.value})} />
+                                <Input placeholder="Level 3 (95-105%)" value={committedTargets.level3} onChange={e => setCommittedTargets({...committedTargets, level3: e.target.value})} />
+                                <Input placeholder="Level 4 (105-115%)" value={committedTargets.level4} onChange={e => setCommittedTargets({...committedTargets, level4: e.target.value})} />
+                                <Input placeholder="Level 5 (>115%)" value={committedTargets.level5} onChange={e => setCommittedTargets({...committedTargets, level5: e.target.value})} />
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="committed-weight">Weight (%)</Label>
+                            <Input id="committed-weight" type="number" value={committedWeight} onChange={e => setCommittedWeight(e.target.value)} placeholder="e.g., 15" />
+                        </div>
+                         <DialogFooter>
+                            <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+                            <Button onClick={handleCreateCommitted}>Create & Assign KPI</Button>
+                        </DialogFooter>
+                    </TabsContent>
+                </Tabs>
             </DialogContent>
         </Dialog>
     );
