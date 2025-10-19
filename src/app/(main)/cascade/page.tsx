@@ -4,68 +4,54 @@ import React, { useEffect, useState } from 'react';
 import { useAppLayout } from '../layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { kpiCascadeData as staticKpiData } from '@/lib/kpi-data';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { useKpiData } from '@/context/KpiDataContext';
 
-const statusMapping: { [key: string]: 'success' | 'warning' | 'destructive' } = {
-  'Green': 'success',
-  'Amber': 'warning',
-  'Red': 'destructive',
-};
-
 const CorporateLevel = () => {
     const { kpiData } = useKpiData();
-
-    // Use imported data if available, otherwise fall back to static data.
     const corporateKpis = kpiData?.kpi_catalog || [];
     
-    // Simple grouping by perspective. A more robust solution might be needed for complex cases.
-    const groupedKpis: { [key: string]: any[] } = corporateKpis.reduce((acc, kpi) => {
-        const perspective = kpi.perspective || 'Uncategorized';
-        if (!acc[perspective]) {
-            acc[perspective] = [];
-        }
-        acc[perspective].push(kpi);
-        return acc;
-    }, {} as { [key: string]: any[] });
-
     if (corporateKpis.length === 0) {
         return (
             <Card>
                 <CardContent className="p-6 text-center text-gray-500">
                     <p>No KPI data imported yet.</p>
-                    <p>Please go to the "Import KPIs" page to upload a file.</p>
+                    <p>Please go to the "Import Data" page to upload a KPI file.</p>
                 </CardContent>
             </Card>
         );
     }
+    
+    // Simple grouping by perspective.
+    const groupedKpis: { [key: string]: any[] } = corporateKpis.reduce((acc, kpi) => {
+        const perspective = kpi.perspective || 'Uncategorized';
+        if (!acc[perspective]) acc[perspective] = [];
+        acc[perspective].push(kpi);
+        return acc;
+    }, {} as { [key: string]: any[] });
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {Object.entries(groupedKpis).map(([perspective, kpis]) => (
                 <Card key={perspective}>
-                    <CardHeader>
-                        <CardTitle>{perspective} KPIs</CardTitle>
-                    </CardHeader>
+                    <CardHeader><CardTitle>{perspective} KPIs</CardTitle></CardHeader>
                     <CardContent className="space-y-4">
                         {kpis.map(kpi => (
                             <Card key={kpi.id}>
                                 <CardContent className="p-4">
                                     <div className="flex items-center justify-between mb-2">
                                         <span className="font-medium text-gray-800">{kpi.measure}</span>
-                                        {/* Status is not in the new data, so this is a placeholder */}
                                         <Badge variant="outline">{kpi.category}</Badge>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <span className="text-2xl font-bold text-gray-800">{kpi.unit}</span>
-                                        <span className="text-sm text-gray-500">{kpi.target}</span>
+                                        {/* Unit not always present, so we check */}
+                                        <span className="text-2xl font-bold text-gray-800">{kpi.target} {kpi.unit && `(${kpi.unit})`}</span>
                                     </div>
-                                    {/* Progress is not in the new data, so this is a placeholder */}
-                                    <Progress value={50} className="h-2 mt-2" />
+                                     {/* Progress is a placeholder */}
+                                    <Progress value={Math.random() * 100} className="h-2 mt-2" />
                                 </CardContent>
                             </Card>
                         ))}
@@ -78,27 +64,42 @@ const CorporateLevel = () => {
 
 
 const DepartmentLevel = () => {
-    const { kpiData } = useKpiData();
-    // Using static data as a placeholder until cascading logic is implemented
-    const departmentData = staticKpiData.department;
+    const { orgData } = useKpiData();
+
+    if (!orgData || orgData.employees.length === 0) {
+         return (
+            <Card>
+                <CardContent className="p-6 text-center text-gray-500">
+                    <p>No Organization data imported yet.</p>
+                    <p>Please go to the "Import Data" page to upload an organization file.</p>
+                </CardContent>
+            </Card>
+        );
+    }
+    
+    const departments = [...new Set(orgData.employees.map(e => e.department))];
+
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {departmentData.map(dept => (
-                <Card key={dept.name} className={cn("border-2", dept.borderColor)}>
+            {departments.map(dept => (
+                <Card key={dept}>
                     <CardHeader>
                         <div className="flex items-center justify-between">
-                            <h4 className="text-lg font-semibold text-gray-800">{dept.name}</h4>
-                            <span className={cn("px-3 py-1 rounded-full text-sm font-medium", dept.statusColor)}>{dept.performance}</span>
+                            <h4 className="text-lg font-semibold text-gray-800">{dept}</h4>
+                             {/* Placeholder performance */}
+                            <Badge variant="outline">Performance: 90%</Badge>
                         </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        {dept.kpis.map(kpi => (
-                            <div key={kpi.name} className={cn("pl-4", kpi.borderColor)}>
-                                <p className="font-medium text-gray-800">{kpi.name}</p>
-                                <p className={cn("text-xl font-bold", kpi.borderColor === 'border-primary' ? 'text-primary' : kpi.borderColor === 'border-secondary' ? 'text-secondary' : kpi.borderColor === 'border-accent' ? 'text-accent' : 'text-success')}>{kpi.value}</p>
-                                <p className="text-sm text-gray-500">{kpi.parent}</p>
-                            </div>
-                        ))}
+                         {/* Placeholder KPIs */}
+                        <div className="pl-4 border-l-4 border-primary">
+                            <p className="font-medium text-gray-800">Department KPI 1</p>
+                            <p className="text-xl font-bold text-primary">Value</p>
+                        </div>
+                        <div className="pl-4 border-l-4 border-secondary">
+                            <p className="font-medium text-gray-800">Department KPI 2</p>
+                            <p className="text-xl font-bold text-secondary">Value</p>
+                        </div>
                     </CardContent>
                 </Card>
             ))}
@@ -107,10 +108,21 @@ const DepartmentLevel = () => {
 }
 
 const IndividualLevel = () => {
-    // Using static data as a placeholder
-    const individualData = staticKpiData.individual;
+    const { orgData } = useKpiData();
+
+    if (!orgData || orgData.employees.length === 0) {
+         return (
+            <Card>
+                <CardHeader><CardTitle>Individual Performance</CardTitle></CardHeader>
+                <CardContent className="p-6 text-center text-gray-500">
+                    <p>No Organization data imported yet.</p>
+                </CardContent>
+            </Card>
+        );
+    }
+    
     return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div className="grid grid-cols-1 gap-6">
         <Card>
             <CardHeader>
                 <CardTitle>Individual Performance</CardTitle>
@@ -121,50 +133,23 @@ const IndividualLevel = () => {
                         <TableRow>
                             <TableHead>Name</TableHead>
                             <TableHead>Department</TableHead>
-                            <TableHead>KPI</TableHead>
-                            <TableHead>Status</TableHead>
+                            <TableHead>Position</TableHead>
+                            <TableHead>Manager</TableHead>
+                            <TableHead>KPIs Assigned</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {individualData.map(person => (
-                            <TableRow key={person.name}>
+                        {orgData.employees.map(person => (
+                            <TableRow key={person.id}>
                                 <TableCell className="font-medium">{person.name}</TableCell>
                                 <TableCell>{person.department}</TableCell>
-                                <TableCell>{person.kpi}</TableCell>
-                                <TableCell><span className={cn("px-2 py-1 rounded-full text-xs font-medium", person.statusColor)}>{person.status}</span></TableCell>
+                                <TableCell>{person.position}</TableCell>
+                                <TableCell>{person.manager}</TableCell>
+                                <TableCell><Badge variant="outline">0 KPIs</Badge></TableCell>
                             </TableRow>
                         ))}
                     </TableBody>
                 </Table>
-            </CardContent>
-        </Card>
-         <Card>
-            <CardHeader>
-                <CardTitle>KPI Hierarchy</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                <div className="bg-green-50 rounded-lg p-4">
-                    <div className="flex items-center space-x-3">
-                        <div className="w-3 h-3 bg-primary rounded-full"></div>
-                        <span className="font-medium text-gray-800">Total Revenue (Corporate)</span>
-                    </div>
-                </div>
-                <div className="ml-6 space-y-2 border-l-2 border-gray-200 pl-6">
-                     <div className="bg-blue-50 rounded-lg p-3">
-                        <div className="flex items-center space-x-3">
-                            <div className="w-2 h-2 bg-secondary rounded-full"></div>
-                            <span className="text-sm font-medium text-gray-700">Sales Revenue (Department)</span>
-                        </div>
-                    </div>
-                    <div className="ml-6 border-l-2 border-gray-200 pl-6">
-                         <div className="bg-purple-50 rounded-lg p-3">
-                            <div className="flex items-center space-x-3">
-                                <div className="w-1.5 h-1.5 bg-purple-500 rounded-full"></div>
-                                <span className="text-sm text-gray-600">สมชาย - Monthly Revenue</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
             </CardContent>
         </Card>
     </div>

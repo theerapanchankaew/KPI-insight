@@ -3,7 +3,6 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 
 // Define the shape of your KPI data based on the JSON structure
-// This is a simplified version; you can expand it to match the full structure.
 interface Kpi {
   id: string;
   perspective: string;
@@ -18,13 +17,29 @@ interface KpiData {
   version: string;
   organization: string;
   kpi_catalog: Kpi[];
-  // Add other top-level fields from your JSON here
 }
+
+// Define the shape for an Employee
+interface Employee {
+  id: string;
+  name: string;
+  department: string;
+  position: string;
+  manager: string;
+}
+
+// Define the shape for the organization data
+interface OrgData {
+  employees: Employee[];
+}
+
 
 // Define the context shape
 interface KpiDataContextType {
   kpiData: KpiData | null;
   setKpiData: (data: KpiData) => void;
+  orgData: OrgData | null;
+  setOrgData: (data: OrgData) => void;
 }
 
 // Create the context
@@ -33,9 +48,10 @@ const KpiDataContext = createContext<KpiDataContextType | undefined>(undefined);
 // Create the provider component
 export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   const [kpiData, setKpiData] = useState<KpiData | null>(null);
+  const [orgData, setOrgData] = useState<OrgData | null>(null);
 
   return (
-    <KpiDataContext.Provider value={{ kpiData, setKpiData }}>
+    <KpiDataContext.Provider value={{ kpiData, setKpiData, orgData, setOrgData }}>
       {children}
     </KpiDataContext.Provider>
   );
