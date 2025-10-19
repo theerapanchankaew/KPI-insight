@@ -162,31 +162,42 @@ const OrgImportTab = () => {
     const router = useRouter();
     const { toast } = useToast();
     const [files, setFiles] = useState<File[]>([]);
-    // This is a placeholder for file content. For a real implementation, you would parse the Excel/CSV file.
     const [fileContent, setFileContent] = useState<any | null>(null);
 
     const onDrop = useCallback((acceptedFiles: File[]) => {
         const file = acceptedFiles[0];
-        // For now, we just store the file. A real implementation would parse it.
-        // For example using a library like 'xlsx' for Excel files.
-        if (file && (file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || file.name.endsWith('.xlsx') || file.type === 'text/csv')) {
+        if (file && (file.type === 'application/json' || file.name.endsWith('.json'))) {
             setFiles([file]);
-            toast({ title: 'File Selected', description: `${file.name} is ready for processing.` });
-             // Mock parsing for demonstration
-            const mockParsedData = {
-                employees: [
-                    { id: '1', name: 'ชวลิต แก้วน้ำดี', department: 'HQMS', position: 'ผู้จัดการแผนกอาวุโส', manager: 'ธีระพันธุ์' },
-                    { id: '2', name: 'นายปรัชญ์ ชยานุรักษ์', department: 'QMS', position: 'เจ้าหน้าที่บริหารงานคุณภาพ', manager: 'ชวลิต แก้วน้ำดี' },
-                    { id: '3', name: 'นางสาวสุภาพรรณ ตันติภาสวศิน', department: 'QMS', position: 'เจ้าหน้าที่บริหารงานคุณภาพอาวุโส', manager: 'ชวลิต แก้วน้ำดี' },
-                ]
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const text = e.target?.result;
+                    if (typeof text === 'string') {
+                        const parsedJson = JSON.parse(text);
+                        // Transform the data to match the Employee interface
+                        const transformedData = {
+                            employees: parsedJson.map((item: any) => ({
+                                id: item['รหัส'].toString(),
+                                name: item['ชื่อ-นามสกุล'],
+                                department: item['แผนก'],
+                                position: item['ตำแหน่ง'],
+                                manager: item['ผู้บังคับบัญชา']
+                            }))
+                        };
+                        setFileContent(transformedData);
+                        toast({ title: 'File Parsed', description: `${file.name} is ready.` });
+                    }
+                } catch (error) {
+                    toast({ variant: 'destructive', title: 'Invalid JSON', description: 'Could not parse the JSON file.' });
+                }
             };
-            setFileContent(mockParsedData);
+            reader.readAsText(file);
         } else {
-            toast({ variant: 'destructive', title: 'Invalid File Type', description: 'Please upload an Excel (.xlsx) or CSV file.' });
+            toast({ variant: 'destructive', title: 'Invalid File Type', description: 'Please upload a JSON file.' });
         }
     }, [toast]);
     
-    const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, multiple: false });
+    const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, multiple: false, accept: { 'application/json': ['.json'] } });
 
     const handleProcessAndSend = () => {
         if (fileContent) {
@@ -203,31 +214,40 @@ const OrgImportTab = () => {
         setFileContent(null);
     };
 
-    const exampleOrgData = `รหัส,ชื่อ-นามสกุล,แผนก,ตำแหน่ง,ผู้บังคับบัญชา
-1,ชวลิต แก้วน้ำดี,ผู้จัดการแผนกอาวุโส,HQMS,ธีระพันธุ์
-2,นายปรัชญ์ ชยานุรักษ์,เจ้าหน้าที่บริหารงานคุณภาพ,QMS,ชวลิต แก้วน้ำดี
-3,นางสาวสุภาพรรณ ตันติภาสวศิน,เจ้าหน้าที่บริหารงานคุณภาพอาวุโส,QMS,ชวลิต แก้วน้ำดี
-4,สัญชัย ไพศาล,หัวหน้าผู้ตรวจประเมินอาวุโส,HAPS,ธีระพันธุ์
-...
-`;
+    const exampleOrgData = `[
+  {
+    "รหัส": 1,
+    "ชื่อ-นามสกุล": "ชวลิต แก้วน้ำดี",
+    "ตำแหน่ง": "ผู้จัดการแผนกอาวุโส",
+    "แผนก": "HQMS",
+    "ผู้บังคับบัญชา": "ธีระพันธุ์"
+  },
+  {
+    "รหัส": 2,
+    "ชื่อ-นามสกุล": "นายปรัชญ์ ชยานุรักษ์",
+    "ตำแหน่ง": "เจ้าหน้าที่บริหารงานคุณภาพ",
+    "แผนก": "QMS",
+    "ผู้บังคับบัญชา": "ชวลิต แก้วน้ำดี"
+  }
+]`;
 
     return (
         <div className="space-y-6">
             <Card>
                 <CardHeader>
                     <CardTitle>Upload Organization Data</CardTitle>
-                    <CardDescription>Select an Excel or CSV file with employee and organization structure.</CardDescription>
+                    <CardDescription>Select a JSON file with employee and organization structure.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                     <div {...getRootProps()} className={`border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors ${isDragActive ? 'border-primary bg-primary/10' : 'border-gray-300 hover:border-primary/50'}`}>
                         <input {...getInputProps()} />
                         <UploadCloud className="mx-auto h-12 w-12 text-gray-400" />
-                        <p className="mt-2 text-sm text-gray-600">Drag & drop a file here, or click to select</p>
+                        <p className="mt-2 text-sm text-gray-600">Drag & drop a JSON file here, or click to select</p>
                     </div>
                      {files.length > 0 && (
                         <div className="flex items-center justify-between p-3 bg-gray-100 rounded-lg">
                             <div className="flex items-center space-x-3">
-                                <FileSpreadsheet className="h-6 w-6 text-success" />
+                                <FileJson className="h-6 w-6 text-success" />
                                 <span className="font-medium text-sm">{files[0].name}</span>
                             </div>
                             <Button variant="ghost" size="icon" onClick={removeFile}><XCircle className="h-5 w-5 text-gray-500" /></Button>
@@ -242,7 +262,7 @@ const OrgImportTab = () => {
             </Card>
              <Card>
                 <CardHeader>
-                    <CardTitle>Example CSV Structure</CardTitle>
+                    <CardTitle>Example Organization JSON Structure</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <pre className="bg-gray-100 p-4 rounded-lg text-xs overflow-auto"><code>{exampleOrgData}</code></pre>
