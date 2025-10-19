@@ -11,6 +11,7 @@ import {
   Briefcase,
   ClipboardList,
   Building2,
+  FileUp,
 } from 'lucide-react';
 
 export const appConfig = {
@@ -50,6 +51,12 @@ export const navItems = [
     label: 'Reports',
     description: 'รายงานผล',
     icon: FileText,
+  },
+  {
+    href: '/kpi-import',
+    label: 'Import KPIs',
+    description: 'นำเข้าข้อมูล KPI',
+    icon: FileUp,
   },
   {
     href: '/settings',
