@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useAppLayout } from '../layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { UploadCloud, FileJson, FileSpreadsheet, XCircle, Send } from 'lucide-react';
+import { UploadCloud, FileJson, XCircle, Send } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
@@ -77,7 +77,10 @@ const KpiImportTab = () => {
                     clearInterval(interval);
                     setUploading(false);
                     setUploadComplete(true);
-                    toast({ title: 'Upload Successful', description: `${files[0].name} has been imported.` });
+                    if (fileContent) {
+                        setKpiData(fileContent); // Set data into context
+                        toast({ title: 'Upload Successful', description: `${files[0].name} has been imported.` });
+                    }
                     return 100;
                 }
                 return prev + 10;
@@ -185,7 +188,8 @@ const OrgImportTab = () => {
                             }))
                         };
                         setFileContent(transformedData);
-                        toast({ title: 'File Parsed', description: `${file.name} is ready.` });
+                        setOrgData(transformedData); // Set data into context
+                        toast({ title: 'File Processed', description: `${file.name} is ready to be used.` });
                     }
                 } catch (error) {
                     toast({ variant: 'destructive', title: 'Invalid JSON', description: 'Could not parse the JSON file.' });
@@ -195,7 +199,7 @@ const OrgImportTab = () => {
         } else {
             toast({ variant: 'destructive', title: 'Invalid File Type', description: 'Please upload a JSON file.' });
         }
-    }, [toast]);
+    }, [toast, setOrgData]);
     
     const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, multiple: false, accept: { 'application/json': ['.json'] } });
 
@@ -275,6 +279,7 @@ const OrgImportTab = () => {
 
 export default function KpiImportPage() {
   const { setPageTitle } = useAppLayout();
+  const [currentTab, setCurrentTab] = useState("kpi");
 
   useEffect(() => {
     setPageTitle('Import Data');
@@ -286,7 +291,7 @@ export default function KpiImportPage() {
         <h3 className="text-xl font-semibold text-gray-800">Import Data</h3>
         <p className="text-gray-600 mt-1">นำเข้าข้อมูล KPI, โครงสร้างองค์กร และข้อมูลพนักงาน</p>
       </div>
-      <Tabs defaultValue="kpi" className="w-full">
+      <Tabs defaultValue="kpi" className="w-full" onValueChange={setCurrentTab}>
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="kpi">KPI Data</TabsTrigger>
           <TabsTrigger value="org">Organization Data</TabsTrigger>
