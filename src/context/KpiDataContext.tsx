@@ -35,6 +35,8 @@ interface OrgData {
 
 interface AppSettings {
   orgName: string;
+  period: string;
+  currency: string;
 }
 
 
@@ -45,7 +47,7 @@ interface KpiDataContextType {
   orgData: OrgData | null;
   setOrgData: (data: OrgData) => void;
   settings: AppSettings;
-  setSettings: (settings: AppSettings) => void;
+  setSettings: (settings: Partial<AppSettings>) => void;
 }
 
 // Create the context
@@ -55,7 +57,15 @@ const KpiDataContext = createContext<KpiDataContextType | undefined>(undefined);
 export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   const [kpiData, setKpiData] = useState<KpiData | null>(null);
   const [orgData, setOrgData] = useState<OrgData | null>(null);
-  const [settings, setSettings] = useState<AppSettings>({ orgName: 'บริษัท ABC จำกัด' });
+  const [settings, setSettingsState] = useState<AppSettings>({
+    orgName: 'บริษัท ABC จำกัด',
+    period: 'Quarterly',
+    currency: 'thb',
+  });
+
+  const setSettings = (newSettings: Partial<AppSettings>) => {
+    setSettingsState(prev => ({ ...prev, ...newSettings }));
+  };
 
   return (
     <KpiDataContext.Provider value={{ kpiData, setKpiData, orgData, setOrgData, settings, setSettings }}>

@@ -38,9 +38,9 @@ const AppSidebar = () => {
 
   return (
     <nav className="w-72 bg-card border-r border-border flex-col hidden lg:flex">
-      <div className="p-6 border-b border-border bg-gradient-to-r from-secondary to-primary text-primary-foreground">
+      <div className="p-6 border-b border-border bg-gradient-to-r from-blue-900 via-slate-800 to-slate-900 text-primary-foreground">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+          <div className="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center">
             <ShieldCheck className="w-6 h-6" />
           </div>
           <div>
@@ -84,7 +84,6 @@ const AppSidebar = () => {
 
 const AppHeader = () => {
   const { pageTitle } = useAppLayout();
-  const currentNavItem = navItems.find(item => item.label === pageTitle);
   const { settings } = useKpiData();
 
   return (
@@ -100,9 +99,9 @@ const AppHeader = () => {
             </SheetTrigger>
             <SheetContent side="left" className="p-0 w-72">
               <nav className="flex flex-col h-full bg-card">
-                <div className="p-6 border-b border-border bg-gradient-to-r from-secondary to-primary text-white">
+                <div className="p-6 border-b border-border bg-gradient-to-r from-blue-900 via-slate-800 to-slate-900 text-white">
                   <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                    <div className="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center">
                       <ShieldCheck className="w-6 h-6" />
                     </div>
                     <div>
@@ -136,7 +135,7 @@ const AppHeader = () => {
 
           <div>
             <h2 className="text-xl sm:text-2xl font-bold text-foreground">{pageTitle}</h2>
-            <p className="text-sm text-muted-foreground mt-1">{headerData.currentPeriod}</p>
+            <p className="text-sm text-muted-foreground mt-1">งวดปัจจุบัน: {settings.period}</p>
           </div>
         </div>
 

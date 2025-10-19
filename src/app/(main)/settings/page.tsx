@@ -9,11 +9,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon } from 'lucide-react';
-import { Calendar } from '@/components/ui/calendar';
-import { format } from 'date-fns';
-import { cn } from '@/lib/utils';
 import { useKpiData } from '@/context/KpiDataContext';
 
 
@@ -24,7 +19,7 @@ export default function SettingsPage() {
 
   // State for General Settings
   const [orgName, setOrgName] = useState('');
-  const [currentPeriod, setCurrentPeriod] = useState<Date | undefined>(new Date());
+  const [currentPeriod, setCurrentPeriod] = useState("Monthly");
   const [defaultCurrency, setDefaultCurrency] = useState("thb");
 
   // State for Notification Settings
@@ -39,11 +34,13 @@ export default function SettingsPage() {
   useEffect(() => {
     if (settings) {
       setOrgName(settings.orgName);
+      setCurrentPeriod(settings.period);
+      setDefaultCurrency(settings.currency);
     }
   }, [settings]);
 
   const handleGeneralSave = () => {
-    setSettings({ orgName });
+    setSettings({ orgName, period: currentPeriod, currency: defaultCurrency });
     toast({
       title: "Settings Saved",
       description: "Your general settings have been updated.",
@@ -73,28 +70,16 @@ export default function SettingsPage() {
                 </div>
                 <div className="space-y-2">
                     <Label htmlFor="current-period">Current Period</Label>
-                    <Popover>
-                        <PopoverTrigger asChild>
-                            <Button
-                                variant={"outline"}
-                                className={cn(
-                                    "w-full justify-start text-left font-normal",
-                                    !currentPeriod && "text-muted-foreground"
-                                )}
-                            >
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {currentPeriod ? format(currentPeriod, "PPP") : <span>Pick a date</span>}
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                            <Calendar
-                                mode="single"
-                                selected={currentPeriod}
-                                onSelect={setCurrentPeriod}
-                                initialFocus
-                            />
-                        </PopoverContent>
-                    </Popover>
+                    <Select value={currentPeriod} onValueChange={setCurrentPeriod}>
+                        <SelectTrigger id="current-period">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="Monthly">รายเดือน (Monthly)</SelectItem>
+                            <SelectItem value="Quarterly">รายไตรมาส (Quarterly)</SelectItem>
+                            <SelectItem value="Yearly">รายปี (Yearly)</SelectItem>
+                        </SelectContent>
+                    </Select>
                 </div>
                  <div className="space-y-2">
                     <Label htmlFor="default-currency">Default Currency</Label>
