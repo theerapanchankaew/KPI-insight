@@ -63,7 +63,7 @@ const KpiImportTab = () => {
     });
 
     const handleUpload = () => {
-        if (files.length === 0) {
+        if (files.length === 0 || !fileContent) {
             toast({ variant: 'destructive', title: 'No File Selected', description: 'Please select a file to import.' });
             return;
         }
@@ -77,10 +77,8 @@ const KpiImportTab = () => {
                     clearInterval(interval);
                     setUploading(false);
                     setUploadComplete(true);
-                    if (fileContent) {
-                        setKpiData(fileContent); // Set data into context
-                        toast({ title: 'Upload Successful', description: `${files[0].name} has been imported.` });
-                    }
+                    setKpiData(fileContent); // Set data into context
+                    toast({ title: 'Upload Successful', description: `${files[0].name} has been imported.` });
                     return 100;
                 }
                 return prev + 10;
@@ -90,8 +88,8 @@ const KpiImportTab = () => {
 
     const handleSendToCascade = () => {
         if (fileContent) {
-            setKpiData(fileContent);
-            toast({ title: 'Data Sent', description: 'KPI data has been sent to the Cascade page.' });
+            // Data is already set on upload, just navigate
+            toast({ title: 'Redirecting', description: 'Navigating to the Cascade page.' });
             router.push('/cascade');
         } else {
             toast({ variant: 'destructive', title: 'No Data to Send', description: 'File content is not available.' });
@@ -177,7 +175,6 @@ const OrgImportTab = () => {
                     const text = e.target?.result;
                     if (typeof text === 'string') {
                         const parsedJson = JSON.parse(text);
-                        // Transform the data to match the Employee interface
                         const transformedData = {
                             employees: parsedJson.map((item: any) => ({
                                 id: item['รหัส'].toString(),
@@ -188,7 +185,7 @@ const OrgImportTab = () => {
                             }))
                         };
                         setFileContent(transformedData);
-                        setOrgData(transformedData); // Set data into context
+                        setOrgData(transformedData);
                         toast({ title: 'File Processed', description: `${file.name} is ready to be used.` });
                     }
                 } catch (error) {
@@ -205,8 +202,8 @@ const OrgImportTab = () => {
 
     const handleProcessAndSend = () => {
         if (fileContent) {
-            setOrgData(fileContent);
-            toast({ title: 'Data Sent', description: 'Organization data has been sent to the Cascade page.' });
+            // Data is already set on drop, just navigate
+            toast({ title: 'Redirecting', description: 'Navigating to the Cascade page.' });
             router.push('/cascade');
         } else {
              toast({ variant: 'destructive', title: 'No Data to Send', description: 'No file has been processed.' });
