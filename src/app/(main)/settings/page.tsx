@@ -16,10 +16,45 @@ import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { navItems } from '@/lib/data/layout-data';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
-interface UserRole {
-  [key: string]: 'Admin' | 'Manager' | 'Employee';
+type Role = 'Admin' | 'Manager' | 'Employee';
+
+interface UserPermissions {
+  role: Role;
+  menuAccess: { [key: string]: boolean };
 }
+
+interface AllUserPermissions {
+  [key: string]: UserPermissions;
+}
+
+const defaultPermissions: { [key in Role]: { [key: string]: boolean } } = {
+  Admin: navItems.reduce((acc, item) => ({ ...acc, [item.href]: true }), {}),
+  Manager: {
+    '/dashboard': true,
+    '/cascade': true,
+    '/portfolio': true,
+    '/submit': false,
+    '/approvals': true,
+    '/reports': true,
+    '/kpi-import': false,
+    '/settings': false,
+  },
+  Employee: {
+    '/dashboard': true,
+    '/cascade': false,
+    '/portfolio': true,
+    '/submit': true,
+    '/approvals': false,
+    '/reports': false,
+    '/kpi-import': false,
+    '/settings': false,
+  },
+};
+
 
 export default function SettingsPage() {
   const { setPageTitle } = useAppLayout();
@@ -28,8 +63,8 @@ export default function SettingsPage() {
 
   // State for General Settings
   const [orgName, setOrgName] = useState('');
-  const [currentPeriod, setCurrentPeriod] = useState("Quarterly");
-  const [periodDate, setPeriodDate] = useState<Date | undefined>(new Date());
+  const [currentPeriod, setCurrentPeriod] = useState("รายไตรมาส (Quarterly)");
+  const [periodDate, setPeriodDate] = useState<Date | undefined>();
   const [defaultCurrency, setDefaultCurrency] = useState("thb");
 
   // State for Notification Settings
@@ -37,8 +72,8 @@ export default function SettingsPage() {
   const [approvalNotifications, setApprovalNotifications] = useState(true);
   const [weeklyReports, setWeeklyReports] = useState(false);
 
-  // State for User Roles
-  const [userRoles, setUserRoles] = useState<UserRole>({});
+  // State for User Roles and Permissions
+  const [userPermissions, setUserPermissions] = useState<AllUserPermissions>({});
 
   useEffect(() => {
     setPageTitle('Settings');
@@ -57,12 +92,15 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (orgData?.employees) {
-      const initialRoles: UserRole = {};
+      const initialPermissions: AllUserPermissions = {};
       orgData.employees.forEach(employee => {
-        // Default role logic (can be improved)
-        initialRoles[employee.id] = employee.position.toLowerCase().includes('manager') ? 'Manager' : 'Employee';
+        const role: Role = employee.position.toLowerCase().includes('manager') ? 'Manager' : 'Employee';
+        initialPermissions[employee.id] = {
+          role,
+          menuAccess: defaultPermissions[role],
+        };
       });
-      setUserRoles(initialRoles);
+      setUserPermissions(initialPermissions);
     }
   }, [orgData]);
 
@@ -89,16 +127,36 @@ export default function SettingsPage() {
     });
   };
   
-  const handleRoleChange = (userId: string, role: 'Admin' | 'Manager' | 'Employee') => {
-    setUserRoles(prev => ({ ...prev, [userId]: role }));
+  const handleRoleChange = (userId: string, role: Role) => {
+    setUserPermissions(prev => ({
+      ...prev,
+      [userId]: {
+        ...prev[userId],
+        role,
+        menuAccess: defaultPermissions[role], // Apply default permissions for the new role
+      },
+    }));
+  };
+
+  const handlePermissionChange = (userId: string, menuHref: string, checked: boolean) => {
+    setUserPermissions(prev => ({
+      ...prev,
+      [userId]: {
+        ...prev[userId],
+        menuAccess: {
+          ...prev[userId].menuAccess,
+          [menuHref]: checked,
+        },
+      },
+    }));
   };
 
   const handleSaveRoles = () => {
-    // In a real app, this would be a call to a backend API to save roles.
-    console.log("Saving roles:", userRoles);
+    // In a real app, this would be a call to a backend API to save permissions.
+    console.log("Saving user permissions:", userPermissions);
     toast({
-        title: "User Roles Saved",
-        description: "The user roles have been successfully updated.",
+        title: "User Permissions Saved",
+        description: "User roles and menu access have been successfully updated.",
     });
   };
 
@@ -106,7 +164,7 @@ export default function SettingsPage() {
     <div className="fade-in space-y-6">
       <h3 className="text-xl font-semibold text-gray-800">Settings</h3>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-3 space-y-6">
           <Card>
               <CardHeader>
                   <CardTitle>General Settings</CardTitle>
@@ -208,39 +266,67 @@ export default function SettingsPage() {
               </CardContent>
           </Card>
         </div>
-        <Card className="lg:col-span-1">
+        <Card className="lg:col-span-3">
           <CardHeader>
-            <CardTitle>User Management</CardTitle>
-            <CardDescription>Manage roles and permissions for users.</CardDescription>
+            <CardTitle>User &amp; Permission Management</CardTitle>
+            <CardDescription>Manage roles and grant menu access for each user.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
-              {(orgData?.employees || []).map(employee => (
-                <div key={employee.id} className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <Avatar>
-                      <AvatarFallback>{employee.name.charAt(0)}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="font-medium text-sm">{employee.name}</p>
-                      <p className="text-xs text-muted-foreground">{employee.department}</p>
-                    </div>
-                  </div>
-                  <Select value={userRoles[employee.id] || 'Employee'} onValueChange={(role: 'Admin' | 'Manager' | 'Employee') => handleRoleChange(employee.id, role)}>
-                    <SelectTrigger className="w-[120px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Admin">Admin</SelectItem>
-                      <SelectItem value="Manager">Manager</SelectItem>
-                      <SelectItem value="Employee">Employee</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              ))}
+            <div className="border rounded-lg overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead className="w-[250px]">User</TableHead>
+                    <TableHead className="w-[150px]">Role</TableHead>
+                    {navItems.map(item => (
+                      <TableHead key={item.href} className="text-center">{item.label}</TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(orgData?.employees || []).map(employee => (
+                    <TableRow key={employee.id}>
+                      <TableCell>
+                        <div className="flex items-center space-x-3">
+                          <Avatar className="w-8 h-8">
+                            <AvatarFallback>{employee.name.charAt(0)}</AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-medium text-sm">{employee.name}</p>
+                            <p className="text-xs text-muted-foreground">{employee.department}</p>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={userPermissions[employee.id]?.role || 'Employee'}
+                          onValueChange={(role: Role) => handleRoleChange(employee.id, role)}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Admin">Admin</SelectItem>
+                            <SelectItem value="Manager">Manager</SelectItem>
+                            <SelectItem value="Employee">Employee</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      {navItems.map(item => (
+                        <TableCell key={item.href} className="text-center">
+                          <Checkbox
+                            checked={userPermissions[employee.id]?.menuAccess[item.href] || false}
+                            onCheckedChange={(checked) => handlePermissionChange(employee.id, item.href, !!checked)}
+                          />
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
-            <div className="pt-4">
-              <Button onClick={handleSaveRoles}>Save Roles</Button>
+            <div className="pt-4 flex justify-end">
+              <Button onClick={handleSaveRoles}>Save Permissions</Button>
             </div>
           </CardContent>
         </Card>
