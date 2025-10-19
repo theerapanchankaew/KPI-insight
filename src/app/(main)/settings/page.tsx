@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useEffect, useState } from 'react';
@@ -23,7 +24,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
 
-type Role = 'Admin' | 'Manager' | 'Employee';
+type Role = 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee';
 
 interface UserPermissions {
   role: Role;
@@ -36,6 +37,26 @@ interface AllUserPermissions {
 
 const defaultPermissions: { [key in Role]: { [key: string]: boolean } } = {
   Admin: navItems.reduce((acc, item) => ({ ...acc, [item.href]: true }), {}),
+  VP: {
+    '/dashboard': true,
+    '/cascade': true,
+    '/portfolio': true,
+    '/submit': false,
+    '/approvals': true,
+    '/reports': true,
+    '/kpi-import': false,
+    '/settings': false,
+  },
+  AVP: {
+    '/dashboard': true,
+    '/cascade': true,
+    '/portfolio': true,
+    '/submit': false,
+    '/approvals': true,
+    '/reports': true,
+    '/kpi-import': false,
+    '/settings': false,
+  },
   Manager: {
     '/dashboard': true,
     '/cascade': true,
@@ -149,7 +170,16 @@ export default function SettingsPage() {
       const initialPermissions: AllUserPermissions = {};
       orgData.employees.forEach(employee => {
         // A simple heuristic to assign a default role. This can be improved.
-        const role: Role = employee.position.toLowerCase().includes('manager') || employee.position.toLowerCase().includes('ผู้จัดการ') ? 'Manager' : 'Employee';
+        const positionLower = employee.position.toLowerCase();
+        let role: Role = 'Employee';
+        if (positionLower.includes('vp') || positionLower.includes('vice president')) {
+            role = 'VP';
+        } else if (positionLower.includes('avp')) {
+            role = 'AVP';
+        } else if (positionLower.includes('manager') || positionLower.includes('ผู้จัดการ')) {
+            role = 'Manager';
+        }
+        
         // Check if permissions for this user already exist to avoid overwriting them
         if (!userPermissions[employee.id]) {
             initialPermissions[employee.id] = {
@@ -404,6 +434,8 @@ export default function SettingsPage() {
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="Admin">Admin</SelectItem>
+                            <SelectItem value="VP">VP</SelectItem>
+                            <SelectItem value="AVP">AVP</SelectItem>
                             <SelectItem value="Manager">Manager</SelectItem>
                             <SelectItem value="Employee">Employee</SelectItem>
                           </SelectContent>
@@ -453,3 +485,5 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+    
