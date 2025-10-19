@@ -7,16 +7,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
-import { kpiPortfolioData } from '@/lib/kpi-data';
+import { kpiPortfolioData } from '@/lib/data/portfolio-data';
 import { useToast } from '@/hooks/use-toast';
-import { CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import { CheckCircle, Clock, AlertCircle, Check, X, ShieldCheck } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 
 const statusConfig = {
-    Committed: { icon: CheckCircle, color: 'text-success', badge: 'success' },
+    Committed: { icon: ShieldCheck, color: 'text-primary', badge: 'default' },
     Pending: { icon: Clock, color: 'text-accent', badge: 'warning' },
     Rejected: { icon: AlertCircle, color: 'text-destructive', badge: 'destructive' },
+    Approved: { icon: CheckCircle, color: 'text-success', badge: 'success' },
 };
 
 const KpiCommitDialog = ({ isOpen, onClose, kpi, onConfirm, onReject }: { isOpen: boolean, onClose: () => void, kpi: any, onConfirm: (id: string) => void, onReject: (id: string, reason: string) => void }) => {
@@ -24,9 +25,9 @@ const KpiCommitDialog = ({ isOpen, onClose, kpi, onConfirm, onReject }: { isOpen
 
     useEffect(() => {
         if (isOpen) {
-            setRejectionReason('');
+            setRejectionReason(kpi?.rejectionReason || '');
         }
-    }, [isOpen]);
+    }, [isOpen, kpi]);
 
     if (!kpi) return null;
 
@@ -34,36 +35,40 @@ const KpiCommitDialog = ({ isOpen, onClose, kpi, onConfirm, onReject }: { isOpen
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Commit to KPI: {kpi.kpi}</DialogTitle>
+                    <DialogTitle>Review KPI: {kpi.kpi}</DialogTitle>
                     <DialogDescription>
-                        Please review the details below and confirm your commitment to this KPI. This will be sent to your manager for final agreement.
+                        Please review and confirm your commitment, or provide a reason for rejection.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="py-4 space-y-4">
-                    <div className="p-4 bg-gray-50/50 rounded-lg space-y-2">
+                    <div className="p-4 bg-gray-50/50 rounded-lg space-y-2 border">
                         <p><strong>Type:</strong> <Badge variant={kpi.type === 'cascaded' ? 'secondary' : 'default'}>{kpi.type}</Badge></p>
                         <p><strong>Measure:</strong> {kpi.kpi}</p>
                         <p><strong>Weight:</strong> {kpi.weight}%</p>
                         <p><strong>Target:</strong> {kpi.target}</p>
                     </div>
-                     <p className="text-sm text-gray-600">By clicking "Confirm Commitment," you agree that you understand this KPI and will work towards achieving the set target for the current performance period.</p>
                     
                     <div className="space-y-2">
-                        <Label htmlFor="rejection-reason">Reason for Rejection (if applicable)</Label>
+                        <Label htmlFor="rejection-reason">Reason for Rejection</Label>
                         <Textarea
                             id="rejection-reason"
-                            placeholder="Provide a reason if you are rejecting this KPI..."
+                            placeholder="If rejecting, please provide a reason for your manager..."
                             value={rejectionReason}
                             onChange={(e) => setRejectionReason(e.target.value)}
                         />
                     </div>
+                     <p className="text-xs text-gray-600">By clicking "Confirm Commitment," you agree to work towards the set target. This will be sent to your manager for final agreement.</p>
                 </div>
                 <DialogFooter>
-                    <DialogClose asChild>
-                        <Button variant="outline">Cancel</Button>
-                    </DialogClose>
-                    <Button onClick={() => onReject(kpi.id, rejectionReason)} variant="destructive" disabled={rejectionReason.trim() === ''}>Reject</Button>
-                    <Button onClick={() => onConfirm(kpi.id)}>Confirm Commitment</Button>
+                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                    <Button onClick={() => onReject(kpi.id, rejectionReason)} variant="destructive" disabled={rejectionReason.trim() === ''}>
+                        <X className="w-4 h-4 mr-2" />
+                        Reject
+                    </Button>
+                    <Button onClick={() => onConfirm(kpi.id)} className="bg-primary hover:bg-primary/90">
+                        <Check className="w-4 h-4 mr-2" />
+                        Confirm Commitment
+                    </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -83,7 +88,7 @@ export default function PortfolioPage() {
         setPageTitle('My Portfolio');
     }, [setPageTitle]);
     
-    const handleCommitClick = (kpi: any) => {
+    const handleReviewClick = (kpi: any) => {
         setSelectedKpi(kpi);
         setIsCommitModalOpen(true);
     };
@@ -91,7 +96,7 @@ export default function PortfolioPage() {
     const handleConfirmCommitment = (kpiId: string) => {
         setPortfolioData(prevData =>
             prevData.map(kpi =>
-                kpi.id === kpiId ? { ...kpi, status: 'Committed' } : kpi
+                kpi.id === kpiId ? { ...kpi, status: 'Committed', rejectionReason: '' } : kpi
             )
         );
         toast({
@@ -109,7 +114,7 @@ export default function PortfolioPage() {
         );
         toast({
             title: "KPI Rejected",
-            description: "This KPI has been flagged for renegotiation with your manager.",
+            description: "This KPI has been flagged for renegotiation.",
             variant: "destructive"
         });
         setIsCommitModalOpen(false);
@@ -136,7 +141,7 @@ export default function PortfolioPage() {
                                 <TableHead>Weight</TableHead>
                                 <TableHead>Target</TableHead>
                                 <TableHead>Status</TableHead>
-                                <TableHead>Actions</TableHead>
+                                <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -157,15 +162,15 @@ export default function PortfolioPage() {
                                                 <span>{kpi.status}</span>
                                             </div>
                                         </TableCell>
-                                        <TableCell>
-                                            {kpi.status === 'Pending' ? (
-                                                <Button size="sm" onClick={() => handleCommitClick(kpi)}>
+                                        <TableCell className="text-right">
+                                            {kpi.status === 'Pending' || kpi.status === 'Rejected' ? (
+                                                <Button size="sm" onClick={() => handleReviewClick(kpi)}>
                                                     Review
                                                 </Button>
-                                            ) : kpi.status === 'Rejected' ? (
-                                                 <Button size="sm" variant="outline" onClick={() => handleCommitClick(kpi)}>Review Again</Button>
                                             ) : (
-                                                 <Button size="sm" variant="outline" disabled>Committed</Button>
+                                                 <Button size="sm" variant="outline" disabled>
+                                                    {kpi.status === 'Committed' ? 'Pending Agreement' : 'Agreed'}
+                                                 </Button>
                                             )
                                           }
                                         </TableCell>

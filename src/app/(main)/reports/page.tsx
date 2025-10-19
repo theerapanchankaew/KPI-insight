@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { kpiReportData } from '@/lib/kpi-data';
+import { kpiReportData } from '@/lib/data/report-data';
 import { Download, FileWarning } from 'lucide-react';
 import ExecutiveSummary from './components/executive-summary';
 

@@ -9,12 +9,12 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import {
   Bell,
-  CheckCircle2,
   Menu,
   Search,
+  ShieldCheck
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { appConfig, navItems, headerData } from '@/lib/kpi-data';
+import { appConfig, navItems, headerData } from '@/lib/data/layout-data';
 import { KpiDataProvider, useKpiData } from '@/context/KpiDataContext';
 
 interface AppLayoutContextType {
@@ -36,11 +36,11 @@ const AppSidebar = () => {
   const pathname = usePathname();
 
   return (
-    <nav className="w-72 bg-white shadow-xl border-r border-gray-200 flex-col hidden lg:flex">
-      <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-primary to-secondary text-white">
+    <nav className="w-72 bg-card border-r border-border flex-col hidden lg:flex">
+      <div className="p-6 border-b border-border bg-gradient-to-r from-secondary to-primary text-primary-foreground">
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-            <CheckCircle2 className="w-6 h-6" />
+            <ShieldCheck className="w-6 h-6" />
           </div>
           <div>
             <h1 className="text-lg font-bold">{appConfig.title}</h1>
@@ -57,19 +57,19 @@ const AppSidebar = () => {
                   variant={pathname === item.href ? 'secondary' : 'ghost'}
                   className={cn(
                     "w-full flex items-center justify-start px-4 py-3 h-auto transition-all duration-200",
-                    pathname === item.href ? 'bg-primary/10 text-primary' : 'hover:bg-gray-100',
+                    pathname === item.href ? 'bg-primary/10 text-primary font-semibold' : 'hover:bg-muted',
                     "group"
                   )}
                 >
                   <div className={cn(
-                    "w-10 h-10 rounded-lg flex items-center justify-center mr-3",
-                    pathname === item.href ? 'bg-primary/10' : 'bg-gray-100 group-hover:bg-gray-200'
+                    "w-10 h-10 rounded-lg flex items-center justify-center mr-3 transition-colors",
+                    pathname === item.href ? 'bg-primary/10' : 'bg-muted group-hover:bg-muted/80'
                   )}>
-                    <item.icon className={cn("w-5 h-5", pathname === item.href ? 'text-primary' : 'text-gray-500 group-hover:text-primary')} />
+                    <item.icon className={cn("w-5 h-5 transition-colors", pathname === item.href ? 'text-primary' : 'text-muted-foreground group-hover:text-primary')} />
                   </div>
                   <div className="text-left">
-                    <span className="font-semibold text-gray-800">{item.label}</span>
-                    <p className="text-xs text-gray-500">{item.description}</p>
+                    <span className="font-semibold text-card-foreground">{item.label}</span>
+                    <p className="text-xs text-muted-foreground">{item.description}</p>
                   </div>
                 </Button>
               </Link>
@@ -87,7 +87,7 @@ const AppHeader = () => {
   const currentPeriod = currentNavItem ? headerData.currentPeriod : '';
 
   return (
-    <header className="bg-white shadow-sm border-b border-gray-200 px-4 sm:px-6 py-4 sticky top-0 z-10">
+    <header className="bg-card shadow-sm border-b border-border px-4 sm:px-6 py-4 sticky top-0 z-10">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <Sheet>
@@ -98,11 +98,11 @@ const AppHeader = () => {
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="p-0 w-72">
-              <nav className="flex flex-col h-full bg-white">
-                <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-primary to-secondary text-white">
+              <nav className="flex flex-col h-full bg-card">
+                <div className="p-6 border-b border-border bg-gradient-to-r from-secondary to-primary text-white">
                   <div className="flex items-center space-x-3">
                     <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-                      <CheckCircle2 className="w-6 h-6" />
+                      <ShieldCheck className="w-6 h-6" />
                     </div>
                     <div>
                       <h1 className="text-lg font-bold">{appConfig.title}</h1>
@@ -115,13 +115,13 @@ const AppHeader = () => {
                     {navItems.map((item) => (
                       <li key={item.label}>
                          <Link href={item.href} passHref>
-                          <Button variant="ghost" className="w-full flex items-center justify-start px-4 py-3 h-auto hover:bg-gray-100 transition-all duration-200 group">
-                             <div className="w-10 h-10 bg-gray-100 group-hover:bg-gray-200 rounded-lg flex items-center justify-center mr-3">
-                               <item.icon className="w-5 h-5 text-gray-500 group-hover:text-primary" />
+                          <Button variant="ghost" className="w-full flex items-center justify-start px-4 py-3 h-auto hover:bg-muted transition-all duration-200 group">
+                             <div className="w-10 h-10 bg-muted group-hover:bg-muted/80 rounded-lg flex items-center justify-center mr-3">
+                               <item.icon className="w-5 h-5 text-muted-foreground group-hover:text-primary" />
                              </div>
                              <div className="text-left">
-                               <span className="font-semibold text-gray-800">{item.label}</span>
-                               <p className="text-xs text-gray-500">{item.description}</p>
+                               <span className="font-semibold text-card-foreground">{item.label}</span>
+                               <p className="text-xs text-muted-foreground">{item.description}</p>
                              </div>
                            </Button>
                          </Link>
@@ -134,14 +134,14 @@ const AppHeader = () => {
           </Sheet>
 
           <div>
-            <h2 className="text-xl sm:text-2xl font-bold text-gray-800">{pageTitle}</h2>
-            <p className="text-sm text-gray-600 mt-1">{headerData.currentPeriod}</p>
+            <h2 className="text-xl sm:text-2xl font-bold text-foreground">{pageTitle}</h2>
+            <p className="text-sm text-muted-foreground mt-1">{headerData.currentPeriod}</p>
           </div>
         </div>
 
         <div className="flex items-center space-x-2 sm:space-x-4">
           <div className="relative hidden md:block">
-            <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-5 h-5 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
             <Input type="text" placeholder="ค้นหา KPI..." className="w-40 sm:w-64 pl-10 pr-4 py-2" />
           </div>
           <div className="relative">
@@ -152,8 +152,8 @@ const AppHeader = () => {
           </div>
           <div className="flex items-center space-x-3">
             <div className="hidden sm:block text-right">
-              <p className="text-sm font-medium text-gray-800">{appConfig.ceoName}</p>
-              <p className="text-xs text-gray-500">{appConfig.ceoTitle}</p>
+              <p className="text-sm font-medium text-foreground">{appConfig.ceoName}</p>
+              <p className="text-xs text-muted-foreground">{appConfig.ceoTitle}</p>
             </div>
             <Avatar>
               <AvatarFallback className="bg-gradient-to-r from-primary to-secondary text-white font-semibold">S</AvatarFallback>
@@ -161,7 +161,7 @@ const AppHeader = () => {
           </div>
           <div className="hidden lg:flex items-center space-x-2">
             <div className="w-3 h-3 bg-success rounded-full pulse-dot"></div>
-            <span className="text-xs text-gray-500">Live</span>
+            <span className="text-xs text-muted-foreground">Live</span>
           </div>
         </div>
       </div>
@@ -176,7 +176,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <AppLayoutContext.Provider value={{ pageTitle, setPageTitle }}>
       <KpiDataProvider>
-        <div className="h-full flex bg-gray-50">
+        <div className="h-full flex bg-background">
           <AppSidebar />
           <main className="flex-1 overflow-auto">
             <AppHeader />
