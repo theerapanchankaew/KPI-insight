@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useAppLayout } from '../layout';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { kpiCascadeData } from '@/lib/kpi-data';
 import { Progress } from '@/components/ui/progress';
