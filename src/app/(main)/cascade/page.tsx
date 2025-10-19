@@ -34,9 +34,8 @@ interface CascadedKpi extends CorporateKpi {
 
 const CorporateLevel = ({ onCascadeClick }: { onCascadeClick: (kpi: CorporateKpi) => void }) => {
     const { kpiData } = useKpiData();
-    const corporateKpis = kpiData?.kpi_catalog || [];
     
-    if (corporateKpis.length === 0) {
+    if (!kpiData || !kpiData.kpi_catalog || kpiData.kpi_catalog.length === 0) {
         return (
             <Card>
                 <CardHeader>
@@ -49,6 +48,8 @@ const CorporateLevel = ({ onCascadeClick }: { onCascadeClick: (kpi: CorporateKpi
             </Card>
         );
     }
+
+    const corporateKpis = kpiData.kpi_catalog;
     
     const groupedKpis: { [key: string]: CorporateKpi[] } = corporateKpis.reduce((acc, kpi) => {
         const perspective = kpi.perspective || 'Uncategorized';
@@ -91,7 +92,7 @@ const CorporateLevel = ({ onCascadeClick }: { onCascadeClick: (kpi: CorporateKpi
 const DepartmentLevel = ({ cascadedKpis }: { cascadedKpis: CascadedKpi[] }) => {
     const { orgData } = useKpiData();
 
-    if (!orgData || orgData.employees.length === 0) {
+    if (!orgData || !orgData.employees || orgData.employees.length === 0) {
          return (
             <Card>
                 <CardHeader>
@@ -148,7 +149,7 @@ const DepartmentLevel = ({ cascadedKpis }: { cascadedKpis: CascadedKpi[] }) => {
 const IndividualLevel = () => {
     const { orgData } = useKpiData();
 
-    if (!orgData || orgData.employees.length === 0) {
+    if (!orgData || !orgData.employees || orgData.employees.length === 0) {
          return (
             <Card>
                 <CardHeader><CardTitle>Individual Performance</CardTitle></CardHeader>
@@ -286,7 +287,7 @@ export default function CascadePage() {
     setPageTitle('Cascade KPI');
   }, [setPageTitle]);
 
-  const departments = orgData ? [...new Set(orgData.employees.map(e => e.department))] : [];
+  const departments = orgData && orgData.employees ? [...new Set(orgData.employees.map(e => e.department))] : [];
 
   const handleCascadeClick = (kpi: CorporateKpi) => {
       setSelectedKpi(kpi);
