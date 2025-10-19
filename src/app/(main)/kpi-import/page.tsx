@@ -8,14 +8,19 @@ import { UploadCloud, FileJson, FileSpreadsheet, XCircle, Send } from 'lucide-re
 import { useDropzone } from 'react-dropzone';
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
+import { useKpiData } from '@/context/KpiDataContext';
+import { useRouter } from 'next/navigation';
 
 export default function KpiImportPage() {
   const { setPageTitle } = useAppLayout();
+  const { setKpiData } = useKpiData();
+  const router = useRouter();
   const { toast } = useToast();
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadComplete, setUploadComplete] = useState(false);
+  const [fileContent, setFileContent] = useState<any | null>(null);
 
   useEffect(() => {
     setPageTitle('Import KPIs');
@@ -26,6 +31,31 @@ export default function KpiImportPage() {
     if (file && (file.type === 'application/json' || file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || file.name.endsWith('.xlsx'))) {
       setFiles([file]);
       setUploadComplete(false);
+
+      if (file.type === 'application/json') {
+        const reader = new FileReader();
+        reader.onabort = () => console.log('file reading was aborted');
+        reader.onerror = () => console.log('file reading has failed');
+        reader.onload = () => {
+          try {
+            const binaryStr = reader.result;
+            if (typeof binaryStr === 'string') {
+              const parsedJson = JSON.parse(binaryStr);
+              setFileContent(parsedJson);
+            }
+          } catch (error) {
+            toast({
+              variant: 'destructive',
+              title: 'Invalid JSON',
+              description: 'Could not parse the JSON file.',
+            });
+          }
+        };
+        reader.readAsText(file);
+      } else {
+        // Placeholder for Excel file processing
+        setFileContent({ message: "Excel file selected, processing not yet implemented."});
+      }
     } else {
       toast({
         variant: 'destructive',
@@ -76,15 +106,26 @@ export default function KpiImportPage() {
   };
 
   const handleSendToCascade = () => {
-    toast({
-        title: 'Data Sent',
-        description: 'KPI data has been sent to the Cascade page.',
-    });
+    if (fileContent) {
+      setKpiData(fileContent);
+      toast({
+          title: 'Data Sent',
+          description: 'KPI data has been sent to the Cascade page.',
+      });
+      router.push('/cascade');
+    } else {
+      toast({
+        variant: 'destructive',
+        title: 'No Data to Send',
+        description: 'File content is not available.',
+      });
+    }
   }
 
   const removeFile = () => {
     setFiles([]);
     setUploadComplete(false);
+    setFileContent(null);
   };
 
   const exampleJson = `{

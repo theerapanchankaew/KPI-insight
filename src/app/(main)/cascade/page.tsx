@@ -1,103 +1,97 @@
 "use client";
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAppLayout } from '../layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { kpiCascadeData } from '@/lib/kpi-data';
+import { kpiCascadeData as staticKpiData } from '@/lib/kpi-data';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
-import { Network } from 'lucide-react';
+import { useKpiData } from '@/context/KpiDataContext';
 
-const statusClasses = {
-  Green: 'bg-success text-success-foreground',
-  Amber: 'bg-accent text-accent-foreground',
-  Red: 'bg-destructive text-destructive-foreground',
+const statusMapping: { [key: string]: 'success' | 'warning' | 'destructive' } = {
+  'Green': 'success',
+  'Amber': 'warning',
+  'Red': 'destructive',
 };
 
-const CorporateLevel = () => (
-  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-    <Card className="bg-gradient-to-r from-green-50 to-blue-50">
-      <CardContent className="p-6">
-        <h4 className="text-lg font-semibold text-gray-800 mb-4">Financial KPIs</h4>
-        <div className="space-y-4">
-          {kpiCascadeData.corporate.financial.map(kpi => (
-            <Card key={kpi.name}>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium text-gray-800">{kpi.name}</span>
-                  <Badge variant={kpi.status.toLowerCase() as any}>{kpi.status}</Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-2xl font-bold text-gray-800">{kpi.value}</span>
-                  <span className="text-sm text-gray-500">{kpi.target}</span>
-                </div>
-                <Progress value={kpi.progress} className="h-2 mt-2" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-     <Card className="bg-gradient-to-r from-blue-50 to-purple-50">
-      <CardContent className="p-6">
-        <h4 className="text-lg font-semibold text-gray-800 mb-4">Operational KPIs</h4>
-        <div className="space-y-4">
-          {kpiCascadeData.corporate.operational.map(kpi => (
-            <Card key={kpi.name}>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium text-gray-800">{kpi.name}</span>
-                  <Badge variant={kpi.status.toLowerCase() as any}>{kpi.status}</Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-2xl font-bold text-gray-800">{kpi.value}</span>
-                  <span className="text-sm text-gray-500">{kpi.target}</span>
-                </div>
-                <Progress value={kpi.progress} className="h-2 mt-2" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-    <Card className="lg:col-span-2 bg-gradient-to-r from-green-50 to-emerald-50">
-      <CardContent className="p-6">
-        <h4 className="text-lg font-semibold text-gray-800 mb-4">ESG KPIs</h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {kpiCascadeData.corporate.esg.map(kpi => (
-            <Card key={kpi.name}>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium text-gray-800">{kpi.name}</span>
-                  <Badge variant={kpi.status.toLowerCase() as any}>{kpi.status}</Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-2xl font-bold text-gray-800">{kpi.value}</span>
-                  <span className="text-sm text-gray-500">{kpi.target}</span>
-                </div>
-                <Progress value={kpi.progress} className="h-2 mt-2" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  </div>
-);
+const CorporateLevel = () => {
+    const { kpiData } = useKpiData();
 
-const DepartmentLevel = () => (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {kpiCascadeData.department.map(dept => (
-            <Card key={dept.name} className={cn("border-2", dept.borderColor)}>
-                <CardContent className="p-6">
-                    <div className="flex items-center justify-between mb-4">
-                        <h4 className="text-lg font-semibold text-gray-800">{dept.name}</h4>
-                        <span className={cn("px-3 py-1 rounded-full text-sm font-medium", dept.statusColor)}>{dept.performance}</span>
-                    </div>
-                    <div className="space-y-4">
+    // Use imported data if available, otherwise fall back to static data.
+    const corporateKpis = kpiData?.kpi_catalog || [];
+    
+    // Simple grouping by perspective. A more robust solution might be needed for complex cases.
+    const groupedKpis: { [key: string]: any[] } = corporateKpis.reduce((acc, kpi) => {
+        const perspective = kpi.perspective || 'Uncategorized';
+        if (!acc[perspective]) {
+            acc[perspective] = [];
+        }
+        acc[perspective].push(kpi);
+        return acc;
+    }, {} as { [key: string]: any[] });
+
+    if (corporateKpis.length === 0) {
+        return (
+            <Card>
+                <CardContent className="p-6 text-center text-gray-500">
+                    <p>No KPI data imported yet.</p>
+                    <p>Please go to the "Import KPIs" page to upload a file.</p>
+                </CardContent>
+            </Card>
+        );
+    }
+
+    return (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {Object.entries(groupedKpis).map(([perspective, kpis]) => (
+                <Card key={perspective}>
+                    <CardHeader>
+                        <CardTitle>{perspective} KPIs</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        {kpis.map(kpi => (
+                            <Card key={kpi.id}>
+                                <CardContent className="p-4">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <span className="font-medium text-gray-800">{kpi.measure}</span>
+                                        {/* Status is not in the new data, so this is a placeholder */}
+                                        <Badge variant="outline">{kpi.category}</Badge>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-2xl font-bold text-gray-800">{kpi.unit}</span>
+                                        <span className="text-sm text-gray-500">{kpi.target}</span>
+                                    </div>
+                                    {/* Progress is not in the new data, so this is a placeholder */}
+                                    <Progress value={50} className="h-2 mt-2" />
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </CardContent>
+                </Card>
+            ))}
+        </div>
+    );
+};
+
+
+const DepartmentLevel = () => {
+    const { kpiData } = useKpiData();
+    // Using static data as a placeholder until cascading logic is implemented
+    const departmentData = staticKpiData.department;
+    return (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {departmentData.map(dept => (
+                <Card key={dept.name} className={cn("border-2", dept.borderColor)}>
+                    <CardHeader>
+                        <div className="flex items-center justify-between">
+                            <h4 className="text-lg font-semibold text-gray-800">{dept.name}</h4>
+                            <span className={cn("px-3 py-1 rounded-full text-sm font-medium", dept.statusColor)}>{dept.performance}</span>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
                         {dept.kpis.map(kpi => (
                             <div key={kpi.name} className={cn("pl-4", kpi.borderColor)}>
                                 <p className="font-medium text-gray-800">{kpi.name}</p>
@@ -105,14 +99,17 @@ const DepartmentLevel = () => (
                                 <p className="text-sm text-gray-500">{kpi.parent}</p>
                             </div>
                         ))}
-                    </div>
-                </CardContent>
-            </Card>
-        ))}
-    </div>
-);
+                    </CardContent>
+                </Card>
+            ))}
+        </div>
+    );
+}
 
-const IndividualLevel = () => (
+const IndividualLevel = () => {
+    // Using static data as a placeholder
+    const individualData = staticKpiData.individual;
+    return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
             <CardHeader>
@@ -129,7 +126,7 @@ const IndividualLevel = () => (
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {kpiCascadeData.individual.map(person => (
+                        {individualData.map(person => (
                             <TableRow key={person.name}>
                                 <TableCell className="font-medium">{person.name}</TableCell>
                                 <TableCell>{person.department}</TableCell>
@@ -172,6 +169,7 @@ const IndividualLevel = () => (
         </Card>
     </div>
 );
+}
 
 
 export default function CascadePage() {

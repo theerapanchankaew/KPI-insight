@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { appConfig, navItems, headerData } from '@/lib/kpi-data';
+import { KpiDataProvider, useKpiData } from '@/context/KpiDataContext';
 
 interface AppLayoutContextType {
   pageTitle: string;
@@ -174,15 +175,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <AppLayoutContext.Provider value={{ pageTitle, setPageTitle }}>
-      <div className="h-full flex bg-gray-50">
-        <AppSidebar />
-        <main className="flex-1 overflow-auto">
-          <AppHeader />
-          <div className="p-6">
-            {children}
-          </div>
-        </main>
-      </div>
+      <KpiDataProvider>
+        <div className="h-full flex bg-gray-50">
+          <AppSidebar />
+          <main className="flex-1 overflow-auto">
+            <AppHeader />
+            <div className="p-6">
+              {children}
+            </div>
+          </main>
+        </div>
+      </KpiDataProvider>
     </AppLayoutContext.Provider>
   );
 }
