@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { UploadCloud, FileJson, FileSpreadsheet, CheckCircle, XCircle } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
-import { useToast } from '@/components/ui/use-toast';
+import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
 
 export default function KpiImportPage() {

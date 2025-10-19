@@ -7,7 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { kpiApprovalData } from '@/lib/kpi-data';
 import { Check, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/components/ui/use-toast';
+import { useToast } from '@/hooks/use-toast';
 
 export default function ApprovalsPage() {
   const { setPageTitle } = useAppLayout();
