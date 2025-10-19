@@ -30,7 +30,7 @@ export const navItems = [
   {
     href: '/cascade',
     label: 'Cascade KPI',
-    description: 'ใช้เพื่อ: แสดงความสัมพันธ์ของ KPI จากระดับองค์กร → ฝ่าย → แผนก → บุคคล กำหนดสัดส่วน (Weight) และสูตร Roll-up จัดการการมอบหมาย KPI (Assign) และดูสถานะความคืบหน้าแบบ Realtime',
+    description: 'โครงสร้าง KPI',
     icon: Network,
   },
   {
