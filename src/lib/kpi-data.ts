@@ -12,6 +12,7 @@ import {
   ClipboardList,
   Building2,
   FileUp,
+  User,
 } from 'lucide-react';
 
 export const appConfig = {
@@ -33,6 +34,12 @@ export const navItems = [
     label: 'Cascade KPI',
     description: 'โครงสร้าง KPI',
     icon: Network,
+  },
+  {
+    href: '/portfolio',
+    label: 'My Portfolio',
+    description: 'KPI ของฉัน',
+    icon: User,
   },
   {
     href: '/submit',
@@ -295,3 +302,10 @@ export const kpiReportData = {
     growth: '+15.2%',
   }
 };
+
+export const kpiPortfolioData = [
+  { id: 'ind-kpi-1', kpi: 'Revenue Target (Domestic)', type: 'cascaded', weight: 40, target: '฿40M', status: 'Committed' },
+  { id: 'ind-kpi-2', kpi: 'New Customer Acquisition', type: 'cascaded', weight: 30, target: '20 new clients', status: 'Committed' },
+  { id: 'ind-kpi-3', kpi: 'On-time Report Submission', type: 'committed', weight: 15, target: '98% on-time', status: 'Pending' },
+  { id: 'ind-kpi-4', kpi: 'Peer Training Sessions', type: 'committed', weight: 15, target: '2 sessions/quarter', status: 'Pending' },
+];
