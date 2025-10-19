@@ -39,9 +39,12 @@ const CorporateLevel = ({ onCascadeClick }: { onCascadeClick: (kpi: CorporateKpi
     if (corporateKpis.length === 0) {
         return (
             <Card>
+                <CardHeader>
+                    <CardTitle>Corporate KPIs</CardTitle>
+                </CardHeader>
                 <CardContent className="p-6 text-center text-gray-500">
-                    <p>No KPI data imported yet.</p>
-                    <p>Please go to the "Import Data" page to upload a KPI file.</p>
+                    <p>No KPI data has been imported.</p>
+                    <p className="mt-2">Please go to the "Import Data" page to upload a KPI data file.</p>
                 </CardContent>
             </Card>
         );
@@ -91,9 +94,12 @@ const DepartmentLevel = ({ cascadedKpis }: { cascadedKpis: CascadedKpi[] }) => {
     if (!orgData || orgData.employees.length === 0) {
          return (
             <Card>
+                <CardHeader>
+                    <CardTitle>Department Performance</CardTitle>
+                </CardHeader>
                 <CardContent className="p-6 text-center text-gray-500">
-                    <p>No Organization data imported yet.</p>
-                    <p>Please go to the "Import Data" page to upload an organization file.</p>
+                    <p>No Organization data has been imported.</p>
+                    <p className="mt-2">Please go to the "Import Data" page to upload an organization data file.</p>
                 </CardContent>
             </Card>
         );
@@ -147,7 +153,8 @@ const IndividualLevel = () => {
             <Card>
                 <CardHeader><CardTitle>Individual Performance</CardTitle></CardHeader>
                 <CardContent className="p-6 text-center text-gray-500">
-                    <p>No Organization data imported yet.</p>
+                    <p>No Organization data has been imported.</p>
+                    <p className="mt-2">Please go to the "Import Data" page to upload an organization data file.</p>
                 </CardContent>
             </Card>
         );
@@ -251,7 +258,7 @@ const CascadeDialog = ({
                         <Label htmlFor="department-target">Target</Label>
                         <Input id="department-target" value={target} onChange={e => setTarget(e.target.value)} placeholder={`e.g., ${kpi.target}`} />
                     </div>
-                    <div className="spacey-y-2">
+                    <div className="space-y-2">
                         <Label htmlFor="department-weight">Weight (%)</Label>
                         <Input id="department-weight" type="number" value={weight} onChange={e => setWeight(e.target.value)} placeholder="e.g., 20" />
                     </div>
@@ -322,3 +329,5 @@ export default function CascadePage() {
     </div>
   );
 }
+
+    
