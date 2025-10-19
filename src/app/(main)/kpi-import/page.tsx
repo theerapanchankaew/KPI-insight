@@ -163,7 +163,7 @@ const OrgImportTab = () => {
     const router = useRouter();
     const { toast } = useToast();
     const [files, setFiles] = useState<File[]>([]);
-    const [fileContent, setFileContent] = useState<any | null>(null);
+    const [fileContent, setFileContent] = useState<any[] | null>(null);
 
     const onDrop = useCallback((acceptedFiles: File[]) => {
         const file = acceptedFiles[0];
@@ -175,17 +175,7 @@ const OrgImportTab = () => {
                     const text = e.target?.result;
                     if (typeof text === 'string') {
                         const parsedJson = JSON.parse(text);
-                        const transformedData = {
-                            employees: parsedJson.map((item: any) => ({
-                                id: item['รหัส'].toString(),
-                                name: item['ชื่อ-นามสกุล'],
-                                department: item['แผนก'],
-                                position: item['ตำแหน่ง'],
-                                manager: item['ผู้บังคับบัญชา']
-                            }))
-                        };
-                        setFileContent(transformedData);
-                        setOrgData(transformedData);
+                        setFileContent(parsedJson); // Store the raw JSON array
                         toast({ title: 'File Processed', description: `${file.name} is ready to be used.` });
                     }
                 } catch (error) {
@@ -196,14 +186,23 @@ const OrgImportTab = () => {
         } else {
             toast({ variant: 'destructive', title: 'Invalid File Type', description: 'Please upload a JSON file.' });
         }
-    }, [toast, setOrgData]);
+    }, [toast]);
     
     const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, multiple: false, accept: { 'application/json': ['.json'] } });
 
     const handleProcessAndSend = () => {
         if (fileContent) {
-            // Data is already set on drop, just navigate
-            toast({ title: 'Redirecting', description: 'Navigating to the Cascade page.' });
+            const transformedData = {
+                employees: fileContent.map((item: any) => ({
+                    id: item['รหัส'] ? item['รหัส'].toString() : `user-${Math.random()}`,
+                    name: item['ชื่อ-นามสกุล'] || 'N/A',
+                    department: item['แผนก'] || 'N/A',
+                    position: item['ตำแหน่ง'] || 'N/A',
+                    manager: item['ผู้บังคับบัญชา'] || ''
+                }))
+            };
+            setOrgData(transformedData);
+            toast({ title: 'Redirecting', description: 'Organization data updated and navigating to Cascade page.' });
             router.push('/cascade');
         } else {
              toast({ variant: 'destructive', title: 'No Data to Send', description: 'No file has been processed.' });
