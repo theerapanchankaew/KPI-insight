@@ -20,7 +20,7 @@ interface KpiData {
 }
 
 // Define the shape for an Employee
-interface Employee {
+export interface Employee {
   id: string;
   name: string;
   department: string;
@@ -29,23 +29,24 @@ interface Employee {
 }
 
 // Define the shape for the organization data
-interface OrgData {
+export interface OrgData {
   employees: Employee[];
 }
 
-interface AppSettings {
+export interface AppSettings {
   orgName: string;
   period: string;
   currency: string;
+  periodDate?: string;
 }
 
 
 // Define the context shape
 interface KpiDataContextType {
   kpiData: KpiData | null;
-  setKpiData: (data: KpiData) => void;
+  setKpiData: (data: KpiData | null) => void;
   orgData: OrgData | null;
-  setOrgData: (data: OrgData) => void;
+  setOrgData: (data: OrgData | null) => void;
   settings: AppSettings;
   setSettings: (settings: Partial<AppSettings>) => void;
 }
@@ -56,10 +57,10 @@ const KpiDataContext = createContext<KpiDataContextType | undefined>(undefined);
 // Create the provider component
 export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   const [kpiData, setKpiData] = useState<KpiData | null>(null);
-  const [orgData, setOrgData] = useState<OrgData | null>(null);
+  const [orgData, setOrgData] = useState<OrgData | null>({ employees: [] });
   const [settings, setSettingsState] = useState<AppSettings>({
     orgName: 'บริษัท ABC จำกัด',
-    period: 'Quarterly',
+    period: 'รายไตรมาส (Quarterly)',
     currency: 'thb',
   });
 
