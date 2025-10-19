@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -44,80 +44,98 @@ const SummaryCards = () => (
   </div>
 );
 
-const PerformanceOverview = () => (
-  <div className="lg:col-span-2">
-    <Card className="shadow-sm border-gray-200">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>Performance Overview</CardTitle>
-          <div className="flex space-x-1">
-            <Button size="sm" className="text-xs">เดือน</Button>
-            <Button size="sm" variant="ghost" className="text-xs">ไตรมาส</Button>
-            <Button size="sm" variant="ghost" className="text-xs">ปี</Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <ChartContainer config={performanceChartData.config} className="h-64 w-full">
-            <LineChart data={performanceChartData.data} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={10} />
-                <YAxis tickLine={false} axisLine={false} tickMargin={10} />
-                <Tooltip 
-                    contentStyle={{
-                        backgroundColor: 'white',
-                        border: '1px solid #e5e7eb',
-                        borderRadius: '0.5rem',
-                    }}
-                />
-                <Line type="monotone" dataKey="Revenue" stroke="var(--color-Revenue)" strokeWidth={3} dot={false} className="chart-line" />
-                <Line type="monotone" dataKey="EBITDA" stroke="var(--color-EBITDA)" strokeWidth={3} dot={false} className="chart-line" />
-            </LineChart>
-        </ChartContainer>
-         <div className="flex items-center justify-center space-x-6 mt-4">
-          <div className="flex items-center space-x-2">
-            <div className="w-3 h-3 bg-primary rounded-full"></div><span className="text-sm text-gray-600">Revenue</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div className="w-3 h-3 bg-secondary rounded-full"></div><span className="text-sm text-gray-600">EBITDA</span>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  </div>
-);
+const PerformanceOverview = () => {
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
-const RagStatus = () => (
-  <Card className="shadow-sm border-gray-200">
-    <CardHeader>
-      <CardTitle>RAG Status</CardTitle>
-    </CardHeader>
-    <CardContent>
-      <div className="space-y-4">
-        {ragStatusData.statuses.map((status) => (
-          <div key={status.name} className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className={cn("w-4 h-4 rounded-full", status.className)}></div>
-              <span className="text-sm font-medium text-gray-700">{status.name}</span>
+  return (
+    <div className="lg:col-span-2">
+      <Card className="shadow-sm border-gray-200">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Performance Overview</CardTitle>
+            <div className="flex space-x-1">
+              <Button size="sm" className="text-xs">เดือน</Button>
+              <Button size="sm" variant="ghost" className="text-xs">ไตรมาส</Button>
+              <Button size="sm" variant="ghost" className="text-xs">ปี</Button>
             </div>
-            <span className="text-sm font-bold text-gray-800">{status.count} KPIs</span>
           </div>
-        ))}
-      </div>
-      <div className="mt-4 flex justify-center">
-        <ChartContainer config={{}} className="h-28 w-28">
-            <PieChart>
-                <Pie data={ragStatusData.statuses} dataKey="count" nameKey="name" cx="50%" cy="50%" innerRadius={30} outerRadius={40} paddingAngle={2}>
-                    {ragStatusData.statuses.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                </Pie>
-            </PieChart>
-        </ChartContainer>
-      </div>
-    </CardContent>
-  </Card>
-);
+        </CardHeader>
+        <CardContent>
+          {isClient && (
+            <ChartContainer config={performanceChartData.config} className="h-64 w-full">
+                <LineChart data={performanceChartData.data} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                    <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={10} />
+                    <YAxis tickLine={false} axisLine={false} tickMargin={10} />
+                    <Tooltip 
+                        contentStyle={{
+                            backgroundColor: 'white',
+                            border: '1px solid #e5e7eb',
+                            borderRadius: '0.5rem',
+                        }}
+                    />
+                    <Line type="monotone" dataKey="Revenue" stroke="var(--color-Revenue)" strokeWidth={3} dot={false} className="chart-line" />
+                    <Line type="monotone" dataKey="EBITDA" stroke="var(--color-EBITDA)" strokeWidth={3} dot={false} className="chart-line" />
+                </LineChart>
+            </ChartContainer>
+          )}
+           <div className="flex items-center justify-center space-x-6 mt-4">
+            <div className="flex items-center space-x-2">
+              <div className="w-3 h-3 bg-primary rounded-full"></div><span className="text-sm text-gray-600">Revenue</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-3 h-3 bg-secondary rounded-full"></div><span className="text-sm text-gray-600">EBITDA</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+const RagStatus = () => {
+    const [isClient, setIsClient] = useState(false);
+    useEffect(() => {
+        setIsClient(true);
+    }, []);
+
+    return (
+        <Card className="shadow-sm border-gray-200">
+            <CardHeader>
+            <CardTitle>RAG Status</CardTitle>
+            </CardHeader>
+            <CardContent>
+            <div className="space-y-4">
+                {ragStatusData.statuses.map((status) => (
+                <div key={status.name} className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                    <div className={cn("w-4 h-4 rounded-full", status.className)}></div>
+                    <span className="text-sm font-medium text-gray-700">{status.name}</span>
+                    </div>
+                    <span className="text-sm font-bold text-gray-800">{status.count} KPIs</span>
+                </div>
+                ))}
+            </div>
+            <div className="mt-4 flex justify-center">
+                {isClient && (
+                <ChartContainer config={{}} className="h-28 w-28">
+                    <PieChart>
+                        <Pie data={ragStatusData.statuses} dataKey="count" nameKey="name" cx="50%" cy="50%" innerRadius={30} outerRadius={40} paddingAngle={2}>
+                            {ragStatusData.statuses.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                        </Pie>
+                    </PieChart>
+                </ChartContainer>
+                )}
+            </div>
+            </CardContent>
+        </Card>
+    );
+};
 
 const RecentAlerts = () => (
   <Card className="shadow-sm border-gray-200">
