@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useAppLayout } from '../layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { UploadCloud, FileJson, FileSpreadsheet, CheckCircle, XCircle } from 'lucide-react';
+import { UploadCloud, FileJson, FileSpreadsheet, XCircle } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
@@ -21,7 +21,6 @@ export default function KpiImportPage() {
   }, [setPageTitle]);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    // Limit to one file for simplicity
     const file = acceptedFiles[0];
     if (file && (file.type === 'application/json' || file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || file.name.endsWith('.xlsx'))) {
       setFiles([file]);
@@ -56,7 +55,6 @@ export default function KpiImportPage() {
     setUploading(true);
     setUploadProgress(0);
 
-    // Simulate upload progress
     const interval = setInterval(() => {
       setUploadProgress((prev) => {
         if (prev >= 100) {
@@ -77,6 +75,29 @@ export default function KpiImportPage() {
   const removeFile = () => {
     setFiles([]);
   };
+
+  const exampleJson = `{
+  "version": "1.0",
+  "exported_at": "2025-10-17T22:39:54.121683Z",
+  "organization": "Management System Certification Institute (Thailand), Foundation (MASCI)",
+  "fiscal_year": {
+    "thailand_buddhist_year": 2569,
+    "gregorian_label": "FY2026"
+  },
+  "kpi_catalog": [
+    {
+      "id": "1bf13fca-25c4-4a04-8390-8b2173a2ffda",
+      "perspective": "Sustainability",
+      "strategic_objective": "Grow Corporate Value",
+      "objective_statement": "การเติบโตอย่างยั่งยืน...",
+      "measure": "Total Revenue",
+      "target": "≥ 194.10 ล้านบาท",
+      "unit": "THB million",
+      "target_statement": "รายรับรวมของสถาบันฯ...",
+      "category": "Theme:Sustainability Excellence"
+    }
+  ]
+}`;
 
   return (
     <div className="fade-in space-y-6">
@@ -142,21 +163,7 @@ export default function KpiImportPage() {
         <CardContent>
           <pre className="bg-gray-100 p-4 rounded-lg text-xs overflow-auto">
             <code>
-{`{
-  "kpi_catalog": [
-    {
-      "id": "1bf13fca-25c4-4a04-8390-8b2173a2ffda",
-      "perspective": "Sustainability",
-      "strategic_objective": "Grow Corporate Value",
-      "objective_statement": "การเติบโตอย่างยั่งยืน...",
-      "measure": "Total Revenue",
-      "target": "≥ 194.10 ล้านบาท",
-      "unit": "THB million",
-      "target_statement": "รายรับรวมของสถาบันฯ...",
-      "category": "Theme:Sustainability Excellence"
-    }
-  ]
-}`}
+              {exampleJson}
             </code>
           </pre>
         </CardContent>
