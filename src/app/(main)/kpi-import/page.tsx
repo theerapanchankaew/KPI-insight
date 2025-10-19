@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useAppLayout } from '../layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { UploadCloud, FileJson, FileSpreadsheet, XCircle } from 'lucide-react';
+import { UploadCloud, FileJson, FileSpreadsheet, XCircle, Send } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
@@ -15,6 +15,7 @@ export default function KpiImportPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadComplete, setUploadComplete] = useState(false);
 
   useEffect(() => {
     setPageTitle('Import KPIs');
@@ -24,6 +25,7 @@ export default function KpiImportPage() {
     const file = acceptedFiles[0];
     if (file && (file.type === 'application/json' || file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || file.name.endsWith('.xlsx'))) {
       setFiles([file]);
+      setUploadComplete(false);
     } else {
       toast({
         variant: 'destructive',
@@ -54,17 +56,18 @@ export default function KpiImportPage() {
 
     setUploading(true);
     setUploadProgress(0);
+    setUploadComplete(false);
 
     const interval = setInterval(() => {
       setUploadProgress((prev) => {
         if (prev >= 100) {
           clearInterval(interval);
           setUploading(false);
+          setUploadComplete(true);
           toast({
             title: 'Upload Successful',
-            description: `${files[0].name} has been imported and is being processed.`,
+            description: `${files[0].name} has been imported and is ready to be processed.`,
           });
-          setFiles([]);
           return 100;
         }
         return prev + 10;
@@ -72,8 +75,16 @@ export default function KpiImportPage() {
     }, 200);
   };
 
+  const handleSendToCascade = () => {
+    toast({
+        title: 'Data Sent',
+        description: 'KPI data has been sent to the Cascade page.',
+    });
+  }
+
   const removeFile = () => {
     setFiles([]);
+    setUploadComplete(false);
   };
 
   const exampleJson = `{
@@ -147,10 +158,16 @@ export default function KpiImportPage() {
              </div>
           )}
 
-          <div className="flex justify-end">
-            <Button onClick={handleUpload} disabled={files.length === 0 || uploading}>
+          <div className="flex justify-end space-x-2">
+            <Button onClick={handleUpload} disabled={files.length === 0 || uploading || uploadComplete}>
               {uploading ? 'Importing...' : 'Import KPIs'}
             </Button>
+            {uploadComplete && (
+                <Button onClick={handleSendToCascade} variant="secondary">
+                    <Send className="w-4 h-4 mr-2" />
+                    Send to Cascade
+                </Button>
+            )}
           </div>
         </CardContent>
       </Card>
