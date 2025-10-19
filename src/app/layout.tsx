@@ -12,7 +12,7 @@ const sarabun = Sarabun({
 });
 
 export const metadata: Metadata = {
-  title: 'Win-Win KPI Dashboard',
+  title: 'KPI Insights',
   description: 'KPI Insights Application',
 };
 

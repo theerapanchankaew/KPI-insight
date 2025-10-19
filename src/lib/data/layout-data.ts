@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 
 export const appConfig = {
-  title: 'Win-Win KPI',
+  title: 'KPI Insights',
   companyName: 'บริษัท ABC จำกัด',
   ceoName: 'คุณสมชาย ผู้บริหาร',
   ceoTitle: 'CEO',
