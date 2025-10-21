@@ -507,7 +507,7 @@ const AssignKpiDialog = ({
                             <Input id="committed-measure" value={committedMeasure} onChange={e => setCommittedMeasure(e.target.value)} placeholder="e.g., On-time Submission Rate" />
                         </div>
                          <div className="space-y-2">
-                            <Label>Target Levels (5-point scale)</Label>
+                            <Label>ต้องสามารถเลือกระดับเพื่อทำการ commit ได้ระหว่าง duty employee กับ manager และ manager กับ AVP/VP</Label>
                             <div className="grid grid-cols-5 gap-2">
                                 <Input placeholder="Level 1 (<85%)" value={committedTargets.level1} onChange={e => setCommittedTargets({...committedTargets, level1: e.target.value})} />
                                 <Input placeholder="Level 2 (85-95%)" value={committedTargets.level2} onChange={e => setCommittedTargets({...committedTargets, level2: e.target.value})} />
