@@ -1,6 +1,7 @@
+
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useAppLayout } from '../layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -390,14 +391,13 @@ const AssignKpiDialog = ({
     onClose: () => void;
     employee: Employee | null;
     departmentKpis: CascadedKpi[];
-    onConfirm: (assignment: IndividualKpi) => void;
+    onConfirm: (assignment: IndividualKpi[]) => void;
 }) => {
     const [assignmentType, setAssignmentType] = useState<'cascaded' | 'committed'>('cascaded');
     
     // State for assigning cascaded KPI
-    const [selectedKpiId, setSelectedKpiId] = useState<string>('');
-    const [cascadedTarget, setCascadedTarget] = useState('');
-    const [cascadedWeight, setCascadedWeight] = useState('');
+    type CascadedKpiSelection = { [kpiId: string]: { selected: boolean; weight: string; target: string } };
+    const [selectedKpis, setSelectedKpis] = useState<CascadedKpiSelection>({});
 
     // State for creating a committed KPI
     const [committedTask, setCommittedTask] = useState('');
@@ -407,38 +407,64 @@ const AssignKpiDialog = ({
         level1: '', level2: '', level3: '', level4: '', level5: ''
     });
 
+    const relevantKpis = useMemo(() => {
+        if (!employee) return [];
+        return departmentKpis.filter(kpi => kpi.department === employee.department);
+    }, [departmentKpis, employee]);
+
     useEffect(() => {
-        if (!isOpen) {
+        if (isOpen) {
+            const initialSelection: CascadedKpiSelection = {};
+            relevantKpis.forEach(kpi => {
+                initialSelection[kpi.id] = { selected: false, weight: '', target: '' };
+            });
+            setSelectedKpis(initialSelection);
+        } else {
             // Reset all state on close
             setAssignmentType('cascaded');
-            setSelectedKpiId('');
-            setCascadedTarget('');
-            setCascadedWeight('');
+            setSelectedKpis({});
             setCommittedTask('');
             setCommittedMeasure('');
             setCommittedWeight('');
             setCommittedTargets({ level1: '', level2: '', level3: '', level4: '', level5: '' });
         }
-    }, [isOpen]);
+    }, [isOpen, relevantKpis]);
 
+    const handleKpiSelectionChange = (kpiId: string, field: 'selected' | 'weight' | 'target', value: string | boolean) => {
+        setSelectedKpis(prev => ({
+            ...prev,
+            [kpiId]: { ...prev[kpiId], [field]: value }
+        }));
+    };
+    
     const handleAssignCascaded = () => {
-        const selectedKpi = departmentKpis.find(k => k.id === selectedKpiId);
-        if (employee && selectedKpi && cascadedTarget && cascadedWeight) {
-            onConfirm({
-                type: 'cascaded',
-                employeeId: employee.id,
-                kpiId: selectedKpi.id,
-                kpiMeasure: selectedKpi.measure,
-                target: cascadedTarget,
-                weight: parseInt(cascadedWeight, 10),
-            });
+        if (!employee) return;
+        const assignments: AssignedCascadedKpi[] = [];
+        for (const kpiId in selectedKpis) {
+            const selection = selectedKpis[kpiId];
+            if (selection.selected && selection.weight && selection.target) {
+                const kpiDetails = relevantKpis.find(k => k.id === kpiId);
+                if (kpiDetails) {
+                    assignments.push({
+                        type: 'cascaded',
+                        employeeId: employee.id,
+                        kpiId: kpiId,
+                        kpiMeasure: kpiDetails.measure,
+                        target: selection.target,
+                        weight: parseInt(selection.weight, 10),
+                    });
+                }
+            }
+        }
+        if (assignments.length > 0) {
+            onConfirm(assignments);
             onClose();
         }
     };
     
     const handleCreateCommitted = () => {
         if (employee && committedTask && committedMeasure && committedWeight) {
-             onConfirm({
+             onConfirm([{
                 type: 'committed',
                 employeeId: employee.id,
                 kpiId: `committed-${Date.now()}`, // Generate a unique ID
@@ -446,18 +472,25 @@ const AssignKpiDialog = ({
                 task: committedTask,
                 targets: committedTargets,
                 weight: parseInt(committedWeight, 10),
-            });
+            }]);
             onClose();
         }
     };
+    
+    const totalWeight = useMemo(() => {
+        return Object.values(selectedKpis).reduce((sum, kpi) => {
+            if (kpi.selected && kpi.weight) {
+                return sum + parseInt(kpi.weight, 10);
+            }
+            return sum;
+        }, 0);
+    }, [selectedKpis]);
 
     if (!employee) return null;
 
-    const relevantKpis = departmentKpis.filter(kpi => kpi.department === employee.department);
-
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="max-w-3xl">
+            <DialogContent className="max-w-4xl">
                 <DialogHeader>
                     <DialogTitle>Assign KPI to {employee.name}</DialogTitle>
                 </DialogHeader>
@@ -467,34 +500,68 @@ const AssignKpiDialog = ({
                         <TabsTrigger value="committed">Create Committed KPI</TabsTrigger>
                     </TabsList>
                     <TabsContent value="cascaded" className="mt-6 space-y-4">
-                        <div className="space-y-2">
-                            <Label>Department KPI</Label>
-                            <Select value={selectedKpiId} onValueChange={setSelectedKpiId}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select a KPI to assign" />
-                                </SelectTrigger>
-                                <SelectContent>
+                        <p>ควรออกแบบให้เป็นกระดาน หรือ grid table แล้ว tickbox เนื่องจากจะได้ตรวจสอบว่า total weight เกินกว่า 100% หรือไม่</p>
+                        <div className="border rounded-lg overflow-hidden">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead className="w-[50px]"></TableHead>
+                                        <TableHead>Department KPI</TableHead>
+                                        <TableHead className="w-[150px]">Individual Target</TableHead>
+                                        <TableHead className="w-[100px]">Weight (%)</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
                                     {relevantKpis.length > 0 ? (
                                         relevantKpis.map(kpi => (
-                                            <SelectItem key={kpi.id} value={kpi.id}>{kpi.measure}</SelectItem>
+                                            <TableRow key={kpi.id} className={cn(selectedKpis[kpi.id]?.selected && "bg-muted/50")}>
+                                                <TableCell className="text-center">
+                                                    <Checkbox
+                                                        checked={selectedKpis[kpi.id]?.selected || false}
+                                                        onCheckedChange={(checked) => handleKpiSelectionChange(kpi.id, 'selected', !!checked)}
+                                                    />
+                                                </TableCell>
+                                                <TableCell className="font-medium">{kpi.measure}</TableCell>
+                                                <TableCell>
+                                                    <Input
+                                                        type="text"
+                                                        placeholder="Enter target"
+                                                        value={selectedKpis[kpi.id]?.target || ''}
+                                                        onChange={(e) => handleKpiSelectionChange(kpi.id, 'target', e.target.value)}
+                                                        disabled={!selectedKpis[kpi.id]?.selected}
+                                                    />
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Input
+                                                        type="number"
+                                                        placeholder="e.g., 10"
+                                                        value={selectedKpis[kpi.id]?.weight || ''}
+                                                        onChange={(e) => handleKpiSelectionChange(kpi.id, 'weight', e.target.value)}
+                                                        disabled={!selectedKpis[kpi.id]?.selected}
+                                                    />
+                                                </TableCell>
+                                            </TableRow>
                                         ))
                                     ) : (
-                                        <div className="p-4 text-sm text-gray-500">No KPIs cascaded to {employee.department} yet.</div>
+                                        <TableRow>
+                                            <TableCell colSpan={4} className="text-center text-gray-500 h-24">
+                                                No KPIs cascaded to {employee.department} yet.
+                                            </TableCell>
+                                        </TableRow>
                                     )}
-                                </SelectContent>
-                            </Select>
+                                </TableBody>
+                            </Table>
                         </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="individual-target">Individual Target</Label>
-                            <Input id="individual-target" value={cascadedTarget} onChange={e => setCascadedTarget(e.target.value)} placeholder="Enter target value" />
-                        </div>
-                         <div className="space-y-2">
-                            <Label htmlFor="individual-weight">Weight (%)</Label>
-                            <Input id="individual-weight" type="number" value={cascadedWeight} onChange={e => setCascadedWeight(e.target.value)} placeholder="e.g., 10" />
-                        </div>
-                        <DialogFooter>
-                            <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                            <Button onClick={handleAssignCascaded}>Assign KPI</Button>
+                        <DialogFooter className="sm:justify-between items-center pt-2">
+                             <div className="text-right sm:text-left">
+                                <p className={cn("text-lg font-bold", totalWeight > 100 && "text-destructive")}>
+                                    Total Weight: {totalWeight}%
+                                </p>
+                            </div>
+                            <div className="flex space-x-2">
+                               <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+                               <Button onClick={handleAssignCascaded}>Assign KPIs</Button>
+                            </div>
                         </DialogFooter>
                     </TabsContent>
                     <TabsContent value="committed" className="mt-6 space-y-4">
@@ -522,7 +589,7 @@ const AssignKpiDialog = ({
                         </div>
                          <DialogFooter>
                             <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                            <Button onClick={handleCreateCommitted}>Create & Assign KPI</Button>
+                            <Button onClick={handleCreateCommitted}>Create &amp; Assign KPI</Button>
                         </DialogFooter>
                     </TabsContent>
                 </Tabs>
@@ -573,15 +640,18 @@ export default function CascadePage() {
       });
   };
 
-  const handleConfirmAssignment = (assignment: IndividualKpi) => {
+  const handleConfirmAssignment = (assignments: IndividualKpi[]) => {
       setIndividualKpis(prev => {
-           const existingIndex = prev.findIndex(k => k.employeeId === assignment.employeeId && k.kpiId === assignment.kpiId);
-            if (existingIndex > -1) {
-                const newKpis = [...prev];
-                newKpis[existingIndex] = assignment;
-                return newKpis;
-            }
-            return [...prev, assignment];
+          const newKpis = [...prev];
+          assignments.forEach(assignment => {
+              const existingIndex = newKpis.findIndex(k => k.employeeId === assignment.employeeId && k.kpiId === assignment.kpiId);
+              if (existingIndex > -1) {
+                  newKpis[existingIndex] = assignment;
+              } else {
+                  newKpis.push(assignment);
+              }
+          });
+          return newKpis;
       });
   };
 
