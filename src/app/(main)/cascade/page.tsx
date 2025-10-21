@@ -20,7 +20,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { ChevronDown, ChevronsUpDown, PlusCircle, Trash2 } from 'lucide-react';
 
 
 // Type for a corporate KPI
@@ -413,13 +413,15 @@ const AssignKpiDialog = ({
     type CascadedKpiSelection = { [kpiId: string]: { selected: boolean; weight: string; target: string } };
     const [selectedKpis, setSelectedKpis] = useState<CascadedKpiSelection>({});
 
-    // State for creating a committed KPI
-    const [committedTask, setCommittedTask] = useState('');
-    const [committedMeasure, setCommittedMeasure] = useState('');
-    const [committedWeight, setCommittedWeight] = useState('');
-    const [committedTargets, setCommittedTargets] = useState({
-        level1: '', level2: '', level3: '', level4: '', level5: ''
-    });
+    // State for creating a list of committed KPIs
+    type CommittedKpiDraft = {
+        id: number;
+        task: string;
+        kpiMeasure: string;
+        weight: string;
+        targets: { level1: string; level2: string; level3: string; level4: string; level5: string; };
+    };
+    const [committedKpis, setCommittedKpis] = useState<CommittedKpiDraft[]>([]);
 
     const relevantKpis = useMemo(() => {
         if (!employee) return [];
@@ -437,10 +439,7 @@ const AssignKpiDialog = ({
             // Reset all state on close
             setAssignmentType('cascaded');
             setSelectedKpis({});
-            setCommittedTask('');
-            setCommittedMeasure('');
-            setCommittedWeight('');
-            setCommittedTargets({ level1: '', level2: '', level3: '', level4: '', level5: '' });
+            setCommittedKpis([]);
         }
     }, [isOpen, relevantKpis]);
 
@@ -449,6 +448,36 @@ const AssignKpiDialog = ({
             ...prev,
             [kpiId]: { ...prev[kpiId], [field]: value }
         }));
+    };
+
+    const handleAddCommittedKpi = () => {
+        setCommittedKpis(prev => [...prev, {
+            id: Date.now(),
+            task: '',
+            kpiMeasure: '',
+            weight: '',
+            targets: { level1: '', level2: '', level3: '', level4: '', level5: '' }
+        }]);
+    };
+
+    const handleCommittedKpiChange = (index: number, field: keyof CommittedKpiDraft, value: string) => {
+        setCommittedKpis(prev => {
+            const newKpis = [...prev];
+            (newKpis[index] as any)[field] = value;
+            return newKpis;
+        });
+    };
+    
+    const handleCommittedTargetChange = (index: number, level: keyof CommittedKpiDraft['targets'], value: string) => {
+        setCommittedKpis(prev => {
+            const newKpis = [...prev];
+            newKpis[index].targets[level] = value;
+            return newKpis;
+        });
+    };
+
+    const handleRemoveCommittedKpi = (id: number) => {
+        setCommittedKpis(prev => prev.filter(kpi => kpi.id !== id));
     };
     
     const handleSubmit = () => {
@@ -472,18 +501,15 @@ const AssignKpiDialog = ({
             }
         }
 
-        const committedAssignments: CommittedKpi[] = [];
-        if (committedTask && committedMeasure && committedWeight) {
-             committedAssignments.push({
-                type: 'committed',
-                employeeId: employee.id,
-                kpiId: `committed-${Date.now()}`, // Generate a unique ID
-                kpiMeasure: committedMeasure,
-                task: committedTask,
-                targets: committedTargets,
-                weight: parseInt(committedWeight, 10),
-            });
-        }
+        const committedAssignments: CommittedKpi[] = committedKpis.map(draft => ({
+            type: 'committed',
+            employeeId: employee.id,
+            kpiId: `committed-${draft.id}`, // Generate a unique ID
+            kpiMeasure: draft.kpiMeasure,
+            task: draft.task,
+            targets: draft.targets,
+            weight: parseInt(draft.weight, 10) || 0,
+        })).filter(kpi => kpi.task && kpi.kpiMeasure && kpi.weight > 0);
         
         const allAssignments = [...cascadedAssignments, ...committedAssignments];
 
@@ -496,16 +522,19 @@ const AssignKpiDialog = ({
     const cascadedWeight = useMemo(() => {
         return Object.values(selectedKpis).reduce((sum, kpi) => {
             if (kpi.selected && kpi.weight) {
-                return sum + parseInt(kpi.weight, 10);
+                return sum + (parseInt(kpi.weight, 10) || 0);
             }
             return sum;
         }, 0);
     }, [selectedKpis]);
 
+    const committedWeightTotal = useMemo(() => {
+        return committedKpis.reduce((sum, kpi) => sum + (parseInt(kpi.weight, 10) || 0), 0);
+    }, [committedKpis]);
+
     const totalWeight = useMemo(() => {
-        const newCommittedWeight = committedWeight ? parseInt(committedWeight, 10) : 0;
-        return cascadedWeight + newCommittedWeight;
-    }, [cascadedWeight, committedWeight]);
+        return cascadedWeight + committedWeightTotal;
+    }, [cascadedWeight, committedWeightTotal]);
 
     if (!employee) return null;
 
@@ -581,27 +610,48 @@ const AssignKpiDialog = ({
                             </p>
                             <p className="text-xs text-gray-500">This is the sum of weights from the 'Assign Cascaded KPI' tab.</p>
                         </div>
-                         <div className="space-y-2">
-                            <Label htmlFor="committed-task">Task / Project Name</Label>
-                            <Input id="committed-task" value={committedTask} onChange={e => setCommittedTask(e.target.value)} placeholder="e.g., Monthly Report Submission" />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="committed-measure">KPI Measure</Label>
-                            <Input id="committed-measure" value={committedMeasure} onChange={e => setCommittedMeasure(e.target.value)} placeholder="e.g., On-time Submission Rate" />
-                        </div>
-                         <div className="space-y-2">
-                            <Label>ให้ปรับเป็น ระดับผลงาน</Label>
-                            <div className="grid grid-cols-5 gap-2">
-                                <Input placeholder="Level 1 (&lt;85%)" value={committedTargets.level1} onChange={e => setCommittedTargets({...committedTargets, level1: e.target.value})} />
-                                <Input placeholder="Level 2 (85-95%)" value={committedTargets.level2} onChange={e => setCommittedTargets({...committedTargets, level2: e.target.value})} />
-                                <Input placeholder="Level 3 (95-105%)" value={committedTargets.level3} onChange={e => setCommittedTargets({...committedTargets, level3: e.target.value})} />
-                                <Input placeholder="Level 4 (105-115%)" value={committedTargets.level4} onChange={e => setCommittedTargets({...committedTargets, level4: e.target.value})} />
-                                <Input placeholder="Level 5 (&gt;115%)" value={committedTargets.level5} onChange={e => setCommittedTargets({...committedTargets, level5: e.target.value})} />
-                            </div>
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="committed-weight">Weight (%)</Label>
-                            <Input id="committed-weight" type="number" value={committedWeight} onChange={e => setCommittedWeight(e.target.value)} placeholder="e.g., 15" />
+                        <ScrollArea className="h-[400px] pr-4">
+                           <div className="space-y-4">
+                                {committedKpis.map((kpi, index) => (
+                                    <Card key={kpi.id} className="relative">
+                                        <CardContent className="p-4 space-y-4">
+                                            <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-6 w-6" onClick={() => handleRemoveCommittedKpi(kpi.id)}>
+                                                <Trash2 className="h-4 w-4 text-destructive" />
+                                            </Button>
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                <div className="md:col-span-2 space-y-2">
+                                                    <Label htmlFor={`committed-task-${kpi.id}`}>Task / Project Name</Label>
+                                                    <Input id={`committed-task-${kpi.id}`} value={kpi.task} onChange={e => handleCommittedKpiChange(index, 'task', e.target.value)} placeholder="e.g., Monthly Report Submission" />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label htmlFor={`committed-weight-${kpi.id}`}>Weight (%)</Label>
+                                                    <Input id={`committed-weight-${kpi.id}`} type="number" value={kpi.weight} onChange={e => handleCommittedKpiChange(index, 'weight', e.target.value)} placeholder="e.g., 15" />
+                                                </div>
+                                            </div>
+                                             <div className="space-y-2">
+                                                <Label htmlFor={`committed-measure-${kpi.id}`}>KPI Measure</Label>
+                                                <Input id={`committed-measure-${kpi.id}`} value={kpi.kpiMeasure} onChange={e => handleCommittedKpiChange(index, 'kpiMeasure', e.target.value)} placeholder="e.g., On-time Submission Rate" />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>ให้ปรับเป็น ระดับผลงาน</Label>
+                                                <div className="grid grid-cols-5 gap-2">
+                                                    <Input placeholder="Level 1 (<85%)" value={kpi.targets.level1} onChange={e => handleCommittedTargetChange(index, 'level1', e.target.value)} />
+                                                    <Input placeholder="Level 2 (85-95%)" value={kpi.targets.level2} onChange={e => handleCommittedTargetChange(index, 'level2', e.target.value)} />
+                                                    <Input placeholder="Level 3 (95-105%)" value={kpi.targets.level3} onChange={e => handleCommittedTargetChange(index, 'level3', e.target.value)} />
+                                                    <Input placeholder="Level 4 (105-115%)" value={kpi.targets.level4} onChange={e => handleCommittedTargetChange(index, 'level4', e.target.value)} />
+                                                    <Input placeholder="Level 5 (>115%)" value={kpi.targets.level5} onChange={e => handleCommittedTargetChange(index, 'level5', e.target.value)} />
+                                                </div>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                           </div>
+                        </ScrollArea>
+                         <div className="flex justify-start">
+                            <Button variant="outline" onClick={handleAddCommittedKpi}>
+                                <PlusCircle className="mr-2 h-4 w-4" />
+                                Add KPI Measure
+                            </Button>
                         </div>
                     </TabsContent>
                 </Tabs>
@@ -718,5 +768,3 @@ export default function CascadePage() {
     </div>
   );
 }
-
-    
