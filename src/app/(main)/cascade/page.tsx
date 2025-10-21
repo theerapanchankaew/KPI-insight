@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useEffect, useState, useMemo } from 'react';
@@ -437,15 +438,16 @@ const AssignKpiDialog = ({
         }));
     };
     
-    const handleAssignCascaded = () => {
+    const handleSubmit = () => {
         if (!employee) return;
-        const assignments: AssignedCascadedKpi[] = [];
+        
+        const cascadedAssignments: AssignedCascadedKpi[] = [];
         for (const kpiId in selectedKpis) {
             const selection = selectedKpis[kpiId];
             if (selection.selected && selection.weight && selection.target) {
                 const kpiDetails = relevantKpis.find(k => k.id === kpiId);
                 if (kpiDetails) {
-                    assignments.push({
+                    cascadedAssignments.push({
                         type: 'cascaded',
                         employeeId: employee.id,
                         kpiId: kpiId,
@@ -456,15 +458,10 @@ const AssignKpiDialog = ({
                 }
             }
         }
-        if (assignments.length > 0) {
-            onConfirm(assignments);
-            onClose();
-        }
-    };
-    
-    const handleCreateCommitted = () => {
-        if (employee && committedTask && committedMeasure && committedWeight) {
-             onConfirm([{
+
+        const committedAssignments: CommittedKpi[] = [];
+        if (committedTask && committedMeasure && committedWeight) {
+             committedAssignments.push({
                 type: 'committed',
                 employeeId: employee.id,
                 kpiId: `committed-${Date.now()}`, // Generate a unique ID
@@ -472,19 +469,29 @@ const AssignKpiDialog = ({
                 task: committedTask,
                 targets: committedTargets,
                 weight: parseInt(committedWeight, 10),
-            }]);
+            });
+        }
+        
+        const allAssignments = [...cascadedAssignments, ...committedAssignments];
+
+        if (allAssignments.length > 0) {
+            onConfirm(allAssignments);
             onClose();
         }
     };
     
     const totalWeight = useMemo(() => {
-        return Object.values(selectedKpis).reduce((sum, kpi) => {
+        const cascadedWeight = Object.values(selectedKpis).reduce((sum, kpi) => {
             if (kpi.selected && kpi.weight) {
                 return sum + parseInt(kpi.weight, 10);
             }
             return sum;
         }, 0);
-    }, [selectedKpis]);
+        
+        const newCommittedWeight = committedWeight ? parseInt(committedWeight, 10) : 0;
+
+        return cascadedWeight + newCommittedWeight;
+    }, [selectedKpis, committedWeight]);
 
     if (!employee) return null;
 
@@ -552,17 +559,6 @@ const AssignKpiDialog = ({
                                 </TableBody>
                             </Table>
                         </div>
-                        <DialogFooter className="sm:justify-between items-center pt-2">
-                             <div className="text-right sm:text-left">
-                                <p className={cn("text-lg font-bold", totalWeight > 100 && "text-destructive")}>
-                                    Total Weight: {totalWeight}%
-                                </p>
-                            </div>
-                            <div className="flex space-x-2">
-                               <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                               <Button onClick={handleAssignCascaded}>Assign KPIs</Button>
-                            </div>
-                        </DialogFooter>
                     </TabsContent>
                     <TabsContent value="committed" className="mt-6 space-y-4">
                          <div className="space-y-2">
@@ -587,12 +583,20 @@ const AssignKpiDialog = ({
                             <Label htmlFor="committed-weight">Weight (%)</Label>
                             <Input id="committed-weight" type="number" value={committedWeight} onChange={e => setCommittedWeight(e.target.value)} placeholder="e.g., 15" />
                         </div>
-                         <DialogFooter>
-                            <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                            <Button onClick={handleCreateCommitted}>Create &amp; Assign KPI</Button>
-                        </DialogFooter>
                     </TabsContent>
                 </Tabs>
+                <DialogFooter className="sm:justify-between items-center pt-4 border-t mt-4">
+                     <div className="text-right sm:text-left">
+                        <p className={cn("text-lg font-bold", totalWeight > 100 && "text-destructive")}>
+                            Total Weight: {totalWeight}%
+                        </p>
+                        {totalWeight > 100 && <p className="text-xs text-destructive">Total weight cannot exceed 100%</p>}
+                    </div>
+                    <div className="flex space-x-2">
+                       <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+                       <Button onClick={handleSubmit} disabled={totalWeight > 100 || totalWeight === 0}>Assign KPIs</Button>
+                    </div>
+                </DialogFooter>
             </DialogContent>
         </Dialog>
     );
