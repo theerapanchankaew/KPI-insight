@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useEffect, useState } from 'react';
@@ -37,7 +38,7 @@ const KpiCommitDialog = ({ isOpen, onClose, kpi, onConfirm, onReject }: { isOpen
                 <DialogHeader>
                     <DialogTitle>Review KPI: {kpi.kpi}</DialogTitle>
                     <DialogDescription>
-                        Please review and confirm your commitment, or provide a reason for rejection.
+                        Please review and confirm your commitment, or provide a reason for rejection. This action is between you (Individual) and your Manager.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="py-4 space-y-4">
