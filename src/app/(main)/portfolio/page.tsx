@@ -21,16 +21,18 @@ const statusConfig = {
     Approved: { icon: CheckCircle, color: 'text-success', badge: 'success' },
 };
 
-const KpiCommitDialog = ({ isOpen, onClose, kpi, onConfirm, onReject }: { isOpen: boolean, onClose: () => void, kpi: any, onConfirm: (id: string) => void, onReject: (id: string, reason: string) => void }) => {
-    const [rejectionReason, setRejectionReason] = useState('');
+const KpiCommitDialog = ({ isOpen, onClose, kpi, onConfirm, onReject }: { isOpen: boolean, onClose: () => void, kpi: any, onConfirm: (id: string, notes: string) => void, onReject: (id: string, notes: string) => void }) => {
+    const [notes, setNotes] = useState('');
 
     useEffect(() => {
         if (isOpen) {
-            setRejectionReason(kpi?.rejectionReason || '');
+            setNotes(kpi?.notes || kpi?.rejectionReason || '');
         }
     }, [isOpen, kpi]);
 
     if (!kpi) return null;
+
+    const isRejectDisabled = notes.trim() === '';
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
@@ -50,23 +52,23 @@ const KpiCommitDialog = ({ isOpen, onClose, kpi, onConfirm, onReject }: { isOpen
                     </div>
                     
                     <div className="space-y-2">
-                        <Label htmlFor="rejection-reason">Reason for Rejection</Label>
+                        <Label htmlFor="notes">Notes for Manager</Label>
                         <Textarea
-                            id="rejection-reason"
-                            placeholder="If rejecting, please provide a reason for your manager..."
-                            value={rejectionReason}
-                            onChange={(e) => setRejectionReason(e.target.value)}
+                            id="notes"
+                            placeholder="Add any comments or questions for your manager here. A reason is required if you are rejecting."
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
                         />
                     </div>
                      <p className="text-xs text-gray-600">By clicking "Confirm Commitment," you agree to work towards the set target. This will be sent to your manager for final agreement.</p>
                 </div>
                 <DialogFooter>
                     <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                    <Button onClick={() => onReject(kpi.id, rejectionReason)} variant="destructive" disabled={rejectionReason.trim() === ''}>
+                    <Button onClick={() => onReject(kpi.id, notes)} variant="destructive" disabled={isRejectDisabled}>
                         <X className="w-4 h-4 mr-2" />
                         Reject
                     </Button>
-                    <Button onClick={() => onConfirm(kpi.id)} className="bg-primary hover:bg-primary/90">
+                    <Button onClick={() => onConfirm(kpi.id, notes)} className="bg-primary hover:bg-primary/90">
                         <Check className="w-4 h-4 mr-2" />
                         Confirm Commitment
                     </Button>
@@ -94,10 +96,10 @@ export default function PortfolioPage() {
         setIsCommitModalOpen(true);
     };
 
-    const handleConfirmCommitment = (kpiId: string) => {
+    const handleConfirmCommitment = (kpiId: string, notes: string) => {
         setPortfolioData(prevData =>
             prevData.map(kpi =>
-                kpi.id === kpiId ? { ...kpi, status: 'Committed', rejectionReason: '' } : kpi
+                kpi.id === kpiId ? { ...kpi, status: 'Committed', notes, rejectionReason: '' } : kpi
             )
         );
         toast({
@@ -110,7 +112,7 @@ export default function PortfolioPage() {
     const handleRejectCommitment = (kpiId: string, reason: string) => {
         setPortfolioData(prevData =>
             prevData.map(kpi =>
-                kpi.id === kpiId ? { ...kpi, status: 'Rejected', rejectionReason: reason } : kpi
+                kpi.id === kpiId ? { ...kpi, status: 'Rejected', notes: reason, rejectionReason: reason } : kpi
             )
         );
         toast({

@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useEffect } from 'react';
@@ -102,6 +103,11 @@ const CommitmentRequestsTab = () => {
                     <div><span className="font-medium">Weight:</span><p className="font-bold text-gray-800">{item.weight}%</p></div>
                     <div><span className="font-medium">Target:</span><p>{item.target}</p></div>
                   </div>
+                  {item.notes && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-2">
+                        <p className="text-sm text-blue-800"><strong>Notes from employee:</strong> {item.notes}</p>
+                    </div>
+                  )}
                 </div>
                 <div className="flex space-x-2 ml-0 sm:ml-4 mt-4 sm:mt-0">
                    <Button onClick={() => handleAgreement(item.id)} variant="secondary">
