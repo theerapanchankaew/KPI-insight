@@ -246,24 +246,37 @@ const IndividualLevel = ({ cascadedKpis, individualKpis, onAssignKpi }: { cascad
     
     const managers = [...new Set(orgData.employees.map(e => e.manager))].filter(Boolean); // Filter out empty manager names
 
+    const usersToDisplay = useMemo(() => {
+        const allUsers = orgData.employees;
+        const managerIds = new Set(allUsers.map(e => e.manager));
+        // Display all users if there are no managers, or if we want a flat list.
+        // For this logic, we'll group by manager. Let's find employees who are also managers.
+        const employeesWhoAreManagers = allUsers.filter(e => allUsers.some(report => report.manager === e.name));
+        return allUsers; // Simplified to return all users for now, grouping will handle hierarchy
+    }, [orgData.employees]);
+
     return (
         <div className="space-y-8">
             {managers.map(manager => {
                 const directReports = orgData.employees.filter(e => e.manager === manager);
+                const managerAsEmployee = orgData.employees.find(e => e.name === manager);
+                
+                const team = managerAsEmployee ? [managerAsEmployee, ...directReports] : directReports;
+
                 return (
                     <Card key={manager}>
                         <CardHeader>
-                            <CardTitle>Manager: {manager}</CardTitle>
+                            <CardTitle>Team: {manager}</CardTitle>
                         </CardHeader>
                         <CardContent className="p-0 divide-y">
-                            {directReports.map(person => {
+                            {team.map(person => {
                                 const assignedForPerson = individualKpis.filter(ik => ik.employeeId === person.id);
                                 return (
                                     <Collapsible key={person.id}>
                                         <CollapsibleTrigger className="w-full">
                                             <div className="flex items-center justify-between p-4 hover:bg-gray-50/80 transition-colors w-full text-left">
                                                 <div className="grid grid-cols-4 gap-4 flex-1">
-                                                    <span className="font-medium">{person.name}</span>
+                                                    <span className="font-medium">{person.name} {person.name === manager && <Badge variant="secondary" className="ml-2">Manager</Badge>}</span>
                                                     <span>{person.position}</span>
                                                     <span>{person.department}</span>
                                                     <Badge variant="outline" className="w-fit">{assignedForPerson.length} KPIs</Badge>
@@ -480,18 +493,19 @@ const AssignKpiDialog = ({
         }
     };
     
-    const totalWeight = useMemo(() => {
-        const cascadedWeight = Object.values(selectedKpis).reduce((sum, kpi) => {
+    const cascadedWeight = useMemo(() => {
+        return Object.values(selectedKpis).reduce((sum, kpi) => {
             if (kpi.selected && kpi.weight) {
                 return sum + parseInt(kpi.weight, 10);
             }
             return sum;
         }, 0);
-        
-        const newCommittedWeight = committedWeight ? parseInt(committedWeight, 10) : 0;
+    }, [selectedKpis]);
 
+    const totalWeight = useMemo(() => {
+        const newCommittedWeight = committedWeight ? parseInt(committedWeight, 10) : 0;
         return cascadedWeight + newCommittedWeight;
-    }, [selectedKpis, committedWeight]);
+    }, [cascadedWeight, committedWeight]);
 
     if (!employee) return null;
 
@@ -561,6 +575,12 @@ const AssignKpiDialog = ({
                         </div>
                     </TabsContent>
                     <TabsContent value="committed" className="mt-6 space-y-4">
+                        <div className="rounded-lg border bg-gray-50/50 p-4">
+                            <p className="text-sm font-medium text-gray-600">
+                                Cascaded KPIs Weight: <span className="font-bold text-primary">{cascadedWeight}%</span>
+                            </p>
+                            <p className="text-xs text-gray-500">This is the sum of weights from the 'Assign Cascaded KPI' tab.</p>
+                        </div>
                          <div className="space-y-2">
                             <Label htmlFor="committed-task">Task / Project Name</Label>
                             <Input id="committed-task" value={committedTask} onChange={e => setCommittedTask(e.target.value)} placeholder="e.g., Monthly Report Submission" />
@@ -570,13 +590,13 @@ const AssignKpiDialog = ({
                             <Input id="committed-measure" value={committedMeasure} onChange={e => setCommittedMeasure(e.target.value)} placeholder="e.g., On-time Submission Rate" />
                         </div>
                          <div className="space-y-2">
-                            <Label>ต้องสามารถเลือกระดับเพื่อทำการ commit ได้ระหว่าง duty employee กับ manager และ manager กับ AVP/VP</Label>
+                            <Label>ให้ปรับเป็น ระดับผลงาน</Label>
                             <div className="grid grid-cols-5 gap-2">
-                                <Input placeholder="Level 1 (<85%)" value={committedTargets.level1} onChange={e => setCommittedTargets({...committedTargets, level1: e.target.value})} />
+                                <Input placeholder="Level 1 (&lt;85%)" value={committedTargets.level1} onChange={e => setCommittedTargets({...committedTargets, level1: e.target.value})} />
                                 <Input placeholder="Level 2 (85-95%)" value={committedTargets.level2} onChange={e => setCommittedTargets({...committedTargets, level2: e.target.value})} />
                                 <Input placeholder="Level 3 (95-105%)" value={committedTargets.level3} onChange={e => setCommittedTargets({...committedTargets, level3: e.target.value})} />
                                 <Input placeholder="Level 4 (105-115%)" value={committedTargets.level4} onChange={e => setCommittedTargets({...committedTargets, level4: e.target.value})} />
-                                <Input placeholder="Level 5 (>115%)" value={committedTargets.level5} onChange={e => setCommittedTargets({...committedTargets, level5: e.target.value})} />
+                                <Input placeholder="Level 5 (&gt;115%)" value={committedTargets.level5} onChange={e => setCommittedTargets({...committedTargets, level5: e.target.value})} />
                             </div>
                         </div>
                         <div className="space-y-2">
@@ -698,3 +718,5 @@ export default function CascadePage() {
     </div>
   );
 }
+
+    
