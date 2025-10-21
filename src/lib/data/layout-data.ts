@@ -2,12 +2,12 @@ import {
   LayoutGrid,
   Network,
   PlusSquare,
-  BadgeCheck,
+  ShieldCheck,
   FileText,
   Settings,
   FileUp,
   User,
-  ShieldCheck,
+  Users
 } from 'lucide-react';
 
 export const appConfig = {
@@ -59,6 +59,12 @@ export const navItems = [
     label: 'Intake Data',
     description: 'นำเข้าข้อมูล',
     icon: FileUp,
+  },
+  {
+    href: '/user-management',
+    label: 'User Management',
+    description: 'จัดการผู้ใช้และสิทธิ์',
+    icon: Users,
   },
   {
     href: '/settings',
