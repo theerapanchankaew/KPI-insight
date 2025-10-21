@@ -193,7 +193,15 @@ const DepartmentLevel = ({ cascadedKpis }: { cascadedKpis: CascadedKpi[] }) => {
     );
 }
 
-const AssignedKpiGrid = ({ kpis }: { kpis: IndividualKpi[] }) => (
+const AssignedKpiGrid = ({ kpis }: { kpis: IndividualKpi[] }) => {
+    const summary = useMemo(() => {
+        const totalWeight = kpis.reduce((sum, kpi) => sum + kpi.weight, 0);
+        const cascadedCount = kpis.filter(kpi => kpi.type === 'cascaded').length;
+        const committedCount = kpis.filter(kpi => kpi.type === 'committed').length;
+        return { totalWeight, cascadedCount, committedCount };
+    }, [kpis]);
+
+    return (
     <div className="px-6 py-4 bg-gray-50/50">
         {kpis.length > 0 ? (
             <Table>
@@ -225,8 +233,20 @@ const AssignedKpiGrid = ({ kpis }: { kpis: IndividualKpi[] }) => (
         ) : (
             <p className="text-sm text-center text-gray-500 py-4">No KPIs assigned to this individual yet.</p>
         )}
+        <div className="mt-4 p-4 border-t">
+            <div className="flex justify-between items-center text-sm">
+                <div className="flex space-x-4">
+                    <span>Cascaded: <span className="font-bold">{summary.cascadedCount}</span></span>
+                    <span>Committed: <span className="font-bold">{summary.committedCount}</span></span>
+                </div>
+                <div className={cn("font-bold", summary.totalWeight > 100 ? "text-destructive" : "text-gray-800")}>
+                    Total Weight: {summary.totalWeight}%
+                </div>
+            </div>
+        </div>
     </div>
 );
+}
 
 
 const IndividualLevel = ({ cascadedKpis, individualKpis, onAssignKpi }: { cascadedKpis: CascadedKpi[], individualKpis: IndividualKpi[], onAssignKpi: (employee: Employee) => void }) => {
