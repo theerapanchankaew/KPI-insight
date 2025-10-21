@@ -85,10 +85,10 @@ const AddUserDialog = ({ isOpen, onOpenChange, onAddUser }: { isOpen: boolean; o
         if (newUser.name && newUser.department && newUser.position) {
             onAddUser({
                 id: `user-${Date.now()}`,
-                'ชื่อ-นามสกุล': newUser.name,
-                'แผนก': newUser.department,
-                'ตำแหน่ง': newUser.position,
-                'ผู้บังคับบัญชา': newUser.manager,
+                name: newUser.name,
+                department: newUser.department,
+                position: newUser.position,
+                manager: newUser.manager,
             });
             onOpenChange(false);
             setNewUser({ name: '', department: '', position: '', manager: '' });
@@ -112,7 +112,7 @@ const AddUserDialog = ({ isOpen, onOpenChange, onAddUser }: { isOpen: boolean; o
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="new-user-position">Position</Label>
-                        <Input id="new-user-position" value={newUser.position} onChange={e => setNewUser({ ...newUser, position: e.target.value })} placeholder="e.g., Sales Manager" />
+                        <Input id="new-user-position" value={newUser.position} onChange={e => setNew-User({ ...newUser, position: e.target.value })} placeholder="e.g., Sales Manager" />
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="new-user-manager">Manager</Label>
@@ -203,15 +203,7 @@ export default function UserManagementPage() {
     });
   };
 
-  const handleAddUser = (rawUser: any) => {
-    const newUser = {
-        id: rawUser.id.toString(),
-        name: rawUser['ชื่อ-นามสกุล'],
-        department: rawUser['แผนก'],
-        position: rawUser['ตำแหน่ง'],
-        manager: rawUser['ผู้บังคับบัญชา']
-    };
-
+  const handleAddUser = (newUser: any) => {
     if (orgData) {
         const updatedEmployees = [...orgData.employees, newUser];
         setOrgData({ employees: updatedEmployees });
@@ -254,6 +246,7 @@ export default function UserManagementPage() {
                 <TableHeader>
                   <TableRow className="bg-muted/50">
                     <TableHead className="w-[250px]">User</TableHead>
+                    <TableHead className="w-[200px]">Position</TableHead>
                     <TableHead className="w-[150px]">Role</TableHead>
                     {navItems.map(item => (
                       <TableHead key={item.href} className="text-center">{item.label}</TableHead>
@@ -274,6 +267,9 @@ export default function UserManagementPage() {
                             <p className="text-xs text-muted-foreground">{employee.department}</p>
                           </div>
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm">{employee.position}</span>
                       </TableCell>
                       <TableCell>
                         <Select
@@ -335,3 +331,5 @@ export default function UserManagementPage() {
     </div>
   );
 }
+
+    
