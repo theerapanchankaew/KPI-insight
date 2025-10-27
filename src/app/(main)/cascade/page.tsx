@@ -10,7 +10,7 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
-import { useKpiData, type Kpi, type Employee } from '@/context/KpiDataContext';
+import { useKpiData, type Employee } from '@/context/KpiDataContext';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -19,15 +19,20 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, ChevronsUpDown, PlusCircle, Trash2 } from 'lucide-react';
-import { WithId } from '@/firebase';
+import { ChevronsUpDown, PlusCircle, Trash2 } from 'lucide-react';
+import { WithId, useCollection, useFirestore, useMemoFirebase } from '@/firebase';
+import { Kpi } from '@/context/KpiDataContext';
+import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { collection } from 'firebase/firestore';
 
 
 // Type for a corporate KPI
 type CorporateKpi = WithId<Kpi>;
 
 // Type for a cascaded KPI in a department
-interface CascadedKpi extends CorporateKpi {
+interface CascadedKpi {
+  corporateKpiId: string;
+  measure: string;
   department: string;
   weight: number;
   departmentTarget: string;
@@ -36,7 +41,7 @@ interface CascadedKpi extends CorporateKpi {
 // Base type for any individual KPI
 interface IndividualKpiBase {
     employeeId: string;
-    kpiId: string;
+    kpiId: string; // This can be the original corporate KPI id or a new one for committed
     kpiMeasure: string;
     weight: number;
 }
@@ -131,7 +136,7 @@ const CorporateLevel = ({ onCascadeClick }: { onCascadeClick: (kpi: CorporateKpi
 };
 
 
-const DepartmentLevel = ({ cascadedKpis }: { cascadedKpis: CascadedKpi[] }) => {
+const DepartmentLevel = ({ cascadedKpis }: { cascadedKpis: WithId<CascadedKpi>[] | null }) => {
     const { orgData, isOrgDataLoading } = useKpiData();
 
      if (isOrgDataLoading) {
@@ -162,13 +167,13 @@ const DepartmentLevel = ({ cascadedKpis }: { cascadedKpis: CascadedKpi[] }) => {
     }
     
     const departments = [...new Set(orgData.map(e => e.department))];
-    const kpisByDepartment = cascadedKpis.reduce((acc, kpi) => {
+    const kpisByDepartment = (cascadedKpis || []).reduce((acc, kpi) => {
         if (!acc[kpi.department]) {
             acc[kpi.department] = [];
         }
         acc[kpi.department].push(kpi);
         return acc;
-    }, {} as Record<string, CascadedKpi[]>);
+    }, {} as Record<string, WithId<CascadedKpi>[]>);
 
 
     return (
@@ -201,7 +206,7 @@ const DepartmentLevel = ({ cascadedKpis }: { cascadedKpis: CascadedKpi[] }) => {
     );
 }
 
-const AssignedKpiGrid = ({ kpis }: { kpis: IndividualKpi[] }) => {
+const AssignedKpiGrid = ({ kpis }: { kpis: WithId<IndividualKpi>[] }) => {
     const summary = useMemo(() => {
         const totalWeight = kpis.reduce((sum, kpi) => sum + kpi.weight, 0);
         const cascadedCount = kpis.filter(kpi => kpi.type === 'cascaded').length;
@@ -223,7 +228,7 @@ const AssignedKpiGrid = ({ kpis }: { kpis: IndividualKpi[] }) => {
                 </TableHeader>
                 <TableBody>
                     {kpis.map(kpi => (
-                        <TableRow key={kpi.kpiId}>
+                        <TableRow key={kpi.id}>
                             <TableCell>
                                 <Badge variant={kpi.type === 'cascaded' ? 'secondary' : 'default'}>{kpi.type}</Badge>
                             </TableCell>
@@ -257,7 +262,7 @@ const AssignedKpiGrid = ({ kpis }: { kpis: IndividualKpi[] }) => {
 }
 
 
-const IndividualLevel = ({ cascadedKpis, individualKpis, onAssignKpi }: { cascadedKpis: CascadedKpi[], individualKpis: IndividualKpi[], onAssignKpi: (employee: WithId<Employee>) => void }) => {
+const IndividualLevel = ({ cascadedKpis, individualKpis, onAssignKpi }: { cascadedKpis: WithId<CascadedKpi>[] | null, individualKpis: WithId<IndividualKpi>[] | null, onAssignKpi: (employee: WithId<Employee>) => void }) => {
     const { orgData, isOrgDataLoading } = useKpiData();
 
     if (isOrgDataLoading) {
@@ -300,7 +305,7 @@ const IndividualLevel = ({ cascadedKpis, individualKpis, onAssignKpi }: { cascad
                         </CardHeader>
                         <CardContent className="p-0 divide-y">
                             {team.map(person => {
-                                const assignedForPerson = individualKpis.filter(ik => ik.employeeId === person.id);
+                                const assignedForPerson = (individualKpis || []).filter(ik => ik.employeeId === person.id);
                                 return (
                                     <Collapsible key={person.id}>
                                         <CollapsibleTrigger className="w-full">
@@ -368,7 +373,8 @@ const CascadeDialog = ({
         if (kpi && selectedDepartments.length > 0 && target && weight) {
             selectedDepartments.forEach(department => {
                 onConfirm({
-                    ...kpi,
+                    corporateKpiId: kpi.id,
+                    measure: kpi.measure,
                     department,
                     departmentTarget: target,
                     weight: parseInt(weight, 10),
@@ -405,7 +411,7 @@ const CascadeDialog = ({
                         </ScrollArea>
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="department-target">Target</Label>
+                        <Label htmlFor="department-target">Department Target</Label>
                         <Input id="department-target" value={target} onChange={e => setTarget(e.target.value)} placeholder={`e.g., ${kpi.target}`} />
                     </div>
                     <div className="space-y-2">
@@ -434,7 +440,7 @@ const AssignKpiDialog = ({
     isOpen: boolean;
     onClose: () => void;
     employee: WithId<Employee> | null;
-    departmentKpis: CascadedKpi[];
+    departmentKpis: WithId<CascadedKpi>[];
     onConfirm: (assignment: IndividualKpi[]) => void;
 }) => {
     const [assignmentType, setAssignmentType] = useState<'cascaded' | 'committed'>('cascaded');
@@ -516,18 +522,16 @@ const AssignKpiDialog = ({
         const cascadedAssignments: AssignedCascadedKpi[] = [];
         for (const kpiId in selectedKpis) {
             const selection = selectedKpis[kpiId];
-            if (selection.selected && selection.weight && selection.target) {
-                const kpiDetails = relevantKpis.find(k => k.id === kpiId);
-                if (kpiDetails) {
-                    cascadedAssignments.push({
-                        type: 'cascaded',
-                        employeeId: employee.id,
-                        kpiId: kpiId,
-                        kpiMeasure: kpiDetails.measure,
-                        target: selection.target,
-                        weight: parseInt(selection.weight, 10),
-                    });
-                }
+            const kpiDetails = relevantKpis.find(k => k.id === kpiId);
+            if (selection.selected && selection.weight && selection.target && kpiDetails) {
+                cascadedAssignments.push({
+                    type: 'cascaded',
+                    employeeId: employee.id,
+                    kpiId: kpiId,
+                    kpiMeasure: kpiDetails.measure,
+                    target: selection.target,
+                    weight: parseInt(selection.weight, 10),
+                });
             }
         }
 
@@ -580,7 +584,7 @@ const AssignKpiDialog = ({
                         <TabsTrigger value="committed">Create Committed KPI</TabsTrigger>
                     </TabsList>
                     <TabsContent value="cascaded" className="mt-6 space-y-4">
-                        <p>ควรออกแบบให้เป็นกระดาน หรือ grid table แล้ว tickbox เนื่องจากจะได้ตรวจสอบว่า total weight เกินกว่า 100% หรือไม่</p>
+                        <p className="text-sm text-muted-foreground">Select KPIs that have been cascaded to the department to assign them to an individual.</p>
                         <div className="border rounded-lg overflow-hidden">
                             <Table>
                                 <TableHeader>
@@ -663,13 +667,13 @@ const AssignKpiDialog = ({
                                                 <Input id={`committed-measure-${kpi.id}`} value={kpi.kpiMeasure} onChange={e => handleCommittedKpiChange(index, 'kpiMeasure', e.target.value)} placeholder="e.g., On-time Submission Rate" />
                                             </div>
                                             <div className="space-y-2">
-                                                <Label>ให้ปรับเป็น ระดับผลงาน</Label>
+                                                <Label>Performance Levels (ระดับผลงาน)</Label>
                                                 <div className="grid grid-cols-5 gap-2">
-                                                    <Input placeholder="Level 1 (&lt;85%)" value={kpi.targets.level1} onChange={e => handleCommittedTargetChange(index, 'level1', e.target.value)} />
-                                                    <Input placeholder="Level 2 (85-95%)" value={kpi.targets.level2} onChange={e => handleCommittedTargetChange(index, 'level2', e.target.value)} />
-                                                    <Input placeholder="Level 3 (95-105%)" value={kpi.targets.level3} onChange={e => handleCommittedTargetChange(index, 'level3', e.target.value)} />
-                                                    <Input placeholder="Level 4 (105-115%)" value={kpi.targets.level4} onChange={e => handleCommittedTargetChange(index, 'level4', e.target.value)} />
-                                                    <Input placeholder="Level 5 (&gt;115%)" value={kpi.targets.level5} onChange={e => handleCommittedTargetChange(index, 'level5', e.target.value)} />
+                                                    <Input placeholder="Level 1" value={kpi.targets.level1} onChange={e => handleCommittedTargetChange(index, 'level1', e.target.value)} />
+                                                    <Input placeholder="Level 2" value={kpi.targets.level2} onChange={e => handleCommittedTargetChange(index, 'level2', e.target.value)} />
+                                                    <Input placeholder="Level 3" value={kpi.targets.level3} onChange={e => handleCommittedTargetChange(index, 'level3', e.target.value)} />
+                                                    <Input placeholder="Level 4" value={kpi.targets.level4} onChange={e => handleCommittedTargetChange(index, 'level4', e.target.value)} />
+                                                    <Input placeholder="Level 5" value={kpi.targets.level5} onChange={e => handleCommittedTargetChange(index, 'level5', e.target.value)} />
                                                 </div>
                                             </div>
                                         </CardContent>
@@ -706,15 +710,19 @@ const AssignKpiDialog = ({
 export default function CascadePage() {
   const { setPageTitle } = useAppLayout();
   const { orgData } = useKpiData();
+  const firestore = useFirestore();
+
+  const cascadedKpisQuery = useMemoFirebase(() => firestore ? collection(firestore, 'cascaded_kpis') : null, [firestore]);
+  const { data: cascadedKpis } = useCollection<CascadedKpi>(cascadedKpisQuery);
+
+  const individualKpisQuery = useMemoFirebase(() => firestore ? collection(firestore, 'individual_kpis') : null, [firestore]);
+  const { data: individualKpis } = useCollection<IndividualKpi>(individualKpisQuery);
 
   const [isCascadeModalOpen, setIsCascadeModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   
   const [selectedKpi, setSelectedKpi] = useState<CorporateKpi | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<WithId<Employee> | null>(null);
-
-  const [cascadedKpis, setCascadedKpis] = useState<CascadedKpi[]>([]);
-  const [individualKpis, setIndividualKpis] = useState<IndividualKpi[]>([]);
 
   useEffect(() => {
     setPageTitle('Cascade KPI');
@@ -733,29 +741,16 @@ export default function CascadePage() {
   };
 
   const handleConfirmCascade = (cascadedKpi: CascadedKpi) => {
-      setCascadedKpis(prev => {
-        const existingIndex = prev.findIndex(k => k.id === cascadedKpi.id && k.department === cascadedKpi.department);
-        if (existingIndex > -1) {
-            const newKpis = [...prev];
-            newKpis[existingIndex] = cascadedKpi;
-            return newKpis;
-        }
-        return [...prev, cascadedKpi];
-      });
+      if (!firestore) return;
+      const cascadedKpisCollection = collection(firestore, 'cascaded_kpis');
+      addDocumentNonBlocking(cascadedKpisCollection, cascadedKpi);
   };
 
   const handleConfirmAssignment = (assignments: IndividualKpi[]) => {
-      setIndividualKpis(prev => {
-          const newKpis = [...prev];
-          assignments.forEach(assignment => {
-              const existingIndex = newKpis.findIndex(k => k.employeeId === assignment.employeeId && k.kpiId === assignment.kpiId);
-              if (existingIndex > -1) {
-                  newKpis[existingIndex] = assignment;
-              } else {
-                  newKpis.push(assignment);
-              }
-          });
-          return newKpis;
+      if (!firestore) return;
+      const individualKpisCollection = collection(firestore, 'individual_kpis');
+      assignments.forEach(assignment => {
+        addDocumentNonBlocking(individualKpisCollection, assignment);
       });
   };
 
@@ -792,7 +787,7 @@ export default function CascadePage() {
         isOpen={isAssignModalOpen}
         onClose={() => setIsAssignModalOpen(false)}
         employee={selectedEmployee}
-        departmentKpis={cascadedKpis}
+        departmentKpis={cascadedKpis || []}
         onConfirm={handleConfirmAssignment}
       />
     </div>

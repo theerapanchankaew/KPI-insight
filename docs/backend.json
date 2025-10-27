@@ -197,6 +197,44 @@
         "currency": { "type": "string" },
         "periodDate": { "type": "string", "format": "date-time" }
       }
+    },
+    "CascadedKpi": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "CascadedKpi",
+      "type": "object",
+      "description": "Represents a corporate KPI cascaded to a department.",
+      "properties": {
+        "corporateKpiId": { "type": "string" },
+        "measure": { "type": "string" },
+        "department": { "type": "string" },
+        "weight": { "type": "number" },
+        "departmentTarget": { "type": "string" }
+      }
+    },
+    "IndividualKpi": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "IndividualKpi",
+      "type": "object",
+      "description": "Represents a KPI assigned to an individual.",
+      "properties": {
+        "employeeId": { "type": "string" },
+        "kpiId": { "type": "string" },
+        "kpiMeasure": { "type": "string" },
+        "weight": { "type": "number" },
+        "type": { "type": "string", "enum": ["cascaded", "committed"] },
+        "target": { "type": "string" },
+        "task": { "type": "string" },
+        "targets": {
+          "type": "object",
+          "properties": {
+            "level1": { "type": "string" },
+            "level2": { "type": "string" },
+            "level3": { "type": "string" },
+            "level4": { "type": "string" },
+            "level5": { "type": "string" }
+          }
+        }
+      }
     }
   },
   "auth": {
@@ -281,7 +319,29 @@
           },
           "description": "Stores global application settings in a singleton document."
         }
+      },
+      {
+        "path": "/cascaded_kpis/{cascadedKpiId}",
+        "definition": {
+          "entityName": "CascadedKpi",
+          "schema": {
+            "$ref": "#/entities/CascadedKpi"
+          },
+          "description": "Stores corporate KPIs cascaded to departments."
+        }
+      },
+      {
+        "path": "/individual_kpis/{individualKpiId}",
+        "definition": {
+          "entityName": "IndividualKpi",
+          "schema": {
+            "$ref": "#/entities/IndividualKpi"
+          },
+          "description": "Stores KPIs assigned to individuals."
+        }
       }
     ]
   }
 }
+
+    
