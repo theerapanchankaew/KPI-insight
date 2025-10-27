@@ -11,13 +11,14 @@ import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
 import { useRouter } from 'next/navigation';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useFirestore } from '@/firebase';
+import { useFirestore, useUser } from '@/firebase';
 import { collection }from 'firebase/firestore';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { doc } from 'firebase/firestore';
 
 const KpiImportTab = () => {
     const firestore = useFirestore();
+    const { user, isUserLoading } = useUser();
     const router = useRouter();
     const { toast } = useToast();
     const [files, setFiles] = useState<File[]>([]);
@@ -76,6 +77,10 @@ const KpiImportTab = () => {
             toast({ variant: 'destructive', title: 'Error', description: 'Firestore not initialized.' });
             return;
         }
+        if (!user) {
+            toast({ variant: 'destructive', title: 'Authentication Error', description: 'You must be logged in to import data.' });
+            return;
+        }
         if (files.length === 0 || !fileContent) {
             toast({ variant: 'destructive', title: 'No File Selected', description: 'Please select a file to import.' });
             return;
@@ -109,6 +114,8 @@ const KpiImportTab = () => {
         setUploadComplete(false);
         setFileContent(null);
     };
+
+    const isButtonDisabled = files.length === 0 || uploading || uploadComplete || !fileContent || !user || isUserLoading;
 
     const exampleJson = `{
   "version": "1.0",
@@ -148,9 +155,12 @@ const KpiImportTab = () => {
 
                     {uploading && <Progress value={uploadProgress} />}
 
-                    <div className="flex justify-end space-x-2">
-                        <Button onClick={handleUpload} disabled={files.length === 0 || uploading || uploadComplete || !fileContent}>
-                            {uploading ? 'Importing...' : 'Import to Firestore'}
+                    <div className="flex justify-end items-center space-x-4">
+                        {!user && !isUserLoading && (
+                            <p className="text-sm text-destructive">Please log in to import data.</p>
+                        )}
+                        <Button onClick={handleUpload} disabled={isButtonDisabled}>
+                            {isUserLoading ? 'Authenticating...' : uploading ? 'Importing...' : 'Import to Firestore'}
                         </Button>
                     </div>
                 </CardContent>
@@ -169,6 +179,7 @@ const KpiImportTab = () => {
 
 const OrgImportTab = () => {
     const firestore = useFirestore();
+    const { user, isUserLoading } = useUser();
     const router = useRouter();
     const { toast } = useToast();
     const [files, setFiles] = useState<File[]>([]);
@@ -208,6 +219,10 @@ const OrgImportTab = () => {
             toast({ variant: 'destructive', title: 'Error', description: 'Firestore not initialized.' });
             return;
         }
+        if (!user) {
+            toast({ variant: 'destructive', title: 'Authentication Error', description: 'You must be logged in to import data.' });
+            return;
+        }
         if (fileContent) {
             const employeesCollectionRef = collection(firestore, 'employees');
             
@@ -235,6 +250,8 @@ const OrgImportTab = () => {
         setFiles([]);
         setFileContent(null);
     };
+
+    const isButtonDisabled = !fileContent || !user || isUserLoading;
 
     const exampleOrgData = `[
   {
@@ -275,9 +292,12 @@ const OrgImportTab = () => {
                             <Button variant="ghost" size="icon" onClick={removeFile}><XCircle className="h-5 w-5 text-gray-500" /></Button>
                         </div>
                     )}
-                    <div className="flex justify-end">
-                        <Button onClick={handleProcessAndSend} disabled={!fileContent} variant="secondary">
-                            Import to Firestore
+                    <div className="flex justify-end items-center space-x-4">
+                        {!user && !isUserLoading && (
+                            <p className="text-sm text-destructive">Please log in to import data.</p>
+                        )}
+                        <Button onClick={handleProcessAndSend} disabled={isButtonDisabled} variant="secondary">
+                            {isUserLoading ? 'Authenticating...' : 'Import to Firestore'}
                         </Button>
                     </div>
                 </CardContent>
