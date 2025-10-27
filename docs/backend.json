@@ -255,24 +255,44 @@
         "reportDate",
         "executiveSummary"
       ]
+    },
+    "Employee": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Employee",
+      "type": "object",
+      "description": "Represents an employee's organizational data.",
+      "properties": {
+        "id": { "type": "string", "description": "Unique employee ID." },
+        "name": { "type": "string", "description": "Employee's full name." },
+        "department": { "type": "string", "description": "Department name." },
+        "position": { "type": "string", "description": "Job position." },
+        "manager": { "type": "string", "description": "Name of the manager." }
+      },
+      "required": ["id", "name", "department", "position"]
     }
   },
   "auth": {
     "providers": [
       "password",
       "anonymous"
-    ]
+    ],
+    "customClaims": {
+        "role": {
+            "type": "string",
+            "enum": ["Admin", "VP", "AVP", "Manager", "Employee"]
+        }
+    }
   },
   "firestore": {
     "structure": [
       {
-        "path": "/users/{userId}/profile",
+        "path": "/users/{userId}",
         "definition": {
           "entityName": "UserProfile",
           "schema": {
-            "$ref": "#/backend/entities/UserProfile"
+            "$ref": "#/entities/UserProfile"
           },
-          "description": "Stores user profile information. Access is restricted to the user themselves (path-based ownership).",
+          "description": "Stores user profile information. Write access is restricted to the user themselves. Read access for admins.",
           "params": [
             {
               "name": "userId",
@@ -282,13 +302,27 @@
         }
       },
       {
+        "path": "/employees/{employeeId}",
+        "definition": {
+          "entityName": "Employee",
+          "schema": { "$ref": "#/entities/Employee" },
+          "description": "Stores public employee organizational data. Readable by all authenticated users, writable only by admins.",
+           "params": [
+            {
+              "name": "employeeId",
+              "description": "The unique ID of the employee."
+            }
+          ]
+        }
+      },
+      {
         "path": "/departments/{departmentId}",
         "definition": {
           "entityName": "Department",
           "schema": {
-            "$ref": "#/backend/entities/Department"
+            "$ref": "#/entities/Department"
           },
-          "description": "Stores department information. Access control can be implemented using security rules based on user roles.",
+          "description": "Stores department information. Readable by authenticated users, writable by admins.",
           "params": [
             {
               "name": "departmentId",
@@ -302,9 +336,9 @@
         "definition": {
           "entityName": "KpiCategory",
           "schema": {
-            "$ref": "#/backend/entities/KpiCategory"
+            "$ref": "#/entities/KpiCategory"
           },
-          "description": "Stores KPI category information. Access control can be implemented using security rules.",
+          "description": "Stores KPI category information. Readable by authenticated users, writable by admins.",
           "params": [
             {
               "name": "kpiCategoryId",
@@ -314,13 +348,11 @@
         }
       },
       {
-        "path": "/kpis/{kpiId}",
+        "path": "/kpi_catalog/{kpiId}",
         "definition": {
           "entityName": "Kpi",
-          "schema": {
-            "$ref": "#/backend/entities/Kpi"
-          },
-          "description": "Stores KPI information.  Access can be controlled based on user roles and department membership.",
+          "schema": { "$ref": "#/entities/Kpi" },
+          "description": "The master list of all corporate KPIs. Readable by all authenticated users, writable only by admins.",
           "params": [
             {
               "name": "kpiId",
@@ -329,14 +361,64 @@
           ]
         }
       },
+       {
+        "path": "/cascaded_kpis/{cascadedKpiId}",
+        "definition": {
+          "entityName": "CascadedKpi",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "corporateKpiId": { "type": "string" },
+              "measure": { "type": "string" },
+              "department": { "type": "string" },
+              "weight": { "type": "number" },
+              "departmentTarget": { "type": "string" }
+            },
+            "required": ["corporateKpiId", "measure", "department", "weight", "departmentTarget"]
+          },
+          "description": "KPIs that have been cascaded to departments. Readable by authenticated users, writable by managers/admins.",
+          "params": [
+            {
+              "name": "cascadedKpiId",
+              "description": "The unique ID of the cascaded KPI."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/individual_kpis/{individualKpiId}",
+        "definition": {
+            "entityName": "IndividualKpi",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "employeeId": { "type": "string" },
+                    "kpiId": { "type": "string" },
+                    "kpiMeasure": { "type": "string" },
+                    "weight": { "type": "number" },
+                    "status": { "type": "string", "enum": ["Pending", "Committed", "Approved", "Rejected"] },
+                    "notes": { "type": "string" },
+                    "type": { "type": "string", "enum": ["cascaded", "committed"] }
+                },
+                "required": ["employeeId", "kpiId", "kpiMeasure", "weight", "status", "type"]
+            },
+            "description": "KPIs assigned to individual employees. Readable by the assigned user and their manager. Writable by manager/admin. Status updatable by employee.",
+             "params": [
+                {
+                    "name": "individualKpiId",
+                    "description": "The unique ID of the individual KPI."
+                }
+            ]
+        }
+      },
       {
         "path": "/kpi_submissions/{kpiSubmissionId}",
         "definition": {
           "entityName": "KpiSubmission",
           "schema": {
-            "$ref": "#/backend/entities/KpiSubmission"
+            "$ref": "#/entities/KpiSubmission"
           },
-          "description": "Stores KPI submission data.  Includes `submittedByUserId` for ownership checks. Consider denormalizing `departmentMembers` map for enhanced authorization independence.",
+          "description": "Stores KPI submission data. Includes `submittedByUserId` for ownership checks. Readable by submitter and their manager.",
           "params": [
             {
               "name": "kpiSubmissionId",
@@ -350,9 +432,9 @@
         "definition": {
           "entityName": "KpiApproval",
           "schema": {
-            "$ref": "#/backend/entities/KpiApproval"
+            "$ref": "#/entities/KpiApproval"
           },
-          "description": "Stores KPI approval records. Includes `approvedByUserId` for tracking approvers.",
+          "description": "Stores KPI approval records. Includes `approvedByUserId` for tracking approvers. Readable by involved parties.",
           "params": [
             {
               "name": "kpiApprovalId",
@@ -366,7 +448,7 @@
         "definition": {
           "entityName": "Report",
           "schema": {
-            "$ref": "#/backend/entities/Report"
+            "$ref": "#/entities/Report"
           },
           "description": "Stores performance reports. Access control can be implemented using security rules.",
           "params": [
@@ -376,8 +458,24 @@
             }
           ]
         }
+      },
+      {
+        "path": "/settings/global",
+        "definition": {
+            "entityName": "AppSettings",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "orgName": { "type": "string" },
+                    "period": { "type": "string" },
+                    "currency": { "type": "string" }
+                }
+            },
+            "description": "Global application settings. Readable by all authenticated users, writable only by admins."
+        }
       }
     ],
-    "reasoning": "Based on the provided information, the primary issue is a lack of permissions to `list` users. The suggested data structure addresses this and follows the core design principles and strategy mandates to ensure secure, scalable, and debuggable Firestore rules. Here's a breakdown:\n\n**Justification of the Design:**\n\n1.  **User Profiles**: User profiles are stored under `/users/{userId}/profile`. This adheres to Path-Based ownership and ensures that only the authenticated user (`request.auth.uid`) can read/write their own profile data. It explicitly encodes the authorization intent in the structure.\n\n2.  **Departments**: Departments are stored in a top-level `/departments` collection. No specific ownership is defined, but security rules can be implemented to control who can `create`, `read`, `update`, or `delete` departments (e.g., based on admin roles).\n\n3.  **KPI Categories**: KPI Categories are stored in a top-level `/kpi_categories` collection. As with Departments, security rules can be implemented to manage access.\n\n4.  **KPIs**: KPIs are stored in a top-level `/kpis` collection. This enables efficient querying across all KPIs. The `departmentId` and `kpiCategoryId` fields provide relationships to the respective entities.\n\n5.  **KPI Submissions**: KPI Submissions are stored in a top-level `/kpi_submissions` collection. Each submission includes `kpiId` and `submittedByUserId` for linking to the KPI and the user who submitted it. The `status` field allows for tracking the submission lifecycle.\n\n6.  **KPI Approvals**: KPI Approvals are stored in a top-level `/kpi_approvals` collection. Each approval includes `kpiSubmissionId` and `approvedByUserId` to link the approval to the submission and the approver.\n\n7.  **Reports**: Reports are stored in a top-level `/reports` collection. The `kpiSubmissionIds` array provides a list of related KPI submissions.\n\n**Authorization Independence (Denormalization Strategy):**\n\n*   **User Profiles**: User access is based on `request.auth.uid` matching the `userId` in the path (`/users/{userId}/profile`). No `get()` calls are needed.\n*   **KPI Submissions and Approvals**:  While these are top-level collections, ownership and roles are managed through security rules. For example, a rule can specify that only a user with a specific role (stored in their `/users/{userId}/profile` document) can approve a KPI submission.  The `submittedByUserId` field in `kpi_submissions` enables checking if the current user is the owner.\n*   To further enhance Authorization Independence (and to avoid `get()` calls in the security rules), consider **denormalizing** the department membership or roles directly into the `KpiSubmission` documents. For instance, adding a `departmentMembers` map field in the `KpiSubmission` document to list all users with roles in that department can reduce dependency and increase security.\n\n**QAPs (Rules are not Filters):**\n\n*   The use of top-level collections for KPIs, KPI Submissions, and KPI Approvals allows for efficient querying and listing. Security rules ensure that users can only access the data they are authorized to see.  Since user profiles are path-based, listing user profiles is prevented.\n*   The structure facilitates secure `list` operations by segregating data based on access needs. For example, listing KPIs can be restricted based on the user's role or department (via the `departmentId` field).\n\n**Global Roles (DBAC):**\n\n*   Prefer Existence over Content. Use dedicated collections (e.g., `/roles_admin/{uid}`).\n\n**Addressing the Original Error:**\n\nThe original error indicates a permissions issue when trying to `list` documents in the `/users` collection. The provided structure eliminates the need to list all user documents. User profiles are accessed via path-based ownership (`/users/{userId}/profile`), so there is no need to list the `/users` collection. This enhances security and aligns with the principle of Authorization Independence.\n\n**Important Security Considerations:**\n\n*   **Input Validation:** Implement strict input validation in security rules to prevent malicious data from being written to the database.\n*   **Data Validation:** Consider adding server-side data validation (e.g., using Cloud Functions) to ensure data integrity.\n*   **Auditing:** Implement auditing mechanisms to track data access and modifications for security and compliance purposes."
+    "reasoning": "The permission errors indicate the default-deny security rules are working as intended. The fix is to define the intended access patterns. This updated structure declares that 'employees' and 'kpi_catalog' should be readable by any authenticated user, which is necessary for the UI to function. It also specifies that only Admins can list the sensitive '/users' collection, securing user data while allowing the User Management page to work for authorized personnel. Custom claims for 'role' are also defined to enable role-based access control in the security rules."
   }
 }
+      
