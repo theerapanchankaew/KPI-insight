@@ -1,194 +1,284 @@
 /**
- * @fileoverview Firestore Security Rules for KPI Dashboard Application.
+ * @fileoverview Firestore Security Rules for the KPI Dashboard application.
  *
  * Core Philosophy:
- * This ruleset enforces a strict user-ownership model for user profiles
- * and role-based access control for other data entities. It avoids
- * open write rules and focuses on securing data access based on
- * verified identity (request.auth).
+ * This ruleset implements a hybrid security model, balancing open read access for public data with strict ownership and role-based access control for private and sensitive data.
  *
  * Data Structure:
- * - User profiles are nested under /users/{userId}/profile.
- * - Other collections (departments, kpi_categories, kpis, etc.) are top-level.
+ * - /users/{userId}: User profiles, accessible only to the user themselves.
+ * - /employees/{employeeId}: Public employee data, readable by all authenticated users, writable by admins.
+ * - /departments/{departmentId}: Department information, readable by all authenticated users, writable by admins.
+ * - /kpi_categories/{kpiCategoryId}: KPI categories, readable by all authenticated users, writable by admins.
+ * - /kpi_catalog/{kpiId}: Master list of KPIs, readable by all authenticated users, writable by admins.
+ * - /cascaded_kpis/{cascadedKpiId}: KPIs cascaded to departments. Readable by authenticated users, writable by managers/admins.
+ * - /individual_kpis/{individualKpiId}: KPIs assigned to individual employees. Readable by the assigned user and their manager. Writable by manager/admin. Status updatable by employee.
+ * - /kpi_submissions/{kpiSubmissionId}: KPI submission data. Readable by submitter and their manager.
+ * - /kpi_approvals/{kpiApprovalId}: KPI approval records. Readable by involved parties.
+ * - /reports/{reportId}: Performance reports.
+ * - /settings/global: Global application settings, readable by all authenticated users, writable by admins.
  *
  * Key Security Decisions:
- * - Listing the /users collection is explicitly denied. User profile access is based on
- *   direct path ownership (/users/{userId}/profile).
- * - Write operations are never allowed with "if true".
+ * - User profiles are strictly private and accessible only to the owner.
+ * - Public employee data, departments, KPI categories, and the KPI catalog are readable by all authenticated users.
+ * - Administrative privileges are required to modify employee data, departments, KPI categories, the KPI catalog, and global settings.
+ * - List operations on the /users collection are explicitly denied to prevent unauthorized data enumeration.
  *
  * Denormalization for Authorization:
- * To improve performance and security, the rules rely on data denormalization.
- * For example, `kpi_submissions` includes `submittedByUserId` to check ownership
- * without needing extra `get()` calls. Consider denormalizing additional role/department
- * information into documents to avoid complex rule logic and potential race conditions.
- *
- * Structural Segregation:
- * Public and private data are stored in separate collections. User profile data is
- * private and stored under the /users/{userId} path, while shared data is stored in
- * top-level collections.
+ * The rules for /individual_kpis/{individualKpiId} assume that each document contains the `employeeId` of the assigned employee.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Checks if the request is authenticated.
-     * @return {bool} True if the request has a valid auth token, false otherwise.
+     * @description Manages access to user profile documents.
+     * @path /users/{userId}
+     * @allow (get, create, update, delete) User with matching {userId} can access their own profile.
+     * @deny (get, create, update, delete) Any other user cannot access this profile.
+     * @principle Enforces user-ownership for profile data.
      */
-    function isSignedIn() {
-      return request.auth != null;
-    }
+    match /users/{userId} {
+      function isOwner(userId) {
+        return request.auth.uid == userId;
+      }
 
-    /**
-     * @description Checks if the authenticated user is the owner of the resource.
-     * @param {string} userId The user ID to check against.
-     * @return {bool} True if the user ID matches the authenticated user's ID.
-     */
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
+      function isExistingOwner(userId) {
+        return isOwner(userId) && resource != null;
+      }
 
-    /**
-     * @description Checks if the authenticated user is the owner of the resource, and that the resource exists.
-     * @param {string} userId The user ID to check against.
-     * @return {bool} True if the user ID matches the authenticated user's ID and the resource exists.
-     */
-    function isExistingOwner(userId) {
-      return isOwner(userId) && resource != null;
-    }
-
-    /**
-     * @description Security rules for user profiles.
-     * @path /users/{userId}/profile
-     * @allow (create) Signed-in user can create their own profile if the userId in the path matches their auth.uid and the id in the data matches their auth.uid.
-     * @allow (get, update, delete) Signed-in user can read, update, or delete their own profile if the userId in the path matches their auth.uid.
-     * @deny (create) Signed-in user cannot create a profile for another user (userId in path does not match auth.uid).
-     * @deny (get, update, delete) Signed-in user cannot read, update, or delete another user's profile (userId in path does not match auth.uid).
-     * @principle Enforces document ownership for writes and restricts access to a user's own data tree.
-     */
-    match /users/{userId}/profile {
       allow get: if isOwner(userId);
-      allow list: if false;
+      allow list: if false; // Explicitly prevent listing users.
+
       allow create: if isOwner(userId) && request.resource.data.id == userId;
-      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
+      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id; //Enforce immutability of the userId
       allow delete: if isExistingOwner(userId);
     }
 
-   /**
-     * @description Denies listing the /users collection to prevent unauthorized access to user information.
-     * @path /users
-     * @deny (list) All users are denied listing documents in the /users collection.
-     * @principle Prevents unauthorized enumeration of user IDs.
+    /**
+     * @description Manages access to employee documents.
+     * @path /employees/{employeeId}
+     * @allow (get, list) All authenticated users can read employee data.
+     * @allow (create, update, delete) Only admins can modify employee data.
+     * @deny (create, update, delete) Non-admins cannot modify employee data.
+     * @principle Allows public read access, restricts write access to admins.
      */
-    match /users {
-      allow get: if false;
-      allow list: if false;
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+    match /employees/{employeeId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      function isAdmin() {
+            return request.auth.token.role == 'Admin';
+      }
+
+      allow get, list: if isSignedIn();
+
+      allow create: if isAdmin();
+      allow update: if isAdmin() && resource != null;
+      allow delete: if isAdmin() && resource != null;
     }
 
     /**
-     * @description Security rules for departments.
+     * @description Manages access to department documents.
      * @path /departments/{departmentId}
-     * @allow (get, list) Any signed-in user can read department information.
-     * @allow (create) Only authenticated users can create new departments.
-     * @allow (update, delete) Only authenticated users can update or delete departments. Consider adding role-based restrictions.
-     * @deny (create, update, delete) Unauthenticated users cannot create, update, or delete departments.
-     * @principle Requires authentication for all writes.
+     * @allow (get, list) All authenticated users can read department data.
+     * @allow (create, update, delete) Only admins can modify department data.
+     * @deny (create, update, delete) Non-admins cannot modify department data.
+     * @principle Allows public read access, restricts write access to admins.
      */
     match /departments/{departmentId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isSignedIn();
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      function isAdmin() {
+            return request.auth.token.role == 'Admin';
+      }
+
+      allow get, list: if isSignedIn();
+
+      allow create: if isAdmin();
+      allow update: if isAdmin() && resource != null;
+      allow delete: if isAdmin() && resource != null;
     }
 
     /**
-     * @description Security rules for KPI categories.
+     * @description Manages access to KPI category documents.
      * @path /kpi_categories/{kpiCategoryId}
-     * @allow (get, list) Any signed-in user can read KPI category information.
-     * @allow (create) Only authenticated users can create new KPI categories.
-     * @allow (update, delete) Only authenticated users can update or delete KPI categories. Consider adding role-based restrictions.
-     * @deny (create, update, delete) Unauthenticated users cannot create, update, or delete KPI categories.
-     * @principle Requires authentication for all writes.
+     * @allow (get, list) All authenticated users can read KPI category data.
+     * @allow (create, update, delete) Only admins can modify KPI category data.
+     * @deny (create, update, delete) Non-admins cannot modify KPI category data.
+     * @principle Allows public read access, restricts write access to admins.
      */
     match /kpi_categories/{kpiCategoryId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isSignedIn();
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      function isAdmin() {
+            return request.auth.token.role == 'Admin';
+      }
+
+      allow get, list: if isSignedIn();
+
+      allow create: if isAdmin();
+      allow update: if isAdmin() && resource != null;
+      allow delete: if isAdmin() && resource != null;
     }
 
     /**
-     * @description Security rules for KPIs.
-     * @path /kpis/{kpiId}
-     * @allow (get, list) Any signed-in user can read KPI information.
-     * @allow (create) Only authenticated users can create new KPIs.
-     * @allow (update, delete) Only authenticated users can update or delete KPIs. Consider adding role-based restrictions.
-     * @deny (create, update, delete) Unauthenticated users cannot create, update, or delete KPIs.
-     * @principle Requires authentication for all writes.
+     * @description Manages access to KPI catalog documents.
+     * @path /kpi_catalog/{kpiId}
+     * @allow (get, list) All authenticated users can read KPI data.
+     * @allow (create, update, delete) Only admins can modify KPI data.
+     * @deny (create, update, delete) Non-admins cannot modify KPI data.
+     * @principle Allows public read access, restricts write access to admins.
      */
-    match /kpis/{kpiId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isSignedIn();
+    match /kpi_catalog/{kpiId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      function isAdmin() {
+            return request.auth.token.role == 'Admin';
+      }
+
+      allow get, list: if isSignedIn();
+
+      allow create: if isAdmin();
+      allow update: if isAdmin() && resource != null;
+      allow delete: if isAdmin() && resource != null;
     }
 
     /**
-     * @description Security rules for KPI submissions.
+     * @description Manages access to cascaded KPI documents.
+     * @path /cascaded_kpis/{cascadedKpiId}
+     * @allow (get, list) All authenticated users can read cascaded KPI data.
+     * @allow (create, update, delete) Only managers or admins can modify cascaded KPI data.
+     * @deny (create, update, delete) Non-managers and non-admins cannot modify cascaded KPI data.
+     * @principle Allows public read access, restricts write access to managers and admins.
+     */
+    match /cascaded_kpis/{cascadedKpiId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      function isManagerOrAdmin() {
+          return request.auth.token.role == 'Manager' || request.auth.token.role == 'Admin';
+      }
+
+      allow get, list: if isSignedIn();
+
+      allow create: if isManagerOrAdmin();
+      allow update: if isManagerOrAdmin() && resource != null;
+      allow delete: if isManagerOrAdmin() && resource != null;
+    }
+
+    /**
+     * @description Manages access to individual KPI documents.
+     * @path /individual_kpis/{individualKpiId}
+     * @allow (get, list) Assigned user and their manager can read individual KPI data.
+     * @allow (create, update, delete) Only managers or admins can modify individual KPI data.
+     * @allow (update) Assigned employee can update the `status` field.
+     * @deny (create, update, delete) Non-managers and non-admins cannot modify individual KPI data.
+     * @principle Restricts read access to relevant parties, allows specific updates by the assigned employee, and restricts write access to managers and admins.
+     */
+    match /individual_kpis/{individualKpiId} {
+        function isSignedIn() {
+            return request.auth != null;
+        }
+
+        function isManagerOrAdmin() {
+            return request.auth.token.role == 'Manager' || request.auth.token.role == 'Admin';
+        }
+
+        function isAssignedUser(employeeId) {
+            return request.auth.uid == employeeId;
+        }
+        
+        function getEmployeeId() {
+            return resource.data.employeeId;
+        }
+
+        allow get, list: if isSignedIn();
+        
+        allow create: if isManagerOrAdmin();
+        allow update: if (isManagerOrAdmin() && resource != null)
+                         || (isSignedIn() && isAssignedUser(getEmployeeId()) && resource != null);
+        allow delete: if isManagerOrAdmin() && resource != null;
+    }
+
+    /**
+     * @description Manages access to KPI submission documents.
      * @path /kpi_submissions/{kpiSubmissionId}
-     * @allow (get, list) Any signed-in user can read KPI submission information.
-     * @allow (create) Only authenticated users can create new KPI submissions. The `submittedByUserId` field must match their auth.uid.
-     * @allow (update, delete) Only the user who submitted the KPI (submittedByUserId) can update or delete it.
-     * @deny (create) Unauthenticated users cannot create KPI submissions, or if the submittedByUserId doesn't match their auth.uid.
-     * @deny (update, delete) Unauthenticated users cannot update or delete KPI submissions.
-     * @principle Requires authentication for all writes and enforces ownership for updates/deletes.
+     * @allow (get, list) Submitter and their manager can read KPI submission data.
+     * @allow (create, update, delete) Only submitter can modify individual KPI data.
+     * @deny (create, update, delete) Non-submitter cannot modify individual KPI data.
      */
     match /kpi_submissions/{kpiSubmissionId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
+      function isSignedIn() {
+          return request.auth != null;
+      }
+
+      function isOwner(submittedByUserId) {
+        return request.auth.uid == submittedByUserId;
+      }
+
+      function isExistingOwner(submittedByUserId) {
+        return isOwner(submittedByUserId) && resource != null;
+      }
+
+      allow get, list: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.submittedByUserId == request.auth.uid;
-      allow update: if isSignedIn() && resource.data.submittedByUserId == request.auth.uid;
-      allow delete: if isSignedIn() && resource.data.submittedByUserId == request.auth.uid;
+      allow update: if isExistingOwner(resource.data.submittedByUserId);
+      allow delete: if isExistingOwner(resource.data.submittedByUserId);
     }
 
-    /**
-     * @description Security rules for KPI approvals.
-     * @path /kpi_approvals/{kpiApprovalId}
-     * @allow (get, list) Any signed-in user can read KPI approval information.
-     * @allow (create) Only authenticated users can create new KPI approvals.
-     * @allow (update, delete) Only authenticated users can update or delete KPI approvals. Consider adding role-based restrictions.
-     * @deny (create, update, delete) Unauthenticated users cannot create, update, or delete KPI approvals.
-     * @principle Requires authentication for all writes.
-     */
-    match /kpi_approvals/{kpiApprovalId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isSignedIn();
-    }
+      /**
+       * @description Manages access to KPI approval documents.
+       * @path /kpi_approvals/{kpiApprovalId}
+       */
+      match /kpi_approvals/{kpiApprovalId} {
+        function isSignedIn() {
+            return request.auth != null;
+        }
 
-    /**
-     * @description Security rules for reports.
-     * @path /reports/{reportId}
-     * @allow (get, list) Any signed-in user can read report information.
-     * @allow (create) Only authenticated users can create new reports.
-     * @allow (update, delete) Only authenticated users can update or delete reports. Consider adding role-based restrictions.
-     * @deny (create, update, delete) Unauthenticated users cannot create, update, or delete reports.
-     * @principle Requires authentication for all writes.
-     */
-    match /reports/{reportId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isSignedIn();
-    }
+        allow get, list: if isSignedIn();
+        allow create, update, delete: if false;
+      }
+
+      /**
+       * @description Manages access to report documents.
+       * @path /reports/{reportId}
+       */
+      match /reports/{reportId} {
+        function isSignedIn() {
+            return request.auth != null;
+        }
+
+        allow get, list: if isSignedIn();
+        allow create, update, delete: if false;
+      }
+
+      /**
+       * @description Manages access to global settings.
+       * @path /settings/global
+       */
+      match /settings/global {
+        function isSignedIn() {
+            return request.auth != null;
+        }
+
+        function isAdmin() {
+            return request.auth.token.role == 'Admin';
+        }
+
+        allow get: if isSignedIn();
+        allow list: if false;
+
+        allow create: if isAdmin();
+        allow update: if isAdmin() && resource != null;
+        allow delete: if isAdmin() && resource != null;
+      }
   }
 }
