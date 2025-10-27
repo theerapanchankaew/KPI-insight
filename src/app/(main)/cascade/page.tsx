@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useEffect, useState, useMemo } from 'react';
@@ -17,12 +18,14 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronsUpDown, PlusCircle, Trash2, Edit, AlertTriangle } from 'lucide-react';
+import { ChevronsUpDown, PlusCircle, Trash2, Edit, AlertTriangle, MoreVertical } from 'lucide-react';
 import { WithId, useCollection, useFirestore, useMemoFirebase, useUser } from '@/firebase';
 import { addDocumentNonBlocking, deleteDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { collection, doc } from 'firebase/firestore';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+
 
 type Role = 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee' | null;
 
@@ -120,27 +123,43 @@ const CorporateLevel = ({ onCascadeClick, onEditClick, onDeleteClick, userRole }
                                     </div>
                                     <Progress value={75} className="h-2 mt-2" />
                                     <div className="flex justify-end mt-4 space-x-2">
-                                        <Button size="sm" variant="outline">Action</Button>
                                         <Button size="sm" variant="outline" onClick={() => onCascadeClick(kpi)}>Cascading to ระดับฝ่าย</Button>
-                                        {canCascade && <Button size="sm" variant="outline" onClick={() => onCascadeClick(kpi)}>Cascade</Button>}
-                                        {canEdit && <Button size="sm" variant="secondary" onClick={() => onEditClick(kpi)}><Edit className="h-4 w-4 mr-1"/> Edit</Button>}
-                                        {canDelete && 
-                                            <AlertDialog>
-                                                <AlertDialogTrigger asChild>
-                                                    <Button size="sm" variant="destructive"><Trash2 className="h-4 w-4 mr-1"/> Delete</Button>
-                                                </AlertDialogTrigger>
-                                                <AlertDialogContent>
-                                                    <AlertDialogHeader>
-                                                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                                        <AlertDialogDescription>This action cannot be undone. This will permanently delete the KPI from the catalog.</AlertDialogDescription>
-                                                    </AlertDialogHeader>
-                                                    <AlertDialogFooter>
-                                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                        <AlertDialogAction onClick={() => onDeleteClick(kpi.id)}>Delete</AlertDialogAction>
-                                                    </AlertDialogFooter>
-                                                </AlertDialogContent>
-                                            </AlertDialog>
-                                        }
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button size="sm" variant="outline">
+                                                    Action
+                                                    <MoreVertical className="ml-2 h-4 w-4" />
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end">
+                                                {canEdit && (
+                                                    <DropdownMenuItem onSelect={() => onEditClick(kpi)}>
+                                                        <Edit className="mr-2 h-4 w-4" />
+                                                        <span>Edit</span>
+                                                    </DropdownMenuItem>
+                                                )}
+                                                {canDelete && (
+                                                    <AlertDialog>
+                                                        <AlertDialogTrigger asChild>
+                                                          <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive">
+                                                              <Trash2 className="mr-2 h-4 w-4" />
+                                                              <span>Delete</span>
+                                                          </DropdownMenuItem>
+                                                        </AlertDialogTrigger>
+                                                        <AlertDialogContent>
+                                                            <AlertDialogHeader>
+                                                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                                                <AlertDialogDescription>This action cannot be undone. This will permanently delete the KPI from the catalog.</AlertDialogDescription>
+                                                            </AlertDialogHeader>
+                                                            <AlertDialogFooter>
+                                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                                <AlertDialogAction onClick={() => onDeleteClick(kpi.id)}>Delete</AlertDialogAction>
+                                                            </AlertDialogFooter>
+                                                        </AlertDialogContent>
+                                                    </AlertDialog>
+                                                )}
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
                                     </div>
                                 </CardContent>
                             </Card>
@@ -1249,3 +1268,4 @@ export default function CascadePage() {
     
 
     
+
