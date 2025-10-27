@@ -10,21 +10,22 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
-import { useKpiData, type Employee } from '@/context/KpiDataContext';
+import { useKpiData, type Employee, type Kpi } from '@/context/KpiDataContext';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronsUpDown, PlusCircle, Trash2 } from 'lucide-react';
-import { WithId, useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { Kpi } from '@/context/KpiDataContext';
-import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
-import { collection } from 'firebase/firestore';
+import { ChevronsUpDown, PlusCircle, Trash2, Edit, AlertTriangle } from 'lucide-react';
+import { WithId, useCollection, useFirestore, useMemoFirebase, useUser } from '@/firebase';
+import { addDocumentNonBlocking, deleteDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { collection, doc } from 'firebase/firestore';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { useToast } from '@/hooks/use-toast';
 
+type Role = 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee' | null;
 
 // Type for a corporate KPI
 type CorporateKpi = WithId<Kpi>;
@@ -68,8 +69,12 @@ interface CommittedKpi extends IndividualKpiBase {
 type IndividualKpi = AssignedCascadedKpi | CommittedKpi;
 
 
-const CorporateLevel = ({ onCascadeClick }: { onCascadeClick: (kpi: CorporateKpi) => void }) => {
+const CorporateLevel = ({ onCascadeClick, onEditClick, onDeleteClick, userRole }: { onCascadeClick: (kpi: CorporateKpi) => void, onEditClick: (kpi: CorporateKpi) => void, onDeleteClick: (kpiId: string) => void, userRole: Role }) => {
     const { kpiData, isKpiDataLoading } = useKpiData();
+
+    const canEdit = userRole === 'Admin' || userRole === 'VP' || userRole === 'AVP' || userRole === 'Manager';
+    const canDelete = userRole === 'Admin';
+    const canCascade = userRole === 'Admin' || userRole === 'VP' || userRole === 'AVP' || userRole === 'Manager';
     
     if (isKpiDataLoading) {
         return (
@@ -122,8 +127,26 @@ const CorporateLevel = ({ onCascadeClick }: { onCascadeClick: (kpi: CorporateKpi
                                         <span className="text-2xl font-bold text-gray-800">{kpi.target} {kpi.unit && `(${kpi.unit})`}</span>
                                     </div>
                                     <Progress value={75} className="h-2 mt-2" />
-                                    <div className="flex justify-end mt-4">
-                                      <Button size="sm" onClick={() => onCascadeClick(kpi)}>Cascade</Button>
+                                    <div className="flex justify-end mt-4 space-x-2">
+                                        {canCascade && <Button size="sm" variant="outline" onClick={() => onCascadeClick(kpi)}>Cascade</Button>}
+                                        {canEdit && <Button size="sm" variant="secondary" onClick={() => onEditClick(kpi)}><Edit className="h-4 w-4 mr-1"/> Edit</Button>}
+                                        {canDelete && 
+                                            <AlertDialog>
+                                                <AlertDialogTrigger asChild>
+                                                    <Button size="sm" variant="destructive"><Trash2 className="h-4 w-4 mr-1"/> Delete</Button>
+                                                </AlertDialogTrigger>
+                                                <AlertDialogContent>
+                                                    <AlertDialogHeader>
+                                                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                                        <AlertDialogDescription>This action cannot be undone. This will permanently delete the KPI from the catalog.</AlertDialogDescription>
+                                                    </AlertDialogHeader>
+                                                    <AlertDialogFooter>
+                                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                        <AlertDialogAction onClick={() => onDeleteClick(kpi.id)}>Delete</AlertDialogAction>
+                                                    </AlertDialogFooter>
+                                                </AlertDialogContent>
+                                            </AlertDialog>
+                                        }
                                     </div>
                                 </CardContent>
                             </Card>
@@ -262,8 +285,10 @@ const AssignedKpiGrid = ({ kpis }: { kpis: WithId<IndividualKpi>[] }) => {
 }
 
 
-const IndividualLevel = ({ cascadedKpis, individualKpis, onAssignKpi }: { cascadedKpis: WithId<CascadedKpi>[] | null, individualKpis: WithId<IndividualKpi>[] | null, onAssignKpi: (employee: WithId<Employee>) => void }) => {
+const IndividualLevel = ({ cascadedKpis, individualKpis, onAssignKpi, userRole }: { cascadedKpis: WithId<CascadedKpi>[] | null, individualKpis: WithId<IndividualKpi>[] | null, onAssignKpi: (employee: WithId<Employee>) => void, userRole: Role }) => {
     const { orgData, isOrgDataLoading } = useKpiData();
+
+    const canAssign = userRole === 'Admin' || userRole === 'VP' || userRole === 'AVP' || userRole === 'Manager';
 
     if (isOrgDataLoading) {
         return (
@@ -321,11 +346,13 @@ const IndividualLevel = ({ cascadedKpis, individualKpis, onAssignKpi }: { cascad
                                         </CollapsibleTrigger>
                                         <CollapsibleContent>
                                             <AssignedKpiGrid kpis={assignedForPerson} />
-                                            <div className="p-4 bg-gray-50/50 border-t flex justify-end">
-                                                 <Button variant="outline" size="sm" onClick={() => onAssignKpi(person)}>
-                                                    Assign KPI
-                                                </Button>
-                                            </div>
+                                            {canAssign && (
+                                                <div className="p-4 bg-gray-50/50 border-t flex justify-end">
+                                                    <Button variant="outline" size="sm" onClick={() => onAssignKpi(person)}>
+                                                        Assign KPI
+                                                    </Button>
+                                                </div>
+                                            )}
                                         </CollapsibleContent>
                                     </Collapsible>
                                 )
@@ -695,11 +722,109 @@ const AssignKpiDialog = ({
     );
 };
 
+const EditKpiDialog = ({
+    isOpen,
+    onClose,
+    kpi,
+    onConfirm,
+}: {
+    isOpen: boolean;
+    onClose: () => void;
+    kpi: CorporateKpi | null;
+    onConfirm: (kpi: Kpi) => void;
+}) => {
+    const [editedKpi, setEditedKpi] = useState<Kpi | null>(null);
+
+    useEffect(() => {
+        if (kpi) {
+            setEditedKpi(kpi);
+        } else {
+            setEditedKpi(null);
+        }
+    }, [kpi]);
+
+    const handleChange = (field: keyof Kpi, value: string) => {
+        if (editedKpi) {
+            setEditedKpi({ ...editedKpi, [field]: value });
+        }
+    };
+
+    const handleSubmit = () => {
+        if (editedKpi) {
+            onConfirm(editedKpi);
+            onClose();
+        }
+    };
+
+    if (!kpi) return null;
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Edit Corporate KPI</DialogTitle>
+                </DialogHeader>
+                {editedKpi && (
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="kpi-measure">Measure</Label>
+                            <Input id="kpi-measure" value={editedKpi.measure} onChange={(e) => handleChange('measure', e.target.value)} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="kpi-target">Target</Label>
+                                <Input id="kpi-target" value={editedKpi.target} onChange={(e) => handleChange('target', e.target.value)} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="kpi-unit">Unit</Label>
+                                <Input id="kpi-unit" value={editedKpi.unit} onChange={(e) => handleChange('unit', e.target.value)} />
+                            </div>
+                        </div>
+                         <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="kpi-perspective">Perspective</Label>
+                                <Input id="kpi-perspective" value={editedKpi.perspective} onChange={(e) => handleChange('perspective', e.target.value)} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="kpi-category">Category</Label>
+                                <Input id="kpi-category" value={editedKpi.category} onChange={(e) => handleChange('category', e.target.value)} />
+                            </div>
+                        </div>
+                    </div>
+                )}
+                <DialogFooter>
+                    <DialogClose asChild>
+                        <Button type="button" variant="outline">Cancel</Button>
+                    </DialogClose>
+                    <Button onClick={handleSubmit}>Save Changes</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 
 export default function CascadePage() {
   const { setPageTitle } = useAppLayout();
   const { orgData } = useKpiData();
   const firestore = useFirestore();
+  const { user, isUserLoading } = useUser();
+  const { toast } = useToast();
+  const [userRole, setUserRole] = useState<Role>(null);
+
+
+  useEffect(() => {
+    const checkUserRole = async () => {
+        if(user) {
+            const token = await user.getIdTokenResult();
+            setUserRole(token.claims.role as Role || 'Employee');
+        }
+    }
+    if (!isUserLoading) {
+        checkUserRole();
+    }
+  }, [user, isUserLoading]);
+
 
   const cascadedKpisQuery = useMemoFirebase(() => firestore ? collection(firestore, 'cascaded_kpis') : null, [firestore]);
   const { data: cascadedKpis } = useCollection<CascadedKpi>(cascadedKpisQuery);
@@ -709,6 +834,7 @@ export default function CascadePage() {
 
   const [isCascadeModalOpen, setIsCascadeModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   
   const [selectedKpi, setSelectedKpi] = useState<CorporateKpi | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<WithId<Employee> | null>(null);
@@ -728,10 +854,14 @@ export default function CascadePage() {
       setSelectedKpi(kpi);
       setIsCascadeModalOpen(true);
   };
+  
+  const handleEditClick = (kpi: CorporateKpi) => {
+      setSelectedKpi(kpi);
+      setIsEditModalOpen(true);
+  };
 
   const handleAssignKpiClick = (employee: WithId<Employee>) => {
     setSelectedEmployee(employee);
-    // Reset state when opening the dialog for a new employee
     setSelectedKpis({});
     setCommittedKpis([]);
     setIsAssignModalOpen(true);
@@ -741,6 +871,7 @@ export default function CascadePage() {
       if (!firestore) return;
       const cascadedKpisCollection = collection(firestore, 'cascaded_kpis');
       addDocumentNonBlocking(cascadedKpisCollection, cascadedKpi);
+      toast({ title: "KPI Cascaded", description: `"${cascadedKpi.measure}" has been cascaded.` });
   };
 
   const handleConfirmAssignment = (assignments: IndividualKpi[]) => {
@@ -749,7 +880,22 @@ export default function CascadePage() {
       assignments.forEach(assignment => {
         addDocumentNonBlocking(individualKpisCollection, assignment);
       });
+      toast({ title: "KPIs Assigned", description: `${assignments.length} KPI(s) have been assigned.` });
   };
+
+  const handleConfirmEdit = (editedKpi: Kpi) => {
+    if (!firestore) return;
+    const kpiRef = doc(firestore, 'kpi_catalog', editedKpi.id);
+    setDocumentNonBlocking(kpiRef, editedKpi, { merge: true });
+    toast({ title: "KPI Updated", description: `"${editedKpi.measure}" has been updated.` });
+  }
+
+  const handleDelete = (kpiId: string) => {
+    if (!firestore) return;
+    const kpiRef = doc(firestore, 'kpi_catalog', kpiId);
+    deleteDocumentNonBlocking(kpiRef);
+    toast({ title: "KPI Deleted", description: `The KPI has been removed from the catalog.`, variant: 'destructive' });
+  }
   
   const handleCloseAssignDialog = () => {
     setIsAssignModalOpen(false);
@@ -762,28 +908,38 @@ export default function CascadePage() {
         <h3 className="text-xl font-semibold text-gray-800 mb-2">KPI Cascade Structure</h3>
         <p className="text-gray-600">โครงสร้าง KPI แบบ 3 ระดับ: องค์กร → ฝ่าย → บุคคล</p>
       </div>
-      <Tabs defaultValue="corporate" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="corporate">ระดับองค์กร</TabsTrigger>
-          <TabsTrigger value="department">ระดับฝ่าย</TabsTrigger>
-          <TabsTrigger value="individual">ระดับบุคคล</TabsTrigger>
-        </TabsList>
-        <TabsContent value="corporate" className="mt-6">
-          <CorporateLevel onCascadeClick={handleCascadeClick} />
-        </TabsContent>
-        <TabsContent value="department" className="mt-6">
-          <DepartmentLevel cascadedKpis={cascadedKpis} />
-        </TabsContent>
-        <TabsContent value="individual" className="mt-6">
-          <IndividualLevel cascadedKpis={cascadedKpis} individualKpis={individualKpis} onAssignKpi={handleAssignKpiClick} />
-        </TabsContent>
-      </Tabs>
+      {(isUserLoading || userRole === null) ? (
+          <p>Loading user permissions...</p>
+      ) : (
+          <Tabs defaultValue="corporate" className="w-full">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="corporate">ระดับองค์กร</TabsTrigger>
+              <TabsTrigger value="department">ระดับฝ่าย</TabsTrigger>
+              <TabsTrigger value="individual">ระดับบุคคล</TabsTrigger>
+            </TabsList>
+            <TabsContent value="corporate" className="mt-6">
+              <CorporateLevel onCascadeClick={handleCascadeClick} onEditClick={handleEditClick} onDeleteClick={handleDelete} userRole={userRole} />
+            </TabsContent>
+            <TabsContent value="department" className="mt-6">
+              <DepartmentLevel cascadedKpis={cascadedKpis} />
+            </TabsContent>
+            <TabsContent value="individual" className="mt-6">
+              <IndividualLevel cascadedKpis={cascadedKpis} individualKpis={individualKpis} onAssignKpi={handleAssignKpiClick} userRole={userRole} />
+            </TabsContent>
+          </Tabs>
+      )}
       <CascadeDialog 
         isOpen={isCascadeModalOpen}
         onClose={() => setIsCascadeModalOpen(false)}
         kpi={selectedKpi}
         departments={departments}
         onConfirm={handleConfirmCascade}
+      />
+       <EditKpiDialog 
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        kpi={selectedKpi}
+        onConfirm={handleConfirmEdit}
       />
       <AssignKpiDialog
         isOpen={isAssignModalOpen}
