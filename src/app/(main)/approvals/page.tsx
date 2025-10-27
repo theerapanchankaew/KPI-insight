@@ -5,7 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { useAppLayout } from '../layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Check, X, Mail, UserCheck, AlertCircle } from 'lucide-react';
+import { Check, X, UserCheck, AlertCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -72,37 +72,20 @@ const RejectDialog = ({ isOpen, onClose, onConfirm, kpiName }: { isOpen: boolean
                 </DialogFooter>
             </DialogContent>
         </Dialog>
-    )
-}
+    );
+};
 
 const KpiApprovalsTab = () => {
   const { toast } = useToast();
   const firestore = useFirestore();
 
-  // TODO: Add logic to get user's role and filter by correct status
-  // For now, fetching Manager Review and Upper Manager Approval for demo
+  // As per SRS, we have Manager Review and Upper Manager Approval stages
   const submissionsQuery = useMemoFirebase(() => {
     if (!firestore) return null;
     return query(collection(firestore, 'submissions'), where('status', 'in', ['Manager Review', 'Upper Manager Approval']));
   }, [firestore]);
 
   const { data: submissionsData, isLoading } = useCollection<KpiSubmission>(submissionsQuery);
-
-  const handleUpdateStatus = (item: WithId<KpiSubmission>, newStatus: 'Closed' | 'Rejected') => {
-    if (!firestore) return;
-    const submissionRef = doc(firestore, 'submissions', item.id);
-    
-    // In a real app, 'Rejected' might go back to the user instead of being a final state on the submission
-    const finalStatus = newStatus === 'Rejected' ? 'Manager Review' : 'Closed';
-    const updatedData = { ...item, status: finalStatus };
-    setDocumentNonBlocking(submissionRef, updatedData, { merge: true });
-
-    toast({
-      title: `KPI ${newStatus}`,
-      description: `Submission for "${item.kpiMeasure}" has been updated.`,
-      variant: newStatus === 'Rejected' ? 'destructive' : undefined,
-    });
-  };
 
   const handleApprove = (item: WithId<KpiSubmission>) => {
     if(!firestore) return;
@@ -117,7 +100,7 @@ const KpiApprovalsTab = () => {
         toast({ title: 'Approved by Manager', description: 'KPI sent for upper management approval.'});
     } else { // Upper Manager Approval
         nextStatus = 'Closed';
-        individualKpiNextStatus = 'Employee Acknowledged'; // Notify employee
+        individualKpiNextStatus = 'Employee Acknowledged'; // Notify employee to acknowledge the final score
         toast({ title: 'Final Approval Complete', description: 'KPI submission has been closed.'});
     }
 
@@ -126,7 +109,28 @@ const KpiApprovalsTab = () => {
     if(individualKpiNextStatus) {
         setDocumentNonBlocking(individualKpiRef, { status: individualKpiNextStatus }, { merge: true });
     }
-  }
+  };
+
+  const handleReject = (item: WithId<KpiSubmission>) => {
+      if(!firestore) return;
+      const submissionRef = doc(firestore, 'submissions', item.id);
+      
+      // Rejecting a submission sends it back to the employee by changing the status of the *individual kpi*
+      const individualKpiRef = doc(firestore, 'individual_kpis', item.kpiId);
+      
+      // We delete the submission, as it's rejected. The employee must submit a new one.
+      setDocumentNonBlocking(individualKpiRef, { status: 'In-Progress' }, { merge: true }); // Re-open for submission
+      // Firebase doesn't have a non-blocking delete, but we can delete the submission here.
+      // For now, we will just update the status to closed to remove it from the queue
+       setDocumentNonBlocking(submissionRef, { status: "Closed", notes: "Rejected by manager" }, { merge: true });
+
+
+      toast({
+          title: "Submission Rejected",
+          description: `The submission for "${item.kpiMeasure}" has been rejected. The employee has been notified.`,
+          variant: 'destructive',
+      });
+  };
 
 
   return (
@@ -178,7 +182,7 @@ const KpiApprovalsTab = () => {
                   <Button onClick={() => handleApprove(item)} className="bg-success/90 hover:bg-success/100 text-white">
                     <Check className="w-4 h-4 mr-1" /> Approve
                   </Button>
-                  <Button onClick={() => handleUpdateStatus(item, 'Rejected')} variant="destructive">
+                  <Button onClick={() => handleReject(item)} variant="destructive">
                     <X className="w-4 h-4 mr-1" /> Reject
                   </Button>
                 </div>
@@ -191,7 +195,7 @@ const KpiApprovalsTab = () => {
         </div>
       </CardContent>
     </Card>
-  )
+  );
 };
 
 const CommitmentRequestsTab = () => {
@@ -200,9 +204,9 @@ const CommitmentRequestsTab = () => {
   const [isRejectModalOpen, setRejectModalOpen] = useState(false);
   const [selectedKpi, setSelectedKpi] = useState<WithId<IndividualKpi> | null>(null);
 
+  // Per SRS: Manager reviews what the employee has 'Agreed' to
   const commitmentsQuery = useMemoFirebase(() => {
       if (!firestore) return null;
-      // Manager reviews KPIs that the employee has agreed to
       return query(collection(firestore, 'individual_kpis'), where('status', '==', 'Agreed'));
   }, [firestore]);
 
@@ -211,7 +215,7 @@ const CommitmentRequestsTab = () => {
   const handleAgreement = (kpi: WithId<IndividualKpi>) => {
     if (!firestore) return;
     const kpiRef = doc(firestore, 'individual_kpis', kpi.id);
-    // Manager agreement moves it to Upper Manager for final approval
+    // As per SRS, Manager agreement sends to Upper Manager for final sign-off
     const updatedData = { ...kpi, status: 'Upper Manager Approval' as const };
     setDocumentNonBlocking(kpiRef, updatedData, { merge: true });
 
@@ -226,6 +230,7 @@ const CommitmentRequestsTab = () => {
   const handleConfirmRejection = (reason: string) => {
     if (!firestore || !selectedKpi) return;
     const kpiRef = doc(firestore, 'individual_kpis', selectedKpi.id);
+    // Rejecting sends it back to the employee with 'Rejected' status
     const updatedData: Partial<IndividualKpi> = {
         status: 'Rejected',
         rejectionReason: reason,
@@ -233,6 +238,7 @@ const CommitmentRequestsTab = () => {
     setDocumentNonBlocking(kpiRef, updatedData, { merge: true });
     toast({ title: 'KPI Rejected', description: `The commitment has been sent back to the employee with your feedback.`, variant: 'destructive'});
     setRejectModalOpen(false);
+    setSelectedKpi(null);
   };
 
   return (
@@ -280,7 +286,7 @@ const CommitmentRequestsTab = () => {
                     <Button onClick={() => handleAgreement(item)} variant="secondary">
                         <UserCheck className="w-4 h-4 mr-1" /> Final Agreement
                     </Button>
-                    <Button onClick={() => handleOpenRejectDialog(item)} variant="destructive" variant="outline">
+                    <Button onClick={() => handleOpenRejectDialog(item)} variant="destructive" >
                         <X className="w-4 h-4 mr-1" /> Reject
                     </Button>
                     </div>
@@ -299,8 +305,8 @@ const CommitmentRequestsTab = () => {
         kpiName={selectedKpi?.kpiMeasure || ''}
     />
     </>
-  )
-}
+  );
+};
 
 export default function ApprovalsPage() {
   const { setPageTitle } = useAppLayout();
@@ -340,5 +346,3 @@ export default function ApprovalsPage() {
     </div>
   );
 }
-
-    

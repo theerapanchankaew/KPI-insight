@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { CheckCircle, Clock, AlertCircle, Check, X, Send, Edit, UserCheck, ShieldCheck } from 'lucide-react';
+import { CheckCircle, Clock, AlertCircle, Check, Send, Edit, UserCheck, ShieldCheck } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useUser, useFirestore, useCollection, useMemoFirebase, WithId } from '@/firebase';
@@ -70,7 +70,7 @@ const KpiActionDialog = ({ isOpen, onClose, kpi, onConfirm }: {
 
     if (!kpi) return null;
 
-    const isRejectAction = kpi.status === 'Draft' || kpi.status === 'Rejected';
+    // The action from this dialog is for the employee to agree to a Draft/Rejected KPI
     const nextStatus: IndividualKpi['status'] = 'Agreed';
 
     return (
@@ -144,6 +144,7 @@ export default function PortfolioPage() {
         setIsActionModalOpen(true);
     };
     
+    // Per SRS, employee acknowledges the final approval from upper management
     const handleAcknowledge = (kpiId: string) => {
         if (!firestore) return;
         const kpiRef = doc(firestore, 'individual_kpis', kpiId);
@@ -159,16 +160,14 @@ export default function PortfolioPage() {
         const kpiRef = doc(firestore, 'individual_kpis', kpiId);
         const kpiToUpdate = portfolioData?.find(k => k.id === kpiId);
         if (kpiToUpdate) {
+            // Employee is agreeing to the KPI, clearing any previous rejection reason
             const updatedData: Partial<IndividualKpi> = { status: newStatus, notes, rejectionReason: '' };
-            if(newStatus === 'Agreed' && (kpiToUpdate.status === 'Draft' || kpiToUpdate.status === 'Rejected')){
-                 // Employee agrees, sends to manager
-            }
             
             setDocumentNonBlocking(kpiRef, updatedData, { merge: true });
             
             toast({
                 title: `KPI Status Updated`,
-                description: `The KPI has been moved to the '${statusConfig[newStatus].label}' state.`,
+                description: `The KPI has been moved to the '${statusConfig[newStatus].label}' state and sent for manager review.`,
             });
             setIsActionModalOpen(false);
         }
@@ -216,7 +215,9 @@ export default function PortfolioPage() {
                                 portfolioData.map(kpi => {
                                     const config = statusConfig[kpi.status] || statusConfig.Draft;
                                     const { icon: Icon, color, label } = config;
+                                    // Per SRS, employee action needed on Draft or Rejected
                                     const canReview = kpi.status === 'Draft' || kpi.status === 'Rejected';
+                                    // Per SRS, employee acknowledges after Upper Manager Approval
                                     const canAcknowledge = kpi.status === 'Upper Manager Approval';
 
                                     return (
@@ -272,5 +273,3 @@ export default function PortfolioPage() {
         </div>
     );
 }
-
-    

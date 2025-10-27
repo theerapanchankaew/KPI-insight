@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "UserProfile": {
@@ -163,7 +164,11 @@
         "status": {
           "type": "string",
           "description": "The status of the KPI submission (e.g., Manager Review, Upper Manager Approval, Closed).",
-          "enum": ["Manager Review", "Upper Manager Approval", "Closed"]
+          "enum": [
+            "Manager Review",
+            "Upper Manager Approval",
+            "Closed"
+          ]
         },
         "notes": {
           "type": "string",
@@ -263,13 +268,33 @@
       "type": "object",
       "description": "Represents an employee's organizational data.",
       "properties": {
-        "id": { "type": "string", "description": "Unique employee ID." },
-        "name": { "type": "string", "description": "Employee's full name." },
-        "department": { "type": "string", "description": "Department name." },
-        "position": { "type": "string", "description": "Job position." },
-        "manager": { "type": "string", "description": "Name of the manager." }
+        "id": {
+          "type": "string",
+          "description": "Unique employee ID."
+        },
+        "name": {
+          "type": "string",
+          "description": "Employee's full name."
+        },
+        "department": {
+          "type": "string",
+          "description": "Department name."
+        },
+        "position": {
+          "type": "string",
+          "description": "Job position."
+        },
+        "manager": {
+          "type": "string",
+          "description": "Name of the manager."
+        }
       },
-      "required": ["id", "name", "department", "position"]
+      "required": [
+        "id",
+        "name",
+        "department",
+        "position"
+      ]
     }
   },
   "auth": {
@@ -278,10 +303,16 @@
       "anonymous"
     ],
     "customClaims": {
-        "role": {
-            "type": "string",
-            "enum": ["Admin", "VP", "AVP", "Manager", "Employee"]
-        }
+      "role": {
+        "type": "string",
+        "enum": [
+          "Admin",
+          "VP",
+          "AVP",
+          "Manager",
+          "Employee"
+        ]
+      }
     }
   },
   "firestore": {
@@ -306,9 +337,11 @@
         "path": "/employees/{employeeId}",
         "definition": {
           "entityName": "Employee",
-          "schema": { "$ref": "#/entities/Employee" },
+          "schema": {
+            "$ref": "#/entities/Employee"
+          },
           "description": "Stores public employee organizational data. Readable by all authenticated users, writable only by admins.",
-           "params": [
+          "params": [
             {
               "name": "employeeId",
               "description": "The unique ID of the employee."
@@ -352,7 +385,9 @@
         "path": "/kpi_catalog/{kpiId}",
         "definition": {
           "entityName": "Kpi",
-          "schema": { "$ref": "#/entities/Kpi" },
+          "schema": {
+            "$ref": "#/entities/Kpi"
+          },
           "description": "The master list of all corporate KPIs. Readable by all authenticated users, writable only by admins.",
           "params": [
             {
@@ -362,20 +397,36 @@
           ]
         }
       },
-       {
+      {
         "path": "/cascaded_kpis/{cascadedKpiId}",
         "definition": {
           "entityName": "CascadedKpi",
           "schema": {
             "type": "object",
             "properties": {
-              "corporateKpiId": { "type": "string" },
-              "measure": { "type": "string" },
-              "department": { "type": "string" },
-              "weight": { "type": "number" },
-              "departmentTarget": { "type": "string" }
+              "corporateKpiId": {
+                "type": "string"
+              },
+              "measure": {
+                "type": "string"
+              },
+              "department": {
+                "type": "string"
+              },
+              "weight": {
+                "type": "number"
+              },
+              "departmentTarget": {
+                "type": "string"
+              }
             },
-            "required": ["corporateKpiId", "measure", "department", "weight", "departmentTarget"]
+            "required": [
+              "corporateKpiId",
+              "measure",
+              "department",
+              "weight",
+              "departmentTarget"
+            ]
           },
           "description": "KPIs that have been cascaded to departments. Readable by authenticated users, writable by managers/admins.",
           "params": [
@@ -389,27 +440,62 @@
       {
         "path": "/individual_kpis/{individualKpiId}",
         "definition": {
-            "entityName": "IndividualKpi",
-            "schema": {
-                "type": "object",
-                "properties": {
-                    "employeeId": { "type": "string" },
-                    "kpiId": { "type": "string" },
-                    "kpiMeasure": { "type": "string" },
-                    "weight": { "type": "number" },
-                    "status": { "type": "string", "enum": ["Draft", "Agreed", "In-Progress", "Manager Review", "Upper Manager Approval", "Employee Acknowledged", "Closed", "Rejected"] },
-                    "notes": { "type": "string" },
-                    "type": { "type": "string", "enum": ["cascaded", "committed"] }
-                },
-                "required": ["employeeId", "kpiId", "kpiMeasure", "weight", "status", "type"]
+          "entityName": "IndividualKpi",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "employeeId": {
+                "type": "string"
+              },
+              "kpiId": {
+                "type": "string"
+              },
+              "kpiMeasure": {
+                "type": "string"
+              },
+              "weight": {
+                "type": "number"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "Draft",
+                  "Agreed",
+                  "In-Progress",
+                  "Manager Review",
+                  "Upper Manager Approval",
+                  "Employee Acknowledged",
+                  "Closed",
+                  "Rejected"
+                ]
+              },
+              "notes": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "cascaded",
+                  "committed"
+                ]
+              }
             },
-            "description": "KPIs assigned to individual employees. Readable by the assigned user and their manager. Writable by manager/admin. Status updatable by employee.",
-             "params": [
-                {
-                    "name": "individualKpiId",
-                    "description": "The unique ID of the individual KPI."
-                }
+            "required": [
+              "employeeId",
+              "kpiId",
+              "kpiMeasure",
+              "weight",
+              "status",
+              "type"
             ]
+          },
+          "description": "KPIs assigned to individual employees. Readable by the assigned user and their manager. Writable by manager/admin. Status updatable by employee.",
+          "params": [
+            {
+              "name": "individualKpiId",
+              "description": "The unique ID of the individual KPI."
+            }
+          ]
         }
       },
       {
@@ -463,16 +549,22 @@
       {
         "path": "/settings/global",
         "definition": {
-            "entityName": "AppSettings",
-            "schema": {
-                "type": "object",
-                "properties": {
-                    "orgName": { "type": "string" },
-                    "period": { "type": "string" },
-                    "currency": { "type": "string" }
-                }
-            },
-            "description": "Global application settings. Readable by all authenticated users, writable only by admins."
+          "entityName": "AppSettings",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "orgName": {
+                "type": "string"
+              },
+              "period": {
+                "type": "string"
+              },
+              "currency": {
+                "type": "string"
+              }
+            }
+          },
+          "description": "Global application settings. Readable by all authenticated users, writable only by admins."
         }
       }
     ],

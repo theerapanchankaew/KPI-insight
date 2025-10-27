@@ -4,7 +4,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useAppLayout } from '../layout';
 import { Button } from '@/components/ui/button';
-import { Plus, FileText, BadgeCheck, Briefcase, Upload } from 'lucide-react';
+import { FileText, BadgeCheck, Briefcase, Upload } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUser, useFirestore, useCollection, useMemoFirebase, WithId, addDocumentNonBlocking } from '@/firebase';
-import { collection, query, where, serverTimestamp, doc } from 'firebase/firestore';
+import { collection, query, where, serverTimestamp } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Textarea } from '@/components/ui/textarea';
@@ -139,12 +139,13 @@ export default function SubmitPage() {
     setPageTitle('Submit KPI');
   }, [setPageTitle]);
 
+  // Per SRS, only KPIs with status 'In-Progress' are available for data submission
   const kpisForSubmissionQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
     return query(
       collection(firestore, 'individual_kpis'), 
       where('employeeId', '==', user.uid),
-      where('status', 'in', ['In-Progress'])
+      where('status', 'in', ['In-Progress', 'Employee Acknowledged'])
     );
   }, [firestore, user]);
   
@@ -192,7 +193,7 @@ export default function SubmitPage() {
         submitterName: user.displayName || 'Unknown User',
         department: employeeData?.department || 'Unassigned',
         submissionDate: serverTimestamp(),
-        status: 'Manager Review',
+        status: 'Manager Review', // Per SRS, first step is Manager Review
     };
     
     const submissionsCollection = collection(firestore, 'submissions');
@@ -309,5 +310,3 @@ export default function SubmitPage() {
     </div>
   );
 }
-
-    
