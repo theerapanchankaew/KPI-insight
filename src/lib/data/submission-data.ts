@@ -1,3 +1,6 @@
+
+// This file is now deprecated as the submission data is fetched/created live.
+// It is kept for reference but is no longer used by the application.
 import { FileText, BadgeCheck, Briefcase } from 'lucide-react';
 
 export const kpiSubmissionData = {
