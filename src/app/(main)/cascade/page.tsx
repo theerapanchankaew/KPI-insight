@@ -431,7 +431,7 @@ const DeployAndCascadeDialog = ({
         </ScrollArea>
 
         <DialogFooter className="flex gap-2 !mt-6">
-          <DialogClose asChild><Button variant="outline" onClick={onClose}>ยกเลิก</Button></DialogClose>
+          <DialogClose asChild><Button variant="outline">ยกเลิก</Button></DialogClose>
           <Button onClick={handleDeploy} disabled={!user}>
             <Share2 className="mr-2 h-4 w-4" />
             Deploy & Cascade
@@ -704,6 +704,18 @@ const IndividualLevel = ({
   const canAssign = ['Admin', 'VP', 'AVP', 'Manager'].includes(userRole || '');
   const canDelete = ['Admin', 'Manager'].includes(userRole || '');
 
+  const groupedByDepartment = useMemo(() => {
+    if (!employees) return {};
+    return employees.reduce((acc, employee) => {
+      const dept = employee.department || 'Unassigned';
+      if (!acc[dept]) {
+        acc[dept] = [];
+      }
+      acc[dept].push(employee);
+      return acc;
+    }, {} as { [key: string]: WithId<Employee>[] });
+  }, [employees]);
+
   const employeeKpiMap = useMemo(() => {
     return (individualKpis || []).reduce((acc, kpi) => {
       if (!acc[kpi.employeeId]) acc[kpi.employeeId] = [];
@@ -736,57 +748,72 @@ const IndividualLevel = ({
 
   return (
     <>
-      <div className="space-y-4">
-        {employees.map(employee => {
-          const empKpis = employeeKpiMap[employee.id] || [];
-          return (
-            <Card key={employee.id}>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>{employee.name}</CardTitle>
-                    <p className="text-sm text-gray-500">{employee.position} - {employee.department}</p>
-                  </div>
-                  {canAssign && (
-                    <Button size="sm" onClick={() => onAssignKpi(employee)}>
-                      <PlusCircle className="mr-2 h-4 w-4" />
-                      Assign KPI
+      <div className="space-y-6">
+        {Object.entries(groupedByDepartment).map(([department, departmentEmployees]) => (
+          <Collapsible key={department} defaultOpen>
+            <CollapsibleTrigger asChild>
+                <div className="flex items-center justify-between p-4 border rounded-t-lg bg-gray-50 cursor-pointer">
+                    <h4 className="text-lg font-semibold">{department}</h4>
+                    <Button variant="ghost" size="sm">
+                        <span className="mr-2">({departmentEmployees.length} employees)</span>
+                        <ChevronsUpDown className="h-4 w-4" />
                     </Button>
-                  )}
                 </div>
-              </CardHeader>
-              <CardContent>
-                {empKpis.length === 0 ? (
-                  <p className="text-sm text-gray-500">No KPIs assigned</p>
-                ) : (
-                  <div className="space-y-2">
-                    {empKpis.map(kpi => (
-                      <div key={kpi.id} className="flex items-center justify-between p-3 border rounded-lg bg-gray-50/50">
-                        <div className="flex-1">
-                          <p className="font-medium text-sm">{kpi.kpiMeasure}</p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <Badge variant="secondary" className="text-xs">{kpi.status}</Badge>
-                            <span className="text-xs text-gray-500">Weight: {kpi.weight}%</span>
-                          </div>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="border border-t-0 rounded-b-lg p-4 space-y-4">
+              {departmentEmployees.map(employee => {
+                const empKpis = employeeKpiMap[employee.id] || [];
+                return (
+                  <Card key={employee.id}>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="text-base">{employee.name}</CardTitle>
+                          <p className="text-sm text-gray-500">{employee.position}</p>
                         </div>
-                        {canDelete && (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => setDeleteKpi(kpi)}
-                            className="text-red-600 hover:text-red-700 h-8 w-8"
-                          >
-                            <Trash2 className="h-4 w-4" />
+                        {canAssign && (
+                          <Button size="sm" onClick={() => onAssignKpi(employee)}>
+                            <PlusCircle className="mr-2 h-4 w-4" />
+                            Assign KPI
                           </Button>
                         )}
                       </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
+                    </CardHeader>
+                    <CardContent>
+                      {empKpis.length === 0 ? (
+                        <p className="text-sm text-gray-500">No KPIs assigned</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {empKpis.map(kpi => (
+                            <div key={kpi.id} className="flex items-center justify-between p-3 border rounded-lg bg-gray-50/50">
+                              <div className="flex-1">
+                                <p className="font-medium text-sm">{kpi.kpiMeasure}</p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <Badge variant="secondary" className="text-xs">{kpi.status}</Badge>
+                                  <span className="text-xs text-gray-500">Weight: {kpi.weight}%</span>
+                                </div>
+                              </div>
+                              {canDelete && (
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => setDeleteKpi(kpi)}
+                                  className="text-red-600 hover:text-red-700 h-8 w-8"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </CollapsibleContent>
+          </Collapsible>
+        ))}
       </div>
 
       <DeleteConfirmDialog
@@ -877,6 +904,7 @@ const AssignKpiDialog = ({
         
         const cascadedAssignments = selectedCascaded.map(selected => {
             const kpi = employeeDeptKpis.find(dk => dk.id === selected.kpiId);
+            if (!kpi) return null; // Should not happen
             return {
                 type: 'cascaded',
                 employeeId: employee.id,
@@ -885,12 +913,12 @@ const AssignKpiDialog = ({
                 target: kpi?.target || 'N/A',
                 weight: selected.weight
             };
-        });
+        }).filter(Boolean);
 
         const committedAssignments = committedKpis.map(committed => ({
             type: 'committed',
             employeeId: employee.id,
-            kpiId: `committed-${Date.now()}`, // temp ID
+            kpiId: `committed-${Date.now()}-${Math.random()}`, // temp ID
             kpiMeasure: committed.task,
             task: committed.task,
             weight: committed.weight,
@@ -1177,16 +1205,13 @@ export default function KPICascadeManagement() {
     toast({ title: "KPI Updated", description: `"${editedKpi.measure}" has been updated.` });
   };
 
-  const handleConfirmAssignment = async (assignments: Omit<IndividualKpi, 'status'>[]) => {
+  const handleConfirmAssignment = async (assignments: (Omit<AssignedCascadedKpi, 'status'> | Omit<CommittedKpi, 'status'>)[]) => {
     if (!user || !firestore || !selectedEmployee) {
       toast({ title: "Authentication Required", variant: 'destructive' });
       return;
     }
 
     const colRef = collection(firestore, 'individual_kpis');
-    
-    // We don't delete old ones, we just add new ones. The portfolio page will show all.
-    // Management of old/duplicate KPIs can be a future feature.
     
     for (const assignment of assignments) {
       addDocumentNonBlocking(colRef, { ...assignment, status: 'Draft' as const });
