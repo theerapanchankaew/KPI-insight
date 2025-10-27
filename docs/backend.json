@@ -1,49 +1,73 @@
 {
   "entities": {
-    "UserProfile": {
+    "Kpi": {
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "UserProfile",
+      "title": "Kpi",
       "type": "object",
-      "description": "Represents a user profile within the KPI Insights application.",
+      "description": "Represents a Key Performance Indicator.",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the user profile."
+          "description": "Unique identifier for the KPI."
         },
-        "firstName": {
+        "name": {
           "type": "string",
-          "description": "The first name of the user."
+          "description": "Name of the KPI."
         },
-        "lastName": {
+        "category": {
           "type": "string",
-          "description": "The last name of the user."
-        },
-        "email": {
-          "type": "string",
-          "description": "The email address of the user.",
-          "format": "email"
-        },
-        "title": {
-          "type": "string",
-          "description": "The job title of the user (e.g., CEO, Manager)."
+          "description": "Category of the KPI (e.g., financial, operational, ESG, customer)."
         },
         "departmentId": {
           "type": "string",
-          "description": "Reference to the Department the user belongs to. (Relationship: Department 1:N UserProfile)"
+          "description": "Reference to Department. (Relationship: Department 1:N Kpi)"
         },
-        "roleId": {
+        "level": {
           "type": "string",
-          "description": "Reference to the Role assigned to the user. (Relationship: Role 1:N UserProfile)"
+          "description": "Level of the KPI (corporate, department, individual)."
+        },
+        "priority": {
+          "type": "string",
+          "description": "Priority of the KPI (high, normal, low)."
+        },
+        "targetValue": {
+          "type": "number",
+          "description": "Target value for the KPI."
+        },
+        "actualValue": {
+          "type": "number",
+          "description": "Actual value achieved for the KPI."
+        },
+        "unit": {
+          "type": "string",
+          "description": "Unit of measurement for the KPI (e.g., THB, %, Count)."
+        },
+        "period": {
+          "type": "string",
+          "description": "Time period for the KPI (monthly, quarterly, yearly)."
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Reference to User. (Relationship: User 1:N Kpi)"
+        },
+        "submissionId": {
+          "type": "string",
+          "description": "Reference to Submission. (Relationship: Submission 1:N Kpi)"
         }
       },
       "required": [
         "id",
-        "firstName",
-        "lastName",
-        "email",
-        "title",
+        "name",
+        "category",
         "departmentId",
-        "roleId"
+        "level",
+        "priority",
+        "targetValue",
+        "actualValue",
+        "unit",
+        "period",
+        "ownerId",
+        "submissionId"
       ]
     },
     "Department": {
@@ -58,165 +82,77 @@
         },
         "name": {
           "type": "string",
-          "description": "The name of the department (e.g., Sales, Operations)."
-        },
-        "description": {
-          "type": "string",
-          "description": "A brief description of the department's function."
+          "description": "Name of the department (e.g., Sales, Operations, Corporate Affairs)."
         }
       },
       "required": [
         "id",
-        "name",
-        "description"
+        "name"
       ]
     },
-    "Role": {
+    "User": {
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Role",
+      "title": "User",
       "type": "object",
-      "description": "Represents a user role within the organization, defining access permissions.",
+      "description": "Represents a user in the application.",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the role."
+          "description": "Unique identifier for the user."
         },
         "name": {
           "type": "string",
-          "description": "The name of the role (e.g., Administrator, Manager, User)."
-        },
-        "permissions": {
-          "type": "array",
-          "description": "A list of permissions granted to this role.",
-          "items": {
-            "type": "string"
-          }
-        }
-      },
-      "required": [
-        "id",
-        "name",
-        "permissions"
-      ]
-    },
-    "Kpi": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Kpi",
-      "type": "object",
-      "description": "Represents a Key Performance Indicator.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the KPI."
-        },
-        "name": {
-          "type": "string",
-          "description": "The name of the KPI (e.g., Monthly Revenue, Customer Satisfaction)."
-        },
-        "description": {
-          "type": "string",
-          "description": "A detailed description of the KPI and its importance."
-        },
-        "target": {
-          "type": "number",
-          "description": "The target value for the KPI for a given period."
-        },
-        "unit": {
-          "type": "string",
-          "description": "The unit of measurement for the KPI (e.g., THB, %, Count)."
-        },
-        "period": {
-          "type": "string",
-          "description": "The reporting period for the KPI (e.g., monthly, quarterly, yearly)."
+          "description": "Name of the user."
         },
         "departmentId": {
           "type": "string",
-          "description": "Reference to the Department responsible for the KPI. (Relationship: Department 1:N Kpi)"
+          "description": "Reference to Department. (Relationship: Department 1:N User)"
         },
-        "kpiCategoryId": {
+        "title": {
           "type": "string",
-          "description": "Reference to the KpiCategory this KPI belongs to. (Relationship: KpiCategory 1:N Kpi)"
+          "description": "Job title of the user (e.g. CEO, Manager)."
         }
       },
       "required": [
         "id",
         "name",
-        "description",
-        "target",
-        "unit",
-        "period",
         "departmentId",
-        "kpiCategoryId"
+        "title"
       ]
     },
-    "KpiSubmission": {
+    "Submission": {
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "KpiSubmission",
+      "title": "Submission",
       "type": "object",
-      "description": "Represents a submission of KPI data for a specific period.",
+      "description": "Represents a KPI data submission.",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the KPI submission."
+          "description": "Unique identifier for the submission."
         },
-        "kpiId": {
+        "submittedBy": {
           "type": "string",
-          "description": "Reference to the KPI being submitted. (Relationship: Kpi 1:N KpiSubmission)"
-        },
-        "submittedByUserId": {
-          "type": "string",
-          "description": "Reference to the UserProfile who submitted the data. (Relationship: UserProfile 1:N KpiSubmission)"
+          "description": "Reference to User. (Relationship: User 1:N Submission)"
         },
         "submissionDate": {
           "type": "string",
-          "description": "The date and time when the KPI data was submitted.",
+          "description": "Date and time of the submission.",
           "format": "date-time"
-        },
-        "actualValue": {
-          "type": "number",
-          "description": "The actual value achieved for the KPI during the reporting period."
-        },
-        "notes": {
-          "type": "string",
-          "description": "Additional notes or comments related to the KPI submission."
         },
         "status": {
           "type": "string",
-          "description": "The status of the KPI submission (e.g., Pending, Approved, Rejected)."
+          "description": "Status of the submission (e.g., pending, approved, rejected, draft)."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional notes or comments about the submission."
         }
       },
       "required": [
         "id",
-        "kpiId",
-        "submittedByUserId",
+        "submittedBy",
         "submissionDate",
-        "actualValue",
         "status"
-      ]
-    },
-    "KpiCategory": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "KpiCategory",
-      "type": "object",
-      "description": "Represents a category of Key Performance Indicators.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the KPI Category."
-        },
-        "name": {
-          "type": "string",
-          "description": "The name of the KPI Category (e.g., Financial, Operational, ESG)."
-        },
-        "description": {
-          "type": "string",
-          "description": "A detailed description of the KPI Category."
-        }
-      },
-      "required": [
-        "id",
-        "name",
-        "description"
       ]
     }
   },
@@ -231,15 +167,15 @@
       {
         "path": "/users/{userId}",
         "definition": {
-          "entityName": "UserProfile",
+          "entityName": "User",
           "schema": {
-            "$ref": "#/backend/entities/UserProfile"
+            "$ref": "#/backend/entities/User"
           },
-          "description": "Stores user profile information. Uses path-based ownership. The `roleId` and `departmentId` are used for authorization independence.",
+          "description": "Stores user profiles. Only the user can read/write their own profile.",
           "params": [
             {
               "name": "userId",
-              "description": "The unique identifier for the user.  Corresponds to the Firebase Auth UID."
+              "description": "The unique identifier of the user."
             }
           ]
         }
@@ -255,56 +191,20 @@
           "params": [
             {
               "name": "departmentId",
-              "description": "The unique identifier for the department."
+              "description": "The unique identifier of the department."
             }
           ]
         }
       },
       {
-        "path": "/roles/{roleId}",
-        "definition": {
-          "entityName": "Role",
-          "schema": {
-            "$ref": "#/backend/entities/Role"
-          },
-          "description": "Stores role information and permissions.",
-          "params": [
-            {
-              "name": "roleId",
-              "description": "The unique identifier for the role."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/kpi_categories/{kpiCategoryId}",
-        "definition": {
-          "entityName": "KpiCategory",
-          "schema": {
-            "$ref": "#/backend/entities/KpiCategory"
-          },
-          "description": "Stores KPI category information.",
-          "params": [
-            {
-              "name": "kpiCategoryId",
-              "description": "The unique identifier for the KPI category."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/departments/{departmentId}/kpis/{kpiId}",
+        "path": "/kpis/{kpiId}",
         "definition": {
           "entityName": "Kpi",
           "schema": {
             "$ref": "#/backend/entities/Kpi"
           },
-          "description": "Stores KPI information, organized by department.",
+          "description": "Stores KPI data. Includes denormalized 'ownerId' for authorization independence.",
           "params": [
-            {
-              "name": "departmentId",
-              "description": "The unique identifier for the department."
-            },
             {
               "name": "kpiId",
               "description": "The unique identifier for the KPI."
@@ -313,30 +213,22 @@
         }
       },
       {
-        "path": "/departments/{departmentId}/kpis/{kpiId}/submissions/{kpiSubmissionId}",
+        "path": "/submissions/{submissionId}",
         "definition": {
-          "entityName": "KpiSubmission",
+          "entityName": "Submission",
           "schema": {
-            "$ref": "#/backend/entities/KpiSubmission"
+            "$ref": "#/backend/entities/Submission"
           },
-          "description": "Stores KPI submission data for a specific KPI.",
+          "description": "Stores KPI submission data.",
           "params": [
             {
-              "name": "kpiId",
-              "description": "The unique identifier for the KPI."
-            },
-            {
-              "name": "departmentId",
-              "description": "The unique identifier for the department."
-            },
-            {
-              "name": "kpiSubmissionId",
-              "description": "The unique identifier for the KPI Submission."
+              "name": "submissionId",
+              "description": "The unique identifier for the submission."
             }
           ]
         }
       }
     ],
-    "reasoning": "The Firestore data structure is designed to support the KPI Insights application, focusing on authorization independence, clarity, and scalability. User profile data is stored under `/users/{userId}` using path-based ownership. This approach simplifies security rules and ensures that each user's data is isolated and secure. Departments, roles and KPI categories are stored in root-level collections. KPIs and KPI Submissions are stored as subcollections of the related entity to make querying and data management easier. To enforce authorization independence, the `UserProfile` data includes `roleId` and `departmentId` which can be used to determine permissions without needing to perform additional `get()` operations in the security rules.\n\nThe structure uses Structural Segregation (Homogeneous Security Posture) by storing data with similar access requirements in the same collections. Path-Based ownership is used for private user data (`/users/{userId}/...`). Data clarity is enhanced using explicit state modeling through the `status` field in `KpiSubmission` documents.\n\nThis structure effectively supports the required QAPs:\n\n*   **Secure List Operations:** Due to the segregation of data and the denormalization of roles within user documents, `list` operations can be secured efficiently without complex filtering.\n*   **Authorization Independence:** The design avoids hierarchical authorization dependencies by denormalizing authorization context, eliminating the need for `get()` calls in security rules. This design ensures that atomic operations (transactions/batches) are not broken and that debugging is simplified."
+    "reasoning": "The Firestore data structure is designed to support the KPI Insights application, emphasizing authorization independence, clear access modeling, and structural segregation to ensure security and scalability. Here’s a breakdown of the approach:\n\n*   **Authorization Independence**: This is achieved by adhering to the principle of denormalization. Specifically, the `ownerId` is present in the `kpis` collection, removing the need for rules to depend on `get()` calls to parent documents. This allows atomic operations and simplifies security rules.\n*   **Structural Segregation**: Data with different security requirements are stored in separate collections. User data is stored under `/users/{userId}`, ensuring that only the user can access their own data. KPIs are stored under `/kpis/{kpiId}` but contain the `ownerId` for authorization.\n*   **Access Modeling**: The structure uses path-based ownership for private user data (`/users/{userId}`). For KPI data, it relies on denormalized `ownerId` within the KPI document to link ownership back to the user.\n*   **QAPs (Rules are not Filters)**: Secure list operations are enabled by the segregation of data based on access level and the denormalization of authorization data, such as the `ownerId` on the `kpis` collection, which simplifies queries based on ownership and eliminates the need to filter based on data content in rules.\n\nThis structure ensures that security rules are straightforward, efficient, and maintainable, avoiding complex hierarchical dependencies and enabling atomic operations."
   }
 }

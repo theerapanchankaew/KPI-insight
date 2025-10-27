@@ -1,75 +1,66 @@
 /**
- * @file Firestore Security Rules for KPI Insights Application
- * @corePhilosophy This ruleset enforces a strict user-ownership model for user profiles and allows public read access to departments, roles and KPI categories.
- *  KPIs and KPI Submissions are organized under Departments, enforcing ownership.
- * @dataStructure
- *  - /users/{userId}: Stores user profile information. Access is restricted to the owner (the user with the matching userId).
- *  - /departments/{departmentId}: Stores department information. Publicly readable.
- *  - /roles/{roleId}: Stores role information. Publicly readable.
- *  - /kpi_categories/{kpiCategoryId}: Stores KPI category information. Publicly readable.
- *  - /departments/{departmentId}/kpis/{kpiId}: Stores KPI information, nested under departments. Writes are restricted.
- *  - /departments/{departmentId}/kpis/{kpiId}/submissions/{kpiSubmissionId}: Stores KPI submission data, nested under KPIs. Writes are restricted.
- * @keySecurityDecisions
- *  - User listing is disallowed to protect privacy.
- *  - Public read access is granted for /departments, /roles, and /kpi_categories.
- *  - Write access to KPIs and KPI Submissions is restricted.
+ * @fileoverview Firestore Security Rules for KPI Insights application.
+ *
+ * Core Philosophy:
+ * This ruleset enforces a user-ownership model for user profiles and KPIs.
+ * All user data is nested under /users/{userId}, ensuring that only the user can access their own profile.
+ * KPIs are stored in a top-level /kpis/{kpiId} collection, but each KPI document contains an ownerId field that links it to a specific user.
+ *
+ * Data Structure:
+ * /users/{userId}: Stores user profiles.
+ * /departments/{departmentId}: Stores department information. Publicly readable.
+ * /kpis/{kpiId}: Stores KPI data, with an ownerId field for authorization.
+ * /submissions/{submissionId}: Stores KPI submission data.
+ *
+ * Key Security Decisions:
+ * - Users can only read and write their own user documents.
+ * - Departments are publicly readable.
+ * - KPIs can be created by anyone, but updates and deletes are restricted to the owner.
+ * - Submissions can be created by anyone, but updates and deletes are restricted to the user who submitted.
+ *
+ * Denormalization for Authorization:
+ * The KPI documents include an ownerId field to avoid needing to perform expensive `get()` operations
+ * to determine ownership. This denormalization allows for simple and efficient security rules.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Checks if the current user is signed in.
-     * @return {bool} True if the user is signed in, false otherwise.
-     */
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    /**
-     * @description Checks if the current user is the owner of the resource.
-     * @param {string} userId The user ID to compare against the request's auth UID.
-     * @return {bool} True if the user is the owner, false otherwise.
-     */
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    /**
-     * @description Checks if the current user is the owner of the resource and the resource exists.
-     *              This is used for update and delete operations to prevent acting on non-existent documents.
-     * @param {string} userId The user ID to compare against the resource's userId.
-     * @return {bool} True if the user is the owner and the resource exists, false otherwise.
-     */
-    function isExistingOwner(userId) {
-      return isOwner(userId) && resource != null;
-    }
-
-    /**
-     * @description Defines a rule for documents in the /users/{userId} collection.
+     * @description Allows users to read and write their own profile data.
      * @path /users/{userId}
-     * @allow (create) - User with UID 'user123' can create a profile at /users/user123 if request.auth.uid == 'user123'
-     * @allow (get, list) - User with UID 'user123' can read their own profile at /users/user123.
-     * @allow (update, delete) - User with UID 'user123' can update/delete their own profile at /users/user123.
-     * @deny (create) - User with UID 'user456' cannot create a profile at /users/user123.
-     * @deny (get, list) - User with UID 'user456' cannot read the profile at /users/user123.
-     * @deny (update, delete) - User with UID 'user456' cannot update/delete the profile at /users/user123.
-     * @principle Enforces document ownership for writes.
+     * @allow (create) - Authenticated user creates their own profile with matching userId.
+     *   request.auth.uid == 'user123' and request.resource.data.id == 'user123'
+     * @allow (get, update, delete) - Authenticated user reads/updates/deletes their own profile.
+     *   request.auth.uid == 'user123'
+     * @deny (create) - Authenticated user tries to create a profile with a mismatched userId.
+     *   request.auth.uid == 'user123' and request.resource.data.id == 'user456'
+     * @deny (get, update, delete) - Authenticated user tries to access another user's profile.
+     *   request.auth.uid == 'user456'
+     * @principle Enforces document ownership for user profiles.
      */
     match /users/{userId} {
+      function isOwner(userId) {
+        return request.auth != null && request.auth.uid == userId;
+      }
+
+      function isExistingOwner(userId) {
+        return isOwner(userId) && resource != null;
+      }
+
       allow get: if isOwner(userId);
-      allow list: if false; // User listing is not permitted.
+      allow list: if false;
       allow create: if isOwner(userId) && request.resource.data.id == userId;
       allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
       allow delete: if isExistingOwner(userId);
     }
 
     /**
-     * @description Defines a rule for documents in the /departments/{departmentId} collection.
+     * @description Allows anyone to read department data.
      * @path /departments/{departmentId}
-     * @allow (get, list) - Any user (signed in or not) can read department information.
-     * @deny (create, update, delete) - No one can create, update, or delete department information.
-     * @principle Allows public read access but restricts write access to departments.
+     * @allow (get, list) - Any user can read department data.
+     * @deny (create, update, delete) - No one can create, update, or delete department data.
+     * @principle Allows public read access to departments, but restricts write access.
      */
     match /departments/{departmentId} {
       allow get, list: if true;
@@ -77,47 +68,69 @@ service cloud.firestore {
     }
 
     /**
-     * @description Defines a rule for documents in the /roles/{roleId} collection.
-     * @path /roles/{roleId}
-     * @allow (get, list) - Any user (signed in or not) can read role information.
-     * @deny (create, update, delete) - No one can create, update, or delete role information.
-     * @principle Allows public read access but restricts write access to roles.
+     * @description Allows anyone to read KPI data, but restricts creation to authenticated users and updates/deletes to the KPI owner.
+     * @path /kpis/{kpiId}
+     * @allow (get, list) - Any user can read KPI data.
+     * @allow (create) - Authenticated user creates a KPI with their userId as the ownerId.
+     *   request.auth.uid == 'user123' and request.resource.data.ownerId == 'user123'
+     * @allow (update, delete) - Authenticated user updates/deletes a KPI they own.
+     *   request.auth.uid == 'user123' and resource.data.ownerId == 'user123'
+     * @deny (create) - Authenticated user tries to create a KPI with a mismatched ownerId.
+     *   request.auth.uid == 'user123' and request.resource.data.ownerId == 'user456'
+     * @deny (update, delete) - Authenticated user tries to update/delete a KPI they don't own.
+     *   request.auth.uid == 'user456' and resource.data.ownerId == 'user123'
+     * @principle Allows public read access, enforces document ownership for writes.
      */
-    match /roles/{roleId} {
+    match /kpis/{kpiId} {
+      function isSignedIn() {
+          return request.auth != null;
+      }
+
+      function isOwner(ownerId) {
+        return isSignedIn() && request.auth.uid == ownerId;
+      }
+
+      function isExistingOwner(ownerId) {
+        return isOwner(ownerId) && resource != null;
+      }
+
       allow get, list: if true;
-      allow create, update, delete: if false;
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isExistingOwner(resource.data.ownerId);
+      allow delete: if isExistingOwner(resource.data.ownerId);
     }
 
     /**
-     * @description Defines a rule for documents in the /kpi_categories/{kpiCategoryId} collection.
-     * @path /kpi_categories/{kpiCategoryId}
-     * @allow (get, list) - Any user (signed in or not) can read KPI category information.
-     * @deny (create, update, delete) - No one can create, update, or delete KPI category information.
-     * @principle Allows public read access but restricts write access to KPI categories.
+     * @description Allows any authenticated user to create a submission, but restricts updates/deletes to the user who submitted.
+     * @path /submissions/{submissionId}
+     * @allow (get, list) - Any user can read submission data.
+     * @allow (create) - Authenticated user creates a submission with their userId as the submittedBy.
+     *   request.auth.uid == 'user123' and request.resource.data.submittedBy == 'user123'
+     * @allow (update, delete) - Authenticated user updates/deletes a submission they submitted.
+     *   request.auth.uid == 'user123' and resource.data.submittedBy == 'user123'
+     * @deny (create) - Authenticated user tries to create a submission with a mismatched submittedBy.
+     *   request.auth.uid == 'user123' and request.resource.data.submittedBy == 'user456'
+     * @deny (update, delete) - Authenticated user tries to update/delete a submission they didn't submit.
+     *   request.auth.uid == 'user456' and resource.data.submittedBy == 'user123'
+     * @principle Enforces document ownership for submissions.
      */
-    match /kpi_categories/{kpiCategoryId} {
-      allow get, list: if true;
-      allow create, update, delete: if false;
-    }
+    match /submissions/{submissionId} {
+        function isSignedIn() {
+            return request.auth != null;
+        }
 
-    /**
-     * @description Defines a rule for documents in the /departments/{departmentId}/kpis/{kpiId} collection.
-     * @path /departments/{departmentId}/kpis/{kpiId}
-     * @deny (create, update, delete) - No one can create, update, or delete KPIs.
-     */
-    match /departments/{departmentId}/kpis/{kpiId} {
-      allow get, list: if true;
-      allow create, update, delete: if false;
-    }
+        function isOwner(submittedBy) {
+          return isSignedIn() && request.auth.uid == submittedBy;
+        }
 
-    /**
-     * @description Defines a rule for documents in the /departments/{departmentId}/kpis/{kpiId}/submissions/{kpiSubmissionId} collection.
-     * @path /departments/{departmentId}/kpis/{kpiId}/submissions/{kpiSubmissionId}
-     * @deny (create, update, delete) - No one can create, update, or delete KPI submissions.
-     */
-    match /departments/{departmentId}/kpis/{kpiId}/submissions/{kpiSubmissionId} {
-      allow get, list: if true;
-      allow create, update, delete: if false;
+        function isExistingOwner(submittedBy) {
+          return isOwner(submittedBy) && resource != null;
+        }
+
+        allow get, list: if true;
+        allow create: if isSignedIn() && request.resource.data.submittedBy == request.auth.uid;
+        allow update: if isExistingOwner(resource.data.submittedBy);
+        allow delete: if isExistingOwner(resource.data.submittedBy);
     }
   }
 }
