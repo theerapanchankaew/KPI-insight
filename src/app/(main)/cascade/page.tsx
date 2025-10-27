@@ -304,6 +304,22 @@ const DeployAndCascadeDialog = ({
     setCustomWeights(newWeights);
   };
   
+  const handleCustomTargetChange = (monthIndex: number, targetValue: string) => {
+    const newPreviewData = [...previewData];
+    const yearlyTarget = parseFloat(String(kpi?.target).replace(/[^0-9.]/g, '')) || 0;
+    
+    newPreviewData[monthIndex].target = Number(targetValue) || 0;
+    
+    // When a target changes, we can recalculate percentage. Weight becomes irrelevant.
+    if (yearlyTarget > 0) {
+      newPreviewData[monthIndex].percentage = (newPreviewData[monthIndex].target / yearlyTarget) * 100;
+    } else {
+       newPreviewData[monthIndex].percentage = 0;
+    }
+
+    setPreviewData(newPreviewData);
+  };
+  
   const totalWeight = useMemo(() => customWeights.reduce((sum, w) => sum + w, 0), [customWeights]);
 
   const handleAddDept = () => {
@@ -405,7 +421,14 @@ const DeployAndCascadeDialog = ({
                               className="h-8"
                             />
                           </TableCell>
-                          <TableCell>{month.target.toFixed(2)}</TableCell>
+                          <TableCell>
+                             <Input
+                              type="number"
+                              value={month.target.toFixed(2)}
+                              onChange={(e) => handleCustomTargetChange(index, e.target.value)}
+                              className="h-8"
+                            />
+                          </TableCell>
                           <TableCell className="text-right">{month.percentage.toFixed(1)}%</TableCell>
                         </TableRow>
                       ))}
@@ -473,7 +496,7 @@ const DeployAndCascadeDialog = ({
         </ScrollArea>
 
         <DialogFooter className="flex gap-2 !mt-6">
-          <DialogClose asChild><Button variant="outline">ยกเลิก</Button></DialogClose>
+          <DialogClose asChild><Button variant="outline" onClick={onClose}>ยกเลิก</Button></DialogClose>
           <Button onClick={handleDeploy} disabled={!user}>
             <Share2 className="mr-2 h-4 w-4" />
             Deploy & Cascade
