@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useAppLayout } from '../layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -269,7 +269,7 @@ const DeployAndCascadeDialog = ({
   // Department Cascade State
   const [cascadedDepts, setCascadedDepts] = useState<DepartmentCascadeInput[]>([]);
 
-  const generatePreview = useMemo(() => () => {
+  const generatePreview = useCallback(() => {
     if (!kpi || !kpi.target) return;
     const yearlyTarget = parseFloat(String(kpi.target).replace(/[^0-9.]/g, '')) || 0;
     
@@ -289,31 +289,19 @@ const DeployAndCascadeDialog = ({
 
   useEffect(() => {
     if (kpi && isOpen) {
-      // Initialize weights to 1 for weighted strategy
-      if(strategy === 'weighted') {
-        const equalDist = DISTRIBUTION_STRATEGIES.equal(100); // For percentage
-        setPreviewData(equalDist);
-        setCustomWeights(equalDist.map(m => m.weight || 1));
-      } else {
-         generatePreview();
-      }
+      generatePreview();
     } else {
       // Reset state on close
       setCascadedDepts([]);
       setStrategy('auto');
       setSelectedYear(new Date().getFullYear());
     }
-  }, [kpi, isOpen, generatePreview, strategy]);
+  }, [kpi, isOpen, strategy, seasonalPattern, progressiveCurve, customWeights, generatePreview]);
 
   const handleCustomWeightChange = (monthIndex: number, weightValue: string) => {
     const newWeights = [...customWeights];
     newWeights[monthIndex] = Number(weightValue) || 0;
     setCustomWeights(newWeights);
-    // Re-run preview generation with new weights
-    if (!kpi || !kpi.target) return;
-    const yearlyTarget = parseFloat(String(kpi.target).replace(/[^0-9.]/g, '')) || 0;
-    const preview = DISTRIBUTION_STRATEGIES.weighted(yearlyTarget, newWeights);
-    setPreviewData(preview);
   };
   
   const totalWeight = useMemo(() => customWeights.reduce((sum, w) => sum + w, 0), [customWeights]);
@@ -1366,3 +1354,5 @@ export default function KPICascadeManagement() {
     </div>
   );
 }
+
+    
