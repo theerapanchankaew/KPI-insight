@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { PlusCircle, Trash2 } from 'lucide-react';
+import { PlusCircle, Trash2, AlertTriangle } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { navItems } from '@/lib/data/layout-data';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -19,6 +19,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useCollection, useFirestore, useMemoFirebase, useUser } from '@/firebase';
 import { collection, doc } from 'firebase/firestore';
 import { addDocumentNonBlocking, deleteDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type Role = 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee';
 
@@ -130,25 +131,43 @@ export default function UserManagementPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user, isUserLoading: isAuthLoading } = useUser();
-
-  const usersQuery = useMemoFirebase(() => {
-    // Only create the query if firestore is available and a user is logged in.
-    if (!firestore || !user) return null;
-    return collection(firestore, 'users');
-  }, [firestore, user]);
-  
-  const { data: usersData, isLoading: isUsersLoading } = useCollection<AppUser>(usersQuery);
-
-  const [localUsers, setLocalUsers] = useState<AppUser[]>([]);
-  const [isAddUserModalOpen, setAddUserModalOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     setPageTitle('User Management');
   }, [setPageTitle]);
 
   useEffect(() => {
+      const checkAdminStatus = async () => {
+          if (user) {
+              try {
+                  const idTokenResult = await user.getIdTokenResult();
+                  setIsAdmin(idTokenResult.claims.role === 'Admin');
+              } catch (error) {
+                  console.error("Error fetching user claims:", error);
+                  setIsAdmin(false);
+              }
+          }
+      };
+      checkAdminStatus();
+  }, [user]);
+
+  const usersQuery = useMemoFirebase(() => {
+    // Only fetch if firestore is ready, user is loaded, and the user is an admin.
+    if (!firestore || isAuthLoading || !isAdmin) return null;
+    return collection(firestore, 'users');
+  }, [firestore, isAuthLoading, isAdmin]);
+  
+  const { data: usersData, isLoading: isUsersLoading, error } = useCollection<AppUser>(usersQuery);
+
+  const [localUsers, setLocalUsers] = useState<AppUser[]>([]);
+  const [isAddUserModalOpen, setAddUserModalOpen] = useState(false);
+
+  useEffect(() => {
     if (usersData) {
       setLocalUsers(usersData);
+    } else {
+      setLocalUsers([]);
     }
   }, [usersData]);
   
@@ -222,6 +241,102 @@ export default function UserManagementPage() {
 
   const isLoading = isAuthLoading || isUsersLoading;
 
+  const renderContent = () => {
+    if (isLoading) {
+       return (
+         <TableRow>
+            <TableCell colSpan={navItems.length + 4} className="h-96">
+               <div className="flex items-center justify-center space-x-2">
+                 <Skeleton className="h-5 w-5 rounded-full" />
+                 <p className="text-muted-foreground">Loading user data...</p>
+               </div>
+            </TableCell>
+         </TableRow>
+       )
+    }
+
+    if (!isAdmin) {
+       return (
+         <TableRow>
+            <TableCell colSpan={navItems.length + 4} className="h-96">
+               <div className="flex flex-col items-center justify-center space-y-3 text-center">
+                 <AlertTriangle className="h-10 w-10 text-destructive" />
+                 <h3 className="text-lg font-semibold">Access Denied</h3>
+                 <p className="text-muted-foreground max-w-md">
+                    You do not have the necessary permissions to view this page. Please contact your system administrator if you believe this is an error.
+                 </p>
+               </div>
+            </TableCell>
+         </TableRow>
+       )
+    }
+
+    return localUsers.map(employee => (
+      <TableRow key={employee.id}>
+        <TableCell>
+          <div className="flex items-center space-x-3">
+            <Avatar className="w-8 h-8">
+              <AvatarFallback>{employee.name ? employee.name.charAt(0) : '?'}</AvatarFallback>
+            </Avatar>
+            <div>
+              <p className="font-medium text-sm">{employee.name}</p>
+              <p className="text-xs text-muted-foreground">{employee.department}</p>
+            </div>
+          </div>
+        </TableCell>
+        <TableCell>
+          <span className="text-sm">{employee.position}</span>
+        </TableCell>
+        <TableCell>
+          <Select
+            value={employee.role || 'Employee'}
+            onValueChange={(role: Role) => handleRoleChange(employee.id, role)}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Admin">Admin</SelectItem>
+              <SelectItem value="VP">VP</SelectItem>
+              <SelectItem value="AVP">AVP</SelectItem>
+              <SelectItem value="Manager">Manager</SelectItem>
+              <SelectItem value="Employee">Employee</SelectItem>
+            </SelectContent>
+          </Select>
+        </TableCell>
+        {navItems.map(item => (
+          <TableCell key={item.href} className="text-center">
+            <Checkbox
+              checked={employee.menuAccess ? (employee.menuAccess[item.href] || false) : false}
+              onCheckedChange={(checked) => handlePermissionChange(employee.id, item.href, !!checked)}
+            />
+          </TableCell>
+        ))}
+        <TableCell className="text-center">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+               <Button variant="ghost" size="icon">
+                  <Trash2 className="h-4 w-4 text-destructive" />
+               </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone. This will permanently delete the user and their associated data.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={() => handleDeleteUser(employee.id)}>Delete</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </TableCell>
+      </TableRow>
+    ))
+  }
+
   return (
     <div className="fade-in space-y-6">
       <h3 className="text-xl font-semibold text-gray-800">User Management</h3>
@@ -231,7 +346,7 @@ export default function UserManagementPage() {
               <CardTitle>User &amp; Permission Management</CardTitle>
               <CardDescription>Manage roles and grant menu access for each user.</CardDescription>
             </div>
-            <Button variant="outline" onClick={() => setAddUserModalOpen(true)}>
+            <Button variant="outline" onClick={() => setAddUserModalOpen(true)} disabled={!isAdmin}>
               <PlusCircle className="mr-2 h-4 w-4" />
               Add User
             </Button>
@@ -251,77 +366,12 @@ export default function UserManagementPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {isLoading ? (
-                    <TableRow><TableCell colSpan={navItems.length + 4} className="text-center h-24">Loading users...</TableCell></TableRow>
-                  ) : (localUsers.map(employee => (
-                    <TableRow key={employee.id}>
-                      <TableCell>
-                        <div className="flex items-center space-x-3">
-                          <Avatar className="w-8 h-8">
-                            <AvatarFallback>{employee.name ? employee.name.charAt(0) : '?'}</AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="font-medium text-sm">{employee.name}</p>
-                            <p className="text-xs text-muted-foreground">{employee.department}</p>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-sm">{employee.position}</span>
-                      </TableCell>
-                      <TableCell>
-                        <Select
-                          value={employee.role || 'Employee'}
-                          onValueChange={(role: Role) => handleRoleChange(employee.id, role)}
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Admin">Admin</SelectItem>
-                            <SelectItem value="VP">VP</SelectItem>
-                            <SelectItem value="AVP">AVP</SelectItem>
-                            <SelectItem value="Manager">Manager</SelectItem>
-                            <SelectItem value="Employee">Employee</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      {navItems.map(item => (
-                        <TableCell key={item.href} className="text-center">
-                          <Checkbox
-                            checked={employee.menuAccess ? (employee.menuAccess[item.href] || false) : false}
-                            onCheckedChange={(checked) => handlePermissionChange(employee.id, item.href, !!checked)}
-                          />
-                        </TableCell>
-                      ))}
-                      <TableCell className="text-center">
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                             <Button variant="ghost" size="icon">
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                             </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                This action cannot be undone. This will permanently delete the user and their associated data.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleDeleteUser(employee.id)}>Delete</AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </TableCell>
-                    </TableRow>
-                  )))}
+                  {renderContent()}
                 </TableBody>
               </Table>
             </div>
             <div className="pt-4 flex justify-end">
-              <Button onClick={handleSavePermissions}>Save Permissions</Button>
+              <Button onClick={handleSavePermissions} disabled={!isAdmin}>Save Permissions</Button>
             </div>
           </CardContent>
         </Card>
@@ -329,5 +379,3 @@ export default function UserManagementPage() {
     </div>
   );
 }
-
-    

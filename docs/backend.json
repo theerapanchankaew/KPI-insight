@@ -189,9 +189,14 @@
   },
   "auth": {
     "providers": [
-      "password",
-      "anonymous"
-    ]
+      "password"
+    ],
+    "customClaims": {
+      "role": {
+        "type": "string",
+        "enum": ["Admin", "VP", "AVP", "Manager", "Employee"]
+      }
+    }
   },
   "firestore": {
     "structure": [
