@@ -892,9 +892,12 @@ export default function CascadePage() {
 
   const handleAssignKpiClick = (employee: WithId<Employee>) => {
     setSelectedEmployee(employee);
-    setSelectedIndividualKpi(null); // Clear any previously selected individual kpi
+    setSelectedIndividualKpi(null);
     
-    // Filter to only the kpis already assigned to this employee
+    // Clear previous state before setting new state
+    setSelectedKpis({});
+    setCommittedKpis([]);
+
     const assignedCascaded = (individualKpis || []).filter(ik => ik.employeeId === employee.id && ik.type === 'cascaded');
     const assignedCommitted = (individualKpis || []).filter(ik => ik.employeeId === employee.id && ik.type === 'committed');
 
@@ -908,7 +911,7 @@ export default function CascadePage() {
     const initialCommitted: CommittedKpiDraft[] = assignedCommitted.map((kpi, index) => {
         if(kpi.type === 'committed') {
             return {
-                id: Date.now() + index, // Ensure unique ID for new drafts
+                id: Date.now() + index,
                 task: kpi.task,
                 kpiMeasure: kpi.kpiMeasure,
                 weight: String(kpi.weight),
@@ -926,36 +929,7 @@ export default function CascadePage() {
   const handleEditIndividualKpi = (kpi: WithId<IndividualKpi>) => {
     const employee = orgData?.find(e => e.id === kpi.employeeId);
     if (employee) {
-        setSelectedEmployee(employee);
-        setSelectedIndividualKpi(kpi); // Keep track of the kpi being edited
-
-        // Pre-populate the dialog state
-        const assignedCascaded = (individualKpis || []).filter(ik => ik.employeeId === employee.id && ik.type === 'cascaded');
-        const assignedCommitted = (individualKpis || []).filter(ik => ik.employeeId === employee.id && ik.type === 'committed');
-        
-        const initialSelected: CascadedKpiSelection = {};
-        assignedCascaded.forEach(indKpi => {
-            if (indKpi.type === 'cascaded') {
-                initialSelected[indKpi.kpiId] = { selected: true, weight: String(indKpi.weight), target: indKpi.target };
-            }
-        });
-
-        const initialCommitted: CommittedKpiDraft[] = assignedCommitted.map((comKpi, index) => {
-             if (comKpi.type === 'committed') {
-                return {
-                    id: Date.now() + index,
-                    task: comKpi.task,
-                    kpiMeasure: comKpi.kpiMeasure,
-                    weight: String(comKpi.weight),
-                    targets: comKpi.targets
-                }
-            }
-            return null;
-        }).filter((k): k is CommittedKpiDraft => k !== null);
-
-        setSelectedKpis(initialSelected);
-        setCommittedKpis(initialCommitted);
-        setIsAssignModalOpen(true);
+        handleAssignKpiClick(employee);
     }
   }
   
@@ -1075,7 +1049,3 @@ export default function CascadePage() {
     </div>
   );
 }
-
-    
-
-    
