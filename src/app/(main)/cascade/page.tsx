@@ -228,13 +228,21 @@ const DepartmentLevel = ({ cascadedKpis }: { cascadedKpis: WithId<CascadedKpi>[]
     );
 }
 
-const AssignedKpiGrid = ({ kpis, canEdit, onEdit, onDelete }: { kpis: WithId<IndividualKpi>[], canEdit: boolean, onEdit: (kpi: WithId<IndividualKpi>) => void, onDelete: (kpiId: string) => void }) => {
+const AssignedKpiGrid = ({ kpis, canEdit, onEdit, onDelete, user }: { 
+    kpis: WithId<IndividualKpi>[], 
+    canEdit: boolean, 
+    onEdit: (kpi: WithId<IndividualKpi>) => void, 
+    onDelete: (kpiId: string) => void,
+    user: any 
+}) => {
     const summary = useMemo(() => {
         const totalWeight = kpis.reduce((sum, kpi) => sum + kpi.weight, 0);
         const cascadedCount = kpis.filter(kpi => kpi.type === 'cascaded').length;
         const committedCount = kpis.filter(kpi => kpi.type === 'committed').length;
         return { totalWeight, cascadedCount, committedCount };
     }, [kpis]);
+
+    const isUserLoggedIn = !!user;
 
     return (
     <div className="px-6 py-4 bg-gray-50/50">
@@ -264,23 +272,43 @@ const AssignedKpiGrid = ({ kpis, canEdit, onEdit, onDelete }: { kpis: WithId<Ind
                             <TableCell>{kpi.weight}%</TableCell>
                              {canEdit && (
                                 <TableCell className="text-right">
-                                    <Button variant="ghost" size="icon" onClick={() => onEdit(kpi)} className="mr-2 h-8 w-8">
+                                    <Button 
+                                        variant="ghost" 
+                                        size="icon" 
+                                        onClick={() => onEdit(kpi)} 
+                                        className="mr-2 h-8 w-8"
+                                        disabled={!isUserLoggedIn}
+                                        title={!isUserLoggedIn ? "Please log in to edit KPI" : "Edit KPI"}
+                                    >
                                         <Edit className="h-4 w-4" />
                                     </Button>
                                     <AlertDialog>
                                         <AlertDialogTrigger asChild>
-                                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                                            <Button 
+                                                variant="ghost" 
+                                                size="icon" 
+                                                className="h-8 w-8"
+                                                disabled={!isUserLoggedIn}
+                                                title={!isUserLoggedIn ? "Please log in to delete KPI" : "Delete KPI"}
+                                            >
                                                 <Trash2 className="h-4 w-4 text-destructive" />
                                             </Button>
                                         </AlertDialogTrigger>
                                         <AlertDialogContent>
                                             <AlertDialogHeader>
                                                 <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                                <AlertDialogDescription>This will permanently delete the assigned KPI. This action cannot be undone.</AlertDialogDescription>
+                                                <AlertDialogDescription>
+                                                    {!isUserLoggedIn 
+                                                        ? "You need to be logged in to delete KPIs. Please log in and try again."
+                                                        : "This will permanently delete the assigned KPI. This action cannot be undone."
+                                                    }
+                                                </AlertDialogDescription>
                                             </AlertDialogHeader>
                                             <AlertDialogFooter>
                                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                <AlertDialogAction onClick={() => onDelete(kpi.id)}>Delete</AlertDialogAction>
+                                                {isUserLoggedIn && (
+                                                    <AlertDialogAction onClick={() => onDelete(kpi.id)}>Delete</AlertDialogAction>
+                                                )}
                                             </AlertDialogFooter>
                                         </AlertDialogContent>
                                     </AlertDialog>
@@ -293,6 +321,16 @@ const AssignedKpiGrid = ({ kpis, canEdit, onEdit, onDelete }: { kpis: WithId<Ind
         ) : (
             <p className="text-sm text-center text-gray-500 py-4">No KPIs assigned to this individual yet.</p>
         )}
+        
+        {!isUserLoggedIn && canEdit && kpis.length === 0 && (
+            <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-md flex items-center justify-center">
+                <AlertTriangle className="h-4 w-4 text-amber-600 mr-2" />
+                <p className="text-sm text-amber-800">
+                    Log in to assign and manage KPIs.
+                </p>
+            </div>
+        )}
+        
         <div className="mt-4 p-4 border-t">
             <div className="flex justify-between items-center text-sm">
                 <div className="flex space-x-4">
@@ -309,10 +347,27 @@ const AssignedKpiGrid = ({ kpis, canEdit, onEdit, onDelete }: { kpis: WithId<Ind
 }
 
 
-const IndividualLevel = ({ cascadedKpis, individualKpis, onAssignKpi, onEditIndividualKpi, onDeleteIndividualKpi, userRole }: { cascadedKpis: WithId<CascadedKpi>[] | null, individualKpis: WithId<IndividualKpi>[] | null, onAssignKpi: (employee: WithId<Employee>) => void, onEditIndividualKpi: (kpi: WithId<IndividualKpi>) => void, onDeleteIndividualKpi: (kpiId: string) => void, userRole: Role }) => {
+const IndividualLevel = ({ 
+    cascadedKpis, 
+    individualKpis, 
+    onAssignKpi, 
+    onEditIndividualKpi, 
+    onDeleteIndividualKpi, 
+    userRole,
+    user 
+}: { 
+    cascadedKpis: WithId<CascadedKpi>[] | null, 
+    individualKpis: WithId<IndividualKpi>[] | null, 
+    onAssignKpi: (employee: WithId<Employee>) => void, 
+    onEditIndividualKpi: (kpi: WithId<IndividualKpi>) => void, 
+    onDeleteIndividualKpi: (kpiId: string) => void, 
+    userRole: Role,
+    user: any 
+}) => {
     const { orgData, isOrgDataLoading } = useKpiData();
 
     const canAssignOrEdit = userRole === 'Admin' || userRole === 'VP' || userRole === 'AVP' || userRole === 'Manager';
+    const isUserLoggedIn = !!user;
 
     if (isOrgDataLoading) {
         return (
@@ -337,7 +392,7 @@ const IndividualLevel = ({ cascadedKpis, individualKpis, onAssignKpi, onEditIndi
         );
     }
     
-    const managers = [...new Set(orgData.map(e => e.manager))].filter(Boolean); // Filter out empty manager names
+    const managers = [...new Set(orgData.map(e => e.manager))].filter(Boolean);
 
     return (
         <div className="space-y-8">
@@ -374,10 +429,17 @@ const IndividualLevel = ({ cascadedKpis, individualKpis, onAssignKpi, onEditIndi
                                                 canEdit={canAssignOrEdit}
                                                 onEdit={onEditIndividualKpi}
                                                 onDelete={onDeleteIndividualKpi}
+                                                user={user}
                                             />
                                             {canAssignOrEdit && (
                                                 <div className="p-4 bg-gray-50/50 border-t flex justify-end">
-                                                    <Button variant="outline" size="sm" onClick={() => onAssignKpi(person)}>
+                                                    <Button 
+                                                        variant="outline" 
+                                                        size="sm" 
+                                                        onClick={() => onAssignKpi(person)}
+                                                        disabled={!isUserLoggedIn}
+                                                        title={!isUserLoggedIn ? "Please log in to assign KPIs" : "Assign KPI"}
+                                                    >
                                                         Assign KPI
                                                     </Button>
                                                 </div>
@@ -400,16 +462,20 @@ const CascadeDialog = ({
     kpi,
     departments,
     onConfirm,
+    user
 }: {
     isOpen: boolean;
     onClose: () => void;
     kpi: CorporateKpi | null;
     departments: string[];
     onConfirm: (cascadedKpi: CascadedKpi) => void;
+    user: any;
 }) => {
     const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
     const [target, setTarget] = useState('');
     const [weight, setWeight] = useState('');
+
+    const isUserLoggedIn = !!user;
 
     useEffect(() => {
         if (!isOpen) {
@@ -420,12 +486,18 @@ const CascadeDialog = ({
     }, [isOpen]);
     
     const handleDepartmentToggle = (department: string, checked: boolean) => {
+        if (!isUserLoggedIn) return;
         setSelectedDepartments(prev => 
             checked ? [...prev, department] : prev.filter(d => d !== department)
         );
     };
 
     const handleSubmit = () => {
+        if (!isUserLoggedIn) {
+            alert("Please log in to cascade KPIs");
+            return;
+        }
+
         if (kpi && selectedDepartments.length > 0 && target && weight) {
             selectedDepartments.forEach(department => {
                 onConfirm({
@@ -447,6 +519,12 @@ const CascadeDialog = ({
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Cascade KPI: {kpi.measure}</DialogTitle>
+                    {!isUserLoggedIn && (
+                        <DialogDescription className="text-destructive flex items-center pt-2">
+                            <AlertTriangle className="h-4 w-4 mr-2" />
+                            Please log in to cascade KPIs.
+                        </DialogDescription>
+                    )}
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                     <div className="space-y-2">
@@ -459,8 +537,9 @@ const CascadeDialog = ({
                                             id={`dept-${dept}`}
                                             checked={selectedDepartments.includes(dept)}
                                             onCheckedChange={(checked) => handleDepartmentToggle(dept, !!checked)}
+                                            disabled={!isUserLoggedIn}
                                         />
-                                        <Label htmlFor={`dept-${dept}`} className="font-normal">{dept}</Label>
+                                        <Label htmlFor={`dept-${dept}`} className={cn("font-normal", !isUserLoggedIn && "text-muted-foreground")}>{dept}</Label>
                                     </div>
                                 ))}
                             </div>
@@ -468,25 +547,43 @@ const CascadeDialog = ({
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="department-target">Department Target</Label>
-                        <Input id="department-target" value={target} onChange={e => setTarget(e.target.value)} placeholder={`e.g., ${kpi.target}`} />
+                        <Input 
+                            id="department-target" 
+                            value={target} 
+                            onChange={e => setTarget(e.target.value)} 
+                            placeholder={`e.g., ${kpi.target}`} 
+                            disabled={!isUserLoggedIn}
+                        />
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="department-weight">Weight (%)</Label>
-                        <Input id="department-weight" type="number" value={weight} onChange={e => setWeight(e.target.value)} placeholder="e.g., 20" />
+                        <Input 
+                            id="department-weight" 
+                            type="number" 
+                            value={weight} 
+                            onChange={e => setWeight(e.target.value)} 
+                            placeholder="e.g., 20" 
+                            disabled={!isUserLoggedIn}
+                        />
                     </div>
                 </div>
                 <DialogFooter>
                     <DialogClose asChild>
                         <Button type="button" variant="outline">Cancel</Button>
                     </DialogClose>
-                    <Button onClick={handleSubmit}>Confirm Cascade</Button>
+                    <Button 
+                        onClick={handleSubmit}
+                        disabled={!isUserLoggedIn || selectedDepartments.length === 0 || !target || !weight}
+                        title={!isUserLoggedIn ? "Log in to confirm" : ""}
+                    >
+                        Confirm Cascade
+                    </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
     );
 };
 
-// Types for state managed by AssignKpiDialog
 export type CascadedKpiSelection = { [kpiId: string]: { selected: boolean; weight: string; target: string } };
 export type CommittedKpiDraft = {
     id: number;
@@ -506,6 +603,7 @@ const AssignKpiDialog = ({
     setSelectedKpis,
     committedKpis,
     setCommittedKpis,
+    user
 }: {
     isOpen: boolean;
     onClose: () => void;
@@ -516,8 +614,10 @@ const AssignKpiDialog = ({
     setSelectedKpis: React.Dispatch<React.SetStateAction<CascadedKpiSelection>>;
     committedKpis: CommittedKpiDraft[];
     setCommittedKpis: React.Dispatch<React.SetStateAction<CommittedKpiDraft[]>>;
+    user: any;
 }) => {
     const [assignmentType, setAssignmentType] = useState<'cascaded' | 'committed'>('cascaded');
+    const isUserLoggedIn = !!user;
     
     const relevantKpis = useMemo(() => {
         if (!employee) return [];
@@ -525,6 +625,7 @@ const AssignKpiDialog = ({
     }, [departmentKpis, employee]);
 
     const handleKpiSelectionChange = (kpiId: string, field: 'selected' | 'weight' | 'target', value: string | boolean) => {
+        if (!isUserLoggedIn) return;
         setSelectedKpis(prev => ({
             ...prev,
             [kpiId]: { ...(prev[kpiId] || { selected: false, weight: '', target: '' }), [field]: value }
@@ -532,6 +633,7 @@ const AssignKpiDialog = ({
     };
 
     const handleAddCommittedKpi = () => {
+        if (!isUserLoggedIn) return;
         setCommittedKpis(prev => [...prev, {
             id: Date.now(),
             task: '',
@@ -542,6 +644,7 @@ const AssignKpiDialog = ({
     };
 
     const handleCommittedKpiChange = (index: number, field: keyof Omit<CommittedKpiDraft, 'id' | 'targets'>, value: string) => {
+        if (!isUserLoggedIn) return;
         setCommittedKpis(prev => {
             const newKpis = [...prev];
             newKpis[index][field] = value;
@@ -550,6 +653,7 @@ const AssignKpiDialog = ({
     };
     
     const handleCommittedTargetChange = (index: number, level: keyof CommittedKpiDraft['targets'], value: string) => {
+        if (!isUserLoggedIn) return;
         setCommittedKpis(prev => {
             const newKpis = [...prev];
             newKpis[index].targets[level] = value;
@@ -558,10 +662,16 @@ const AssignKpiDialog = ({
     };
 
     const handleRemoveCommittedKpi = (id: number) => {
+        if (!isUserLoggedIn) return;
         setCommittedKpis(prev => prev.filter(kpi => kpi.id !== id));
     };
     
     const handleSubmit = () => {
+        if (!isUserLoggedIn) {
+            alert("Please log in to assign KPIs");
+            return;
+        }
+
         if (!employee) return;
         
         const cascadedAssignments: AssignedCascadedKpi[] = [];
@@ -583,7 +693,7 @@ const AssignKpiDialog = ({
         const committedAssignments: CommittedKpi[] = committedKpis.map(draft => ({
             type: 'committed',
             employeeId: employee.id,
-            kpiId: `committed-${draft.id}`, // Generate a unique ID
+            kpiId: `committed-${draft.id}`,
             kpiMeasure: draft.kpiMeasure,
             task: draft.task,
             targets: draft.targets,
@@ -622,14 +732,19 @@ const AssignKpiDialog = ({
             <DialogContent className="max-w-4xl">
                 <DialogHeader>
                     <DialogTitle>Assign KPI to {employee.name}</DialogTitle>
+                    {!isUserLoggedIn && (
+                        <DialogDescription className="text-destructive flex items-center pt-2">
+                            <AlertTriangle className="h-4 w-4 mr-2" />
+                            Please log in to assign KPIs.
+                        </DialogDescription>
+                    )}
                 </DialogHeader>
                 <Tabs value={assignmentType} onValueChange={(value) => setAssignmentType(value as 'cascaded' | 'committed')} className="w-full pt-4">
                     <TabsList className="grid w-full grid-cols-2">
-                        <TabsTrigger value="cascaded">Assign Cascaded KPI</TabsTrigger>
-                        <TabsTrigger value="committed">Create Committed KPI</TabsTrigger>
+                        <TabsTrigger value="cascaded" disabled={!isUserLoggedIn}>Assign Cascaded KPI</TabsTrigger>
+                        <TabsTrigger value="committed" disabled={!isUserLoggedIn}>Create Committed KPI</TabsTrigger>
                     </TabsList>
                     <TabsContent value="cascaded" className="mt-6 space-y-4">
-                        <p className="text-sm text-muted-foreground">Select KPIs that have been cascaded to the department to assign them to an individual.</p>
                         <div className="border rounded-lg overflow-hidden">
                             <Table>
                                 <TableHeader>
@@ -648,6 +763,7 @@ const AssignKpiDialog = ({
                                                     <Checkbox
                                                         checked={selectedKpis[kpi.id]?.selected || false}
                                                         onCheckedChange={(checked) => handleKpiSelectionChange(kpi.id, 'selected', !!checked)}
+                                                        disabled={!isUserLoggedIn}
                                                     />
                                                 </TableCell>
                                                 <TableCell className="font-medium">{kpi.measure}</TableCell>
@@ -657,7 +773,7 @@ const AssignKpiDialog = ({
                                                         placeholder="Enter target"
                                                         value={selectedKpis[kpi.id]?.target || ''}
                                                         onChange={(e) => handleKpiSelectionChange(kpi.id, 'target', e.target.value)}
-                                                        disabled={!selectedKpis[kpi.id]?.selected}
+                                                        disabled={!isUserLoggedIn || !selectedKpis[kpi.id]?.selected}
                                                     />
                                                 </TableCell>
                                                 <TableCell>
@@ -666,7 +782,7 @@ const AssignKpiDialog = ({
                                                         placeholder="e.g., 10"
                                                         value={selectedKpis[kpi.id]?.weight || ''}
                                                         onChange={(e) => handleKpiSelectionChange(kpi.id, 'weight', e.target.value)}
-                                                        disabled={!selectedKpis[kpi.id]?.selected}
+                                                        disabled={!isUserLoggedIn || !selectedKpis[kpi.id]?.selected}
                                                     />
                                                 </TableCell>
                                             </TableRow>
@@ -694,31 +810,56 @@ const AssignKpiDialog = ({
                                 {committedKpis.map((kpi, index) => (
                                     <Card key={kpi.id} className="relative">
                                         <CardContent className="p-4 space-y-4">
-                                            <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-6 w-6" onClick={() => handleRemoveCommittedKpi(kpi.id)}>
+                                            <Button 
+                                                variant="ghost" 
+                                                size="icon" 
+                                                className="absolute top-2 right-2 h-6 w-6" 
+                                                onClick={() => handleRemoveCommittedKpi(kpi.id)}
+                                                disabled={!isUserLoggedIn}
+                                            >
                                                 <Trash2 className="h-4 w-4 text-destructive" />
                                             </Button>
                                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                                 <div className="md:col-span-2 space-y-2">
                                                     <Label htmlFor={`committed-task-${kpi.id}`}>Task / Project Name</Label>
-                                                    <Input id={`committed-task-${kpi.id}`} value={kpi.task} onChange={e => handleCommittedKpiChange(index, 'task', e.target.value)} placeholder="e.g., Monthly Report Submission" />
+                                                    <Input 
+                                                        id={`committed-task-${kpi.id}`} 
+                                                        value={kpi.task} 
+                                                        onChange={e => handleCommittedKpiChange(index, 'task', e.target.value)} 
+                                                        placeholder="e.g., Monthly Report Submission" 
+                                                        disabled={!isUserLoggedIn}
+                                                    />
                                                 </div>
                                                 <div className="space-y-2">
                                                     <Label htmlFor={`committed-weight-${kpi.id}`}>Weight (%)</Label>
-                                                    <Input id={`committed-weight-${kpi.id}`} type="number" value={kpi.weight} onChange={e => handleCommittedKpiChange(index, 'weight', e.target.value)} placeholder="e.g., 15" />
+                                                    <Input 
+                                                        id={`committed-weight-${kpi.id}`} 
+                                                        type="number" 
+                                                        value={kpi.weight} 
+                                                        onChange={e => handleCommittedKpiChange(index, 'weight', e.target.value)} 
+                                                        placeholder="e.g., 15" 
+                                                        disabled={!isUserLoggedIn}
+                                                    />
                                                 </div>
                                             </div>
                                              <div className="space-y-2">
                                                 <Label htmlFor={`committed-measure-${kpi.id}`}>KPI Measure</Label>
-                                                <Input id={`committed-measure-${kpi.id}`} value={kpi.kpiMeasure} onChange={e => handleCommittedKpiChange(index, 'kpiMeasure', e.target.value)} placeholder="e.g., On-time Submission Rate" />
+                                                <Input 
+                                                    id={`committed-measure-${kpi.id}`} 
+                                                    value={kpi.kpiMeasure} 
+                                                    onChange={e => handleCommittedKpiChange(index, 'kpiMeasure', e.target.value)} 
+                                                    placeholder="e.g., On-time Submission Rate" 
+                                                    disabled={!isUserLoggedIn}
+                                                />
                                             </div>
                                             <div className="space-y-2">
                                                 <Label>Performance Levels (ระดับผลงาน)</Label>
                                                 <div className="grid grid-cols-5 gap-2">
-                                                    <Input placeholder="Level 1" value={kpi.targets.level1} onChange={e => handleCommittedTargetChange(index, 'level1', e.target.value)} />
-                                                    <Input placeholder="Level 2" value={kpi.targets.level2} onChange={e => handleCommittedTargetChange(index, 'level2', e.target.value)} />
-                                                    <Input placeholder="Level 3" value={kpi.targets.level3} onChange={e => handleCommittedTargetChange(index, 'level3', e.target.value)} />
-                                                    <Input placeholder="Level 4" value={kpi.targets.level4} onChange={e => handleCommittedTargetChange(index, 'level4', e.target.value)} />
-                                                    <Input placeholder="Level 5" value={kpi.targets.level5} onChange={e => handleCommittedTargetChange(index, 'level5', e.target.value)} />
+                                                    <Input placeholder="Level 1" value={kpi.targets.level1} onChange={e => handleCommittedTargetChange(index, 'level1', e.target.value)} disabled={!isUserLoggedIn} />
+                                                    <Input placeholder="Level 2" value={kpi.targets.level2} onChange={e => handleCommittedTargetChange(index, 'level2', e.target.value)} disabled={!isUserLoggedIn} />
+                                                    <Input placeholder="Level 3" value={kpi.targets.level3} onChange={e => handleCommittedTargetChange(index, 'level3', e.target.value)} disabled={!isUserLoggedIn} />
+                                                    <Input placeholder="Level 4" value={kpi.targets.level4} onChange={e => handleCommittedTargetChange(index, 'level4', e.target.value)} disabled={!isUserLoggedIn} />
+                                                    <Input placeholder="Level 5" value={kpi.targets.level5} onChange={e => handleCommittedTargetChange(index, 'level5', e.target.value)} disabled={!isUserLoggedIn} />
                                                 </div>
                                             </div>
                                         </CardContent>
@@ -727,7 +868,7 @@ const AssignKpiDialog = ({
                            </div>
                         </ScrollArea>
                          <div className="flex justify-start">
-                            <Button variant="outline" onClick={handleAddCommittedKpi}>
+                            <Button variant="outline" onClick={handleAddCommittedKpi} disabled={!isUserLoggedIn}>
                                 <PlusCircle className="mr-2 h-4 w-4" />
                                 Add KPI Measure
                             </Button>
@@ -743,7 +884,7 @@ const AssignKpiDialog = ({
                     </div>
                     <div className="flex space-x-2">
                        <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                       <Button onClick={handleSubmit} disabled={totalWeight > 100 || totalWeight === 0}>Assign KPIs</Button>
+                       <Button onClick={handleSubmit} disabled={!isUserLoggedIn || totalWeight > 100 || totalWeight === 0}>Assign KPIs</Button>
                     </div>
                 </DialogFooter>
             </DialogContent>
@@ -756,13 +897,16 @@ const EditKpiDialog = ({
     onClose,
     kpi,
     onConfirm,
+    user
 }: {
     isOpen: boolean;
     onClose: () => void;
     kpi: CorporateKpi | null;
     onConfirm: (kpi: Kpi) => void;
+    user: any;
 }) => {
     const [editedKpi, setEditedKpi] = useState<Kpi | null>(null);
+    const isUserLoggedIn = !!user;
 
     useEffect(() => {
         if (kpi) {
@@ -773,12 +917,18 @@ const EditKpiDialog = ({
     }, [kpi]);
 
     const handleChange = (field: keyof Kpi, value: string) => {
+        if (!isUserLoggedIn) return;
         if (editedKpi) {
             setEditedKpi({ ...editedKpi, [field]: value });
         }
     };
 
     const handleSubmit = () => {
+        if (!isUserLoggedIn) {
+            alert("Please log in to edit KPIs");
+            return;
+        }
+
         if (editedKpi) {
             onConfirm(editedKpi);
             onClose();
@@ -792,31 +942,37 @@ const EditKpiDialog = ({
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Edit Corporate KPI</DialogTitle>
+                    {!isUserLoggedIn && (
+                        <DialogDescription className="text-destructive flex items-center pt-2">
+                            <AlertTriangle className="h-4 w-4 mr-2" />
+                           Please log in to edit KPIs.
+                        </DialogDescription>
+                    )}
                 </DialogHeader>
                 {editedKpi && (
                     <div className="space-y-4 py-4">
                         <div className="space-y-2">
                             <Label htmlFor="kpi-measure">Measure</Label>
-                            <Input id="kpi-measure" value={editedKpi.measure} onChange={(e) => handleChange('measure', e.target.value)} />
+                            <Input id="kpi-measure" value={editedKpi.measure} onChange={(e) => handleChange('measure', e.target.value)} disabled={!isUserLoggedIn} />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label htmlFor="kpi-target">Target</Label>
-                                <Input id="kpi-target" value={editedKpi.target} onChange={(e) => handleChange('target', e.target.value)} />
+                                <Input id="kpi-target" value={editedKpi.target} onChange={(e) => handleChange('target', e.target.value)} disabled={!isUserLoggedIn}/>
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="kpi-unit">Unit</Label>
-                                <Input id="kpi-unit" value={editedKpi.unit} onChange={(e) => handleChange('unit', e.target.value)} />
+                                <Input id="kpi-unit" value={editedKpi.unit || ''} onChange={(e) => handleChange('unit', e.target.value)} disabled={!isUserLoggedIn}/>
                             </div>
                         </div>
                          <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label htmlFor="kpi-perspective">Perspective</Label>
-                                <Input id="kpi-perspective" value={editedKpi.perspective} onChange={(e) => handleChange('perspective', e.target.value)} />
+                                <Input id="kpi-perspective" value={editedKpi.perspective} onChange={(e) => handleChange('perspective', e.target.value)} disabled={!isUserLoggedIn}/>
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="kpi-category">Category</Label>
-                                <Input id="kpi-category" value={editedKpi.category} onChange={(e) => handleChange('category', e.target.value)} />
+                                <Input id="kpi-category" value={editedKpi.category} onChange={(e) => handleChange('category', e.target.value)} disabled={!isUserLoggedIn}/>
                             </div>
                         </div>
                     </div>
@@ -825,7 +981,7 @@ const EditKpiDialog = ({
                     <DialogClose asChild>
                         <Button type="button" variant="outline">Cancel</Button>
                     </DialogClose>
-                    <Button onClick={handleSubmit}>Save Changes</Button>
+                    <Button onClick={handleSubmit} disabled={!isUserLoggedIn}>Save Changes</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -841,19 +997,24 @@ export default function CascadePage() {
   const { toast } = useToast();
   const [userRole, setUserRole] = useState<Role>(null);
 
-
   useEffect(() => {
     const checkUserRole = async () => {
         if(user) {
-            const token = await user.getIdTokenResult();
-            setUserRole(token.claims.role as Role || 'Employee');
+            try {
+                const token = await user.getIdTokenResult();
+                setUserRole(token.claims.role as Role || 'Employee');
+            } catch (error) {
+                console.error("Error fetching user claims", error);
+                setUserRole('Employee'); // Default to lowest permission on error
+            }
+        } else {
+            setUserRole(null); // No user, no role
         }
     }
     if (!isUserLoading) {
         checkUserRole();
     }
   }, [user, isUserLoading]);
-
 
   const cascadedKpisQuery = useMemoFirebase(() => firestore ? collection(firestore, 'cascaded_kpis') : null, [firestore]);
   const { data: cascadedKpis } = useCollection<CascadedKpi>(cascadedKpisQuery);
@@ -866,13 +1027,10 @@ export default function CascadePage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   
   const [selectedKpi, setSelectedKpi] = useState<CorporateKpi | null>(null);
-  const [selectedIndividualKpi, setSelectedIndividualKpi] = useState<WithId<IndividualKpi> | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<WithId<Employee> | null>(null);
   
-  // State for the Assign KPI dialog lifted up
   const [selectedKpis, setSelectedKpis] = useState<CascadedKpiSelection>({});
   const [committedKpis, setCommittedKpis] = useState<CommittedKpiDraft[]>([]);
-
 
   useEffect(() => {
     setPageTitle('Cascade KPI');
@@ -892,12 +1050,7 @@ export default function CascadePage() {
 
   const handleAssignKpiClick = (employee: WithId<Employee>) => {
     setSelectedEmployee(employee);
-    setSelectedIndividualKpi(null);
     
-    // Clear previous state before setting new state
-    setSelectedKpis({});
-    setCommittedKpis([]);
-
     const assignedCascaded = (individualKpis || []).filter(ik => ik.employeeId === employee.id && ik.type === 'cascaded');
     const assignedCommitted = (individualKpis || []).filter(ik => ik.employeeId === employee.id && ik.type === 'committed');
 
@@ -934,14 +1087,21 @@ export default function CascadePage() {
   }
   
   const handleDeleteIndividualKpi = (kpiId: string) => {
+      if (!user) {
+          toast({ title: "Authentication Required", description: "Please log in to delete KPIs.", variant: 'destructive' });
+          return;
+      }
       if (!firestore) return;
       const kpiRef = doc(firestore, 'individual_kpis', kpiId);
       deleteDocumentNonBlocking(kpiRef);
       toast({ title: "Assigned KPI Deleted", description: "The KPI has been removed from the individual's portfolio."});
   }
 
-
   const handleConfirmCascade = (cascadedKpi: CascadedKpi) => {
+      if (!user) {
+          toast({ title: "Authentication Required", description: "Please log in to cascade KPIs.", variant: 'destructive' });
+          return;
+      }
       if (!firestore) return;
       const cascadedKpisCollection = collection(firestore, 'cascaded_kpis');
       addDocumentNonBlocking(cascadedKpisCollection, cascadedKpi);
@@ -949,18 +1109,20 @@ export default function CascadePage() {
   };
 
   const handleConfirmAssignment = async (assignments: IndividualKpi[]) => {
+      if (!user) {
+          toast({ title: "Authentication Required", description: "Please log in to assign KPIs.", variant: 'destructive' });
+          return;
+      }
       if (!firestore || !selectedEmployee) return;
       
       const individualKpisCollection = collection(firestore, 'individual_kpis');
       const existingAssignments = (individualKpis || []).filter(ik => ik.employeeId === selectedEmployee.id);
       
-      // Delete all existing assignments for this user
       existingAssignments.forEach(assignment => {
         const docRef = doc(firestore, 'individual_kpis', assignment.id);
         deleteDocumentNonBlocking(docRef);
       });
 
-      // Add new assignments
       assignments.forEach(assignment => {
         addDocumentNonBlocking(individualKpisCollection, assignment);
       });
@@ -969,6 +1131,10 @@ export default function CascadePage() {
   };
 
   const handleConfirmEdit = (editedKpi: Kpi) => {
+    if (!user) {
+        toast({ title: "Authentication Required", description: "Please log in to edit KPIs.", variant: 'destructive' });
+        return;
+    }
     if (!firestore) return;
     const kpiRef = doc(firestore, 'kpi_catalog', editedKpi.id);
     setDocumentNonBlocking(kpiRef, editedKpi, { merge: true });
@@ -976,6 +1142,10 @@ export default function CascadePage() {
   }
 
   const handleDelete = (kpiId: string) => {
+    if (!user) {
+        toast({ title: "Authentication Required", description: "Please log in to delete KPIs.", variant: 'destructive' });
+        return;
+    }
     if (!firestore) return;
     const kpiRef = doc(firestore, 'kpi_catalog', kpiId);
     deleteDocumentNonBlocking(kpiRef);
@@ -985,7 +1155,6 @@ export default function CascadePage() {
   const handleCloseAssignDialog = () => {
     setIsAssignModalOpen(false);
     setSelectedEmployee(null);
-    setSelectedIndividualKpi(null);
     setSelectedKpis({});
     setCommittedKpis([]);
   }
@@ -995,8 +1164,25 @@ export default function CascadePage() {
       <div>
         <h3 className="text-xl font-semibold text-gray-800 mb-2">KPI Cascade Structure</h3>
         <p className="text-gray-600">โครงสร้าง KPI แบบ 3 ระดับ: องค์กร → ฝ่าย → บุคคล</p>
+        
+        {!isUserLoading && (
+          <div className={cn(
+            "mt-4 p-3 rounded-md text-sm flex items-center",
+            user ? "bg-green-50 border border-green-200 text-green-800" : "bg-amber-50 border border-amber-200 text-amber-800"
+          )}>
+            {user ? (
+              <p>✅ Logged in as: <strong>{user.displayName || user.email}</strong> {userRole && `(Role: ${userRole})`}</p>
+            ) : (
+              <>
+                <AlertTriangle className="h-5 w-5 mr-3 flex-shrink-0" />
+                <p><strong>You are not logged in.</strong> All management actions are disabled. Please log in to edit, assign, or delete KPIs.</p>
+              </>
+            )}
+          </div>
+        )}
       </div>
-      {(isUserLoading || userRole === null) ? (
+      
+      {(isUserLoading) ? (
           <p>Loading user permissions...</p>
       ) : (
           <Tabs defaultValue="corporate" className="w-full">
@@ -1006,7 +1192,12 @@ export default function CascadePage() {
               <TabsTrigger value="individual">ระดับบุคคล</TabsTrigger>
             </TabsList>
             <TabsContent value="corporate" className="mt-6">
-              <CorporateLevel onCascadeClick={handleCascadeClick} onEditClick={handleEditClick} onDeleteClick={handleDelete} userRole={userRole} />
+              <CorporateLevel 
+                onCascadeClick={handleCascadeClick} 
+                onEditClick={handleEditClick} 
+                onDeleteClick={handleDelete} 
+                userRole={userRole} 
+              />
             </TabsContent>
             <TabsContent value="department" className="mt-6">
               <DepartmentLevel cascadedKpis={cascadedKpis} />
@@ -1018,7 +1209,9 @@ export default function CascadePage() {
                 onAssignKpi={handleAssignKpiClick} 
                 onEditIndividualKpi={handleEditIndividualKpi}
                 onDeleteIndividualKpi={handleDeleteIndividualKpi}
-                userRole={userRole} />
+                userRole={userRole} 
+                user={user}
+              />
             </TabsContent>
           </Tabs>
       )}
@@ -1028,12 +1221,14 @@ export default function CascadePage() {
         kpi={selectedKpi}
         departments={departments}
         onConfirm={handleConfirmCascade}
+        user={user}
       />
        <EditKpiDialog 
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
         kpi={selectedKpi}
         onConfirm={handleConfirmEdit}
+        user={user}
       />
       <AssignKpiDialog
         isOpen={isAssignModalOpen}
@@ -1045,9 +1240,8 @@ export default function CascadePage() {
         setSelectedKpis={setSelectedKpis}
         committedKpis={committedKpis}
         setCommittedKpis={setCommittedKpis}
+        user={user}
       />
     </div>
   );
 }
-
-    
