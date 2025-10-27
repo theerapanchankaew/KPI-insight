@@ -2,9 +2,10 @@
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { useCollection, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection } from 'firebase/firestore';
-import { WithId }from '@/firebase/firestore/use-collection';
+import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
+import { collection, doc } from 'firebase/firestore';
+import { WithId } from '@/firebase/firestore/use-collection';
+import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
 // Define the shape of your KPI data based on the JSON structure
 export interface Kpi {
@@ -26,17 +27,19 @@ export interface Employee {
   manager: string;
 }
 
-// Define the shape for the organization data
-export interface OrgData {
-  employees: WithId<Employee>[];
-}
-
 export interface AppSettings {
   orgName: string;
   period: string;
   currency: string;
   periodDate?: string;
 }
+
+const defaultSettings: AppSettings = {
+    orgName: 'บริษัท ABC จำกัด (เริ่มต้น)',
+    period: 'รายไตรมาส (Quarterly)',
+    currency: 'thb',
+};
+
 
 // Define the context shape
 interface KpiDataContextType {
@@ -46,6 +49,7 @@ interface KpiDataContextType {
   isOrgDataLoading: boolean;
   settings: AppSettings;
   setSettings: (settings: Partial<AppSettings>) => void;
+  isSettingsLoading: boolean;
 }
 
 // Create the context
@@ -67,19 +71,44 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
     return collection(firestore, 'employees');
   }, [firestore, user]);
   const { data: orgData, isLoading: isOrgDataLoading } = useCollection<Employee>(orgQuery);
+  
+  const settingsDocRef = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return doc(firestore, 'settings', 'global');
+  }, [firestore]);
+  
+  const { data: settingsData, isLoading: isSettingsLoading } = useDoc<AppSettings>(settingsDocRef);
+  
+  const [localSettings, setLocalSettings] = useState<AppSettings>(defaultSettings);
 
-  const [settings, setSettingsState] = useState<AppSettings>({
-    orgName: 'บริษัท ABC จำกัด',
-    period: 'รายไตรมาส (Quarterly)',
-    currency: 'thb',
-  });
+  useEffect(() => {
+    if (settingsData) {
+      setLocalSettings(settingsData);
+    }
+  }, [settingsData]);
+
 
   const setSettings = (newSettings: Partial<AppSettings>) => {
-    setSettingsState(prev => ({ ...prev, ...newSettings }));
+    if (settingsDocRef) {
+        const updatedSettings = { ...localSettings, ...newSettings };
+        setLocalSettings(updatedSettings); // Optimistic update
+        setDocumentNonBlocking(settingsDocRef, updatedSettings, { merge: true });
+    }
   };
 
+  const contextValue = {
+    kpiData,
+    isKpiDataLoading,
+    orgData,
+    isOrgDataLoading,
+    settings: localSettings,
+    setSettings,
+    isSettingsLoading,
+  };
+
+
   return (
-    <KpiDataContext.Provider value={{ kpiData, isKpiDataLoading, orgData, isOrgDataLoading, settings, setSettings }}>
+    <KpiDataContext.Provider value={contextValue}>
       {children}
     </KpiDataContext.Provider>
   );

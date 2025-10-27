@@ -2,22 +2,27 @@
  * @fileoverview Firestore Security Rules for the KPI Management Application.
  *
  * Core Philosophy:
- * This ruleset employs a hybrid security model. User profiles are strictly private (owner-only access).
- * KPI data, Submissions, Departments, and Employee data allows public read access but restricts modifications to owners, or authorized users, respectively.
- * KpiCatalog allows for public read access only.
+ * This ruleset employs a strict user-ownership model for user profiles
+ * and public read with owner-only write for KPIs.
  *
  * Data Structure:
- * - /users/{userId}: User profiles, accessible only by the user themselves.
- * - /departments/{departmentId}: Department information.
- * - /kpis/{kpiId}: KPI data.
- * - /submissions/{submissionId}: KPI submission data.
- * - /kpi_catalog/{kpiId}: Corporate KPI catalog data.
- * - /employees/{employeeId}: Employee and organizational structure data.
+ * - /users/{userId}: Stores individual user profiles.  Only the user can read/write their profile.
+ * - /departments/{departmentId}: Stores department information.
+ * - /kpis/{kpiId}: Stores KPI data, with owner-only write access.
+ * - /submissions/{submissionId}: Stores KPI submission data.
+ * - /kpi_catalog/{kpiId}: Stores the catalog of all corporate KPIs available for cascading.
+ * - /employees/{employeeId}: Stores employee and organizational structure data.
  *
  * Key Security Decisions:
- * - Users can only list their own profiles. Listing all users is disallowed.
- * - Public read access is granted to KPI, Submission, Department, Employee, and KpiCatalog data to simplify data retrieval.
- * - Write access to KPI data, Submission, Department, Employee data is restricted to authorized users.
+ * - User listing is disallowed.
+ * - Public read access is enabled for KPIs to facilitate data sharing and reporting,
+ *   but write access is restricted to the KPI owner.
+ * - All write operations require a verified user identity (authentication).
+ * - Access control is enforced by checking the 'ownerId' field in KPI documents.
+ *
+ * Denormalization for Authorization:
+ * The 'Kpi' entity includes an 'ownerId' field to simplify authorization checks,
+ * avoiding the need for complex queries or additional reads.
  */
 rules_version = '2';
 service cloud.firestore {
@@ -26,142 +31,108 @@ service cloud.firestore {
     /**
      * @description Controls access to user profiles.
      * @path /users/{userId}
-     * @allow (create) - If the user ID in the path matches the authenticated user's ID, allowing self-creation.
-     * @allow (get, list) - If the user ID in the path matches the authenticated user's ID, allowing access to their own profile.
-     * @allow (update, delete) - If the user ID in the path matches the authenticated user's ID and the document exists, allowing modification and deletion of their own profile.
-     * @deny (create) - If the user ID in the path does not match the authenticated user's ID, preventing unauthorized user creation.
-     * @deny (get, list) - If the user ID in the path does not match the authenticated user's ID, preventing unauthorized access to other user profiles.
-     * @deny (update, delete) - If the user ID in the path does not match the authenticated user's ID or the document doesn't exist, preventing unauthorized modification or deletion of other user profiles.
-     * @principle Enforces strict user-ownership for user profiles.
+     * @allow (create) - User 'abc' can create their own profile if request.auth.uid == 'abc'.
+     * @allow (get, update, delete) - User 'abc' can read/write their profile if request.auth.uid == 'abc'.
+     * @deny (create, get, update, delete) - User 'def' cannot access user 'abc's profile.
+     * @principle Enforces user-ownership; only the authenticated user can access their own profile.
      */
     match /users/{userId} {
-      allow get, list: if isOwner(userId);
+      //function
+      function isOwner(userId) {
+        return request.auth.uid == userId;
+      }
+      allow get: if isOwner(userId);
+      allow list: if false;
       allow create: if isOwner(userId);
-      allow update: if isExistingOwner(userId);
-      allow delete: if isExistingOwner(userId);
+      allow update: if isOwner(userId);
+      allow delete: if isOwner(userId);
     }
 
     /**
      * @description Controls access to department information.
      * @path /departments/{departmentId}
-     * @allow (get, list) - Allows anyone to read department information.
-     * @allow (create) - Not allowed
-     * @allow (update) - Not allowed
-     * @allow (delete) - Not allowed
-     * @deny (create) - Always deny create.
-     * @deny (update) - Always deny update.
-     * @deny (delete) - Always deny delete.
-     * @principle Allows public read access to department data.
+     * @allow (get, list) - Any signed-in user can read department information.
+     * @deny (create, update, delete) - No one can create, update, or delete department information.
+     * @principle Restricts modification of department data.
      */
     match /departments/{departmentId} {
-      allow get, list: if true;
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create, update, delete: if false;
     }
 
     /**
      * @description Controls access to KPI data.
      * @path /kpis/{kpiId}
-     * @allow (get, list) - Allows anyone to read KPI data.
-     * @allow (create) - TODO: Needs review for write permissions
-     * @allow (update) - TODO: Needs review for write permissions
-     * @allow (delete) - TODO: Needs review for write permissions
-     * @deny (create) - Always deny create.
-     * @deny (update) - Always deny update.
-     * @deny (delete) - Always deny delete.
-     * @principle Allows public read access to KPI data but requires ownership for modifications.
+     * @allow (get, list) - Any user can read KPI data.
+     * @allow (create) - A user can create a KPI if they are the owner.
+     * @allow (update, delete) - Only the owner can update or delete a KPI.
+     * @deny (create, update, delete) - A non-owner cannot modify KPI data.
+     * @principle Enforces owner-only write access to KPIs.
      */
     match /kpis/{kpiId} {
-      allow get, list: if true;
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+        function isSignedIn() {
+            return request.auth != null;
+        }
+
+        function isOwner() {
+            return request.auth.uid == resource.data.ownerId;
+        }
+
+        allow get, list: if true;
+        allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+        allow update: if isSignedIn() && getAfter().data.ownerId == request.auth.uid;
+        allow delete: if isSignedIn() && getAfter().data.ownerId == request.auth.uid;
     }
 
     /**
-     * @description Controls access to KPI submission data.
+     * @description Controls access to submission data.
      * @path /submissions/{submissionId}
-     * @allow (get, list) - Allows anyone to read submission data.
-     * @allow (create) - Not allowed
-     * @allow (update) - Not allowed
-     * @allow (delete) - Not allowed
-     * @deny (create) - Always deny create.
-     * @deny (update) - Always deny update.
-     * @deny (delete) - Always deny delete.
-     * @principle Allows public read access to submission data.
+     * @allow (get, list) - Any signed-in user can read submission data.
+     * @allow (create) - Any signed-in user can create submission data. The 'submittedBy' must match their user id.
+     * @allow (update, delete) - No one can update or delete submission data.
+     * @principle Read access is public, create access is limited to signed-in user, and update/delete are denied.
      */
     match /submissions/{submissionId} {
-      allow get, list: if true;
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.submittedBy == request.auth.uid;
+      allow update, delete: if false;
     }
 
-    /**
-     * @description Controls access to the KPI catalog.
-     * @path /kpi_catalog/{kpiId}
-     * @allow (get, list) - Allows anyone to read the KPI catalog.
-     * @allow (create) - Not allowed
-     * @allow (update) - Not allowed
-     * @allow (delete) - Not allowed
-     * @deny (create) - Always deny create.
-     * @deny (update) - Always deny update.
-     * @deny (delete) - Always deny delete.
-     * @principle Allows public read access to the KPI catalog.
-     */
+     /**
+      * @description Controls access to KPI catalog data.
+      * @path /kpi_catalog/{kpiId}
+      * @allow (get, list) - Any signed-in user can read KPI catalog data.
+      * @deny (create, update, delete) - No one can create, update, or delete KPI catalog data.
+      * @principle Read access is public, and write operations are denied.
+      */
     match /kpi_catalog/{kpiId} {
-      allow get, list: if true;
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if false;
     }
 
     /**
      * @description Controls access to employee data.
      * @path /employees/{employeeId}
-     * @allow (get, list) - Allows anyone to read employee data.
-     * @allow (create) - Not allowed
-     * @allow (update) - Not allowed
-     * @allow (delete) - Not allowed
-     * @deny (create) - Always deny create.
-     * @deny (update) - Always deny update.
-     * @deny (delete) - Always deny delete.
-     * @principle Allows public read access to employee data.
+     * @allow (get, list) - Any signed-in user can read employee data.
+     * @deny (create, update, delete) - No one can create, update, or delete employee data.
+     * @principle Read access is public, and write operations are denied.
      */
     match /employees/{employeeId} {
-      allow get, list: if true;
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
-    }
-
-    // ---- Helper functions ----
-
-    /**
-     * @description Checks if the user is signed in.
-     * @return True if the user is signed in, false otherwise.
-     */
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    /**
-     * @description Checks if the authenticated user is the owner of the resource.
-     * @param {string} userId The user ID to compare against the authenticated user's ID.
-     * @return True if the user is the owner, false otherwise.
-     */
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    /**
-     * @description Checks if the authenticated user is the owner of the resource and the resource exists.
-     * @param {string} userId The user ID to compare against the authenticated user's ID.
-     * @return True if the user is the owner and the resource exists, false otherwise.
-     */
-    function isExistingOwner(userId) {
-      return isOwner(userId) && resource != null;
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if false;
     }
   }
 }

@@ -185,6 +185,18 @@
         "manager": { "type": "string" }
       },
       "required": ["id", "name", "department", "position"]
+    },
+    "AppSettings": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "AppSettings",
+      "type": "object",
+      "description": "Stores global application settings.",
+      "properties": {
+        "orgName": { "type": "string" },
+        "period": { "type": "string" },
+        "currency": { "type": "string" },
+        "periodDate": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "auth": {
@@ -207,7 +219,7 @@
           "schema": {
             "$ref": "#/entities/User"
           },
-          "description": "Stores user profiles. Only the user can read/write their own profile."
+          "description": "Stores user profiles. Only an Admin can list all users. A user can read/write their own profile."
         }
       },
       {
@@ -258,6 +270,16 @@
             "$ref": "#/entities/Employee"
           },
           "description": "Stores employee and organizational structure data."
+        }
+      },
+       {
+        "path": "/settings/global",
+        "definition": {
+          "entityName": "AppSettings",
+          "schema": {
+            "$ref": "#/entities/AppSettings"
+          },
+          "description": "Stores global application settings in a singleton document."
         }
       }
     ]

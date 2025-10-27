@@ -12,15 +12,16 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useKpiData } from '@/context/KpiDataContext';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon } from 'lucide-react';
+import { CalendarIcon, Loader2 } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export default function SettingsPage() {
   const { setPageTitle } = useAppLayout();
   const { toast } = useToast();
-  const { settings, setSettings } = useKpiData();
+  const { settings, setSettings, isSettingsLoading } = useKpiData();
 
   // State for General Settings
   const [orgName, setOrgName] = useState('');
@@ -38,15 +39,20 @@ export default function SettingsPage() {
   }, [setPageTitle]);
 
   useEffect(() => {
-    if (settings) {
+    if (settings && !isSettingsLoading) {
       setOrgName(settings.orgName);
       setCurrentPeriod(settings.period);
       setDefaultCurrency(settings.currency);
-      if (settings.period === 'รายเดือน (Monthly)' && settings.periodDate) {
-        setPeriodDate(new Date(settings.periodDate));
+      if (settings.periodDate) {
+        try {
+          setPeriodDate(new Date(settings.periodDate));
+        } catch (e) {
+          console.error("Invalid date from settings:", settings.periodDate);
+          setPeriodDate(undefined);
+        }
       }
     }
-  }, [settings]);
+  }, [settings, isSettingsLoading]);
 
   const handleGeneralSave = () => {
     const newSettings: any = { 
@@ -60,7 +66,7 @@ export default function SettingsPage() {
     setSettings(newSettings);
     toast({
       title: "Settings Saved",
-      description: "Your general settings have been updated.",
+      description: "Your general settings have been updated and stored in Firestore.",
     });
   };
 
@@ -81,68 +87,90 @@ export default function SettingsPage() {
                   <CardTitle>General Settings</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
-                  <div className="space-y-2">
-                      <Label htmlFor="org-name">Organization Name</Label>
-                      <Input id="org-name" value={orgName} onChange={(e) => setOrgName(e.target.value)} />
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 {isSettingsLoading ? (
+                    <div className="space-y-6">
+                        <div className="space-y-2">
+                           <Skeleton className="h-4 w-24" />
+                           <Skeleton className="h-10 w-full" />
+                        </div>
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                           <div className="space-y-2">
+                              <Skeleton className="h-4 w-24" />
+                              <Skeleton className="h-10 w-full" />
+                           </div>
+                         </div>
+                         <div className="space-y-2">
+                           <Skeleton className="h-4 w-24" />
+                           <Skeleton className="h-10 w-48" />
+                         </div>
+                         <Skeleton className="h-10 w-32" />
+                    </div>
+                 ) : (
+                   <>
                     <div className="space-y-2">
-                        <Label htmlFor="current-period">Current Period</Label>
-                        <Select value={currentPeriod} onValueChange={setCurrentPeriod}>
-                            <SelectTrigger id="current-period">
+                        <Label htmlFor="org-name">Organization Name</Label>
+                        <Input id="org-name" value={orgName} onChange={(e) => setOrgName(e.target.value)} />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                          <Label htmlFor="current-period">Current Period</Label>
+                          <Select value={currentPeriod} onValueChange={setCurrentPeriod}>
+                              <SelectTrigger id="current-period">
+                                  <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                  <SelectItem value="รายเดือน (Monthly)">รายเดือน (Monthly)</SelectItem>
+                                  <SelectItem value="รายไตรมาส (Quarterly)">รายไตรมาส (Quarterly)</SelectItem>
+                                  <SelectItem value="รายปี (Yearly)">รายปี (Yearly)</SelectItem>
+                              </SelectContent>
+                          </Select>
+                      </div>
+                      {currentPeriod === 'รายเดือน (Monthly)' && (
+                        <div className="space-y-2">
+                          <Label htmlFor="period-date">Select Month</Label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant={"outline"}
+                                className={cn(
+                                  "w-full justify-start text-left font-normal",
+                                  !periodDate && "text-muted-foreground"
+                                )}
+                              >
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {periodDate ? format(periodDate, "MMMM yyyy") : <span>Pick a date</span>}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                              <Calendar
+                                mode="single"
+                                selected={periodDate}
+                                onSelect={setPeriodDate}
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="default-currency">Default Currency</Label>
+                        <Select value={defaultCurrency} onValueChange={setDefaultCurrency}>
+                            <SelectTrigger id="default-currency" className="w-[180px]">
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="รายเดือน (Monthly)">รายเดือน (Monthly)</SelectItem>
-                                <SelectItem value="รายไตรมาส (Quarterly)">รายไตรมาส (Quarterly)</SelectItem>
-                                <SelectItem value="รายปี (Yearly)">รายปี (Yearly)</SelectItem>
+                                <SelectItem value="thb">THB (฿)</SelectItem>
+                                <SelectItem value="usd">USD ($)</SelectItem>
+                                <SelectItem value="eur">EUR (€)</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
-                    {currentPeriod === 'รายเดือน (Monthly)' && (
-                      <div className="space-y-2">
-                        <Label htmlFor="period-date">Select Month</Label>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant={"outline"}
-                              className={cn(
-                                "w-full justify-start text-left font-normal",
-                                !periodDate && "text-muted-foreground"
-                              )}
-                            >
-                              <CalendarIcon className="mr-2 h-4 w-4" />
-                              {periodDate ? format(periodDate, "MMMM yyyy") : <span>Pick a date</span>}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0">
-                            <Calendar
-                              mode="single"
-                              selected={periodDate}
-                              onSelect={setPeriodDate}
-                              initialFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      </div>
-                    )}
-                  </div>
-                   <div className="space-y-2">
-                      <Label htmlFor="default-currency">Default Currency</Label>
-                      <Select value={defaultCurrency} onValueChange={setDefaultCurrency}>
-                          <SelectTrigger id="default-currency" className="w-[180px]">
-                              <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                              <SelectItem value="thb">THB (฿)</SelectItem>
-                              <SelectItem value="usd">USD ($)</SelectItem>
-                              <SelectItem value="eur">EUR (€)</SelectItem>
-                          </SelectContent>
-                      </Select>
-                  </div>
-                   <div className="pt-4">
-                      <Button onClick={handleGeneralSave}>Save Changes</Button>
-                  </div>
+                    <div className="pt-4">
+                        <Button onClick={handleGeneralSave}>Save Changes</Button>
+                    </div>
+                   </>
+                 )}
               </CardContent>
           </Card>
            <Card>
