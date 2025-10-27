@@ -943,7 +943,10 @@ const AssignKpiDialog = (props: any) => <div />;
 
 export default function KPICascadeManagement() {
   const { setPageTitle } = useAppLayout();
-  setPageTitle("KPI Cascade");
+  
+  useEffect(() => {
+    setPageTitle("KPI Cascade");
+  }, [setPageTitle]);
 
   const { toast } = useToast();
   const firestore = useFirestore();
