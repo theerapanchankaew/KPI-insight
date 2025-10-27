@@ -12,7 +12,9 @@ import * as admin from 'firebase-admin';
 
 // Initialize Firebase Admin SDK if not already initialized
 if (!admin.apps.length) {
-  admin.initializeApp();
+  admin.initializeApp({
+    credential: admin.credential.applicationDefault(),
+  });
 }
 
 const SetUserClaimsInputSchema = z.object({
