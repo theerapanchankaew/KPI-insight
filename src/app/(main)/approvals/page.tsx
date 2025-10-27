@@ -23,7 +23,7 @@ interface KpiSubmission {
     actualValue: string;
     targetValue: string;
     notes: string;
-    status: 'Pending' | 'Approved' | 'Rejected';
+    status: 'Manager Review' | 'Upper Manager Approval' | 'Closed';
 }
 
 // Type for an Individual KPI document (consistent with other pages)
@@ -32,7 +32,7 @@ interface IndividualKpiBase {
     kpiId: string;
     kpiMeasure: string;
     weight: number;
-    status: 'Pending' | 'Committed' | 'Approved' | 'Rejected';
+    status: 'Draft' | 'Agreed' | 'In-Progress' | 'Manager Review' | 'Upper Manager Approval' | 'Employee Acknowledged' | 'Closed' | 'Rejected';
     notes?: string;
 }
 interface AssignedCascadedKpi extends IndividualKpiBase { type: 'cascaded'; target: string; }
@@ -46,36 +46,39 @@ const KpiApprovalsTab = () => {
 
   const submissionsQuery = useMemoFirebase(() => {
     if (!firestore) return null;
-    return query(collection(firestore, 'submissions'), where('status', '==', 'Pending'));
+    return query(collection(firestore, 'submissions'), where('status', '==', 'Manager Review'));
   }, [firestore]);
 
   const { data: submissionsData, isLoading } = useCollection<KpiSubmission>(submissionsQuery);
 
-  const handleUpdateStatus = (item: WithId<KpiSubmission>, status: 'Approved' | 'Rejected') => {
+  const handleUpdateStatus = (item: WithId<KpiSubmission>, status: 'Upper Manager Approval' | 'Rejected') => {
     if (!firestore) return;
     const submissionRef = doc(firestore, 'submissions', item.id);
-    const updatedData = { ...item, status };
+    // The status for KpiSubmission is different from IndividualKpi
+    const finalStatus = status === 'Rejected' ? 'Manager Review' : 'Upper Manager Approval';
+    const updatedData = { ...item, status: finalStatus };
     setDocumentNonBlocking(submissionRef, updatedData, { merge: true });
 
     toast({
       title: `KPI ${status}`,
-      description: `Submission for "${item.kpiMeasure}" has been ${status.toLowerCase()}.`,
+      description: `Submission for "${item.kpiMeasure}" has been updated.`,
       variant: status === 'Rejected' ? 'destructive' : undefined,
     });
   };
 
-  const handleBulkAction = (status: 'Approved' | 'Rejected') => {
+  const handleBulkAction = (status: 'Upper Manager Approval' | 'Rejected') => {
       if (!firestore || !submissionsData) return;
       
       submissionsData.forEach(item => {
           const submissionRef = doc(firestore, 'submissions', item.id);
-          const updatedData = { ...item, status };
+          const finalStatus = status === 'Rejected' ? 'Manager Review' : 'Upper Manager Approval';
+          const updatedData = { ...item, status: finalStatus };
           setDocumentNonBlocking(submissionRef, updatedData, { merge: true });
       });
 
       toast({
           title: "Bulk Action Complete",
-          description: `All pending KPIs have been ${status.toLowerCase()}.`,
+          description: `All pending KPIs have been updated.`,
           variant: status === 'Rejected' ? 'destructive' : undefined
       });
   };
@@ -83,9 +86,9 @@ const KpiApprovalsTab = () => {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Pending KPI Submissions</CardTitle>
+        <CardTitle>Pending KPI Submissions for Review</CardTitle>
         <div className="flex space-x-2">
-          <Button onClick={() => handleBulkAction('Approved')} size="sm" variant="outline" className="bg-success/10 text-success hover:bg-success/20 hover:text-success" disabled={isLoading || !submissionsData || submissionsData.length === 0}>Approve All</Button>
+          <Button onClick={() => handleBulkAction('Upper Manager Approval')} size="sm" variant="outline" className="bg-success/10 text-success hover:bg-success/20 hover:text-success" disabled={isLoading || !submissionsData || submissionsData.length === 0}>Approve All</Button>
           <Button onClick={() => handleBulkAction('Rejected')} size="sm" variant="destructive" className="bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive" disabled={isLoading || !submissionsData || submissionsData.length === 0}>Reject All</Button>
         </div>
       </CardHeader>
@@ -129,7 +132,7 @@ const KpiApprovalsTab = () => {
                   )}
                 </div>
                 <div className="flex space-x-2 ml-0 sm:ml-4 mt-4 sm:mt-0">
-                  <Button onClick={() => handleUpdateStatus(item, 'Approved')} className="bg-success/90 hover:bg-success/100 text-white">
+                  <Button onClick={() => handleUpdateStatus(item, 'Upper Manager Approval')} className="bg-success/90 hover:bg-success/100 text-white">
                     <Check className="w-4 h-4 mr-1" /> Approve
                   </Button>
                   <Button onClick={() => handleUpdateStatus(item, 'Rejected')} variant="destructive">
@@ -154,7 +157,7 @@ const CommitmentRequestsTab = () => {
 
   const commitmentsQuery = useMemoFirebase(() => {
       if (!firestore) return null;
-      return query(collection(firestore, 'individual_kpis'), where('status', '==', 'Committed'));
+      return query(collection(firestore, 'individual_kpis'), where('status', '==', 'Draft'));
   }, [firestore]);
 
   const { data: pendingCommitments, isLoading } = useCollection<IndividualKpi>(commitmentsQuery);
@@ -162,7 +165,7 @@ const CommitmentRequestsTab = () => {
   const handleAgreement = (kpi: WithId<IndividualKpi>) => {
     if (!firestore) return;
     const kpiRef = doc(firestore, 'individual_kpis', kpi.id);
-    const updatedData = { ...kpi, status: 'Approved' as const };
+    const updatedData = { ...kpi, status: 'Agreed' as const };
     setDocumentNonBlocking(kpiRef, updatedData, { merge: true });
 
     toast({ title: 'Agreement Confirmed', description: `You have finalized the commitment for KPI: ${kpi.kpiMeasure}.`});
@@ -171,7 +174,7 @@ const CommitmentRequestsTab = () => {
   return (
     <Card>
        <CardHeader>
-        <CardTitle>Pending Commitments</CardTitle>
+        <CardTitle>Pending KPI Commitments</CardTitle>
       </CardHeader>
        <CardContent className="p-0">
         <div className="divide-y divide-gray-200">
@@ -235,10 +238,9 @@ export default function ApprovalsPage() {
   }, [setPageTitle]);
   
   // These hooks are used to get the count for the tabs.
-  // This is a bit inefficient as the components also fetch data, but it's simple for now.
   const firestore = useFirestore();
-  const submissionsQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'submissions'), where('status', '==', 'Pending')) : null, [firestore]);
-  const commitmentsQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'individual_kpis'), where('status', '==', 'Committed')) : null, [firestore]);
+  const submissionsQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'submissions'), where('status', '==', 'Manager Review')) : null, [firestore]);
+  const commitmentsQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'individual_kpis'), where('status', '==', 'Draft')) : null, [firestore]);
   const { data: submissionsData } = useCollection(submissionsQuery);
   const { data: commitmentsData } = useCollection(commitmentsQuery);
 

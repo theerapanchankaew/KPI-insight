@@ -35,6 +35,8 @@ interface IndividualKpiBase {
     kpiId: string; // This can be the original corporate KPI id or a new one for committed
     kpiMeasure: string;
     weight: number;
+    status: 'Draft' | 'Agreed' | 'In-Progress' | 'Manager Review' | 'Upper Manager Approval' | 'Employee Acknowledged' | 'Closed' | 'Rejected';
+    notes?: string;
 }
 
 // Type for individual KPI assignment from a cascaded KPI
@@ -598,7 +600,7 @@ const AssignKpiDialog = ({
     onClose: () => void;
     employee: WithId<Employee> | null;
     departmentKpis: WithId<CascadedKpi>[];
-    onConfirm: (assignments: IndividualKpi[]) => void;
+    onConfirm: (assignments: Omit<IndividualKpi, 'status'>[]) => void;
     selectedKpis: CascadedKpiSelection;
     setSelectedKpis: React.Dispatch<React.SetStateAction<CascadedKpiSelection>>;
     committedKpis: CommittedKpiDraft[];
@@ -663,7 +665,7 @@ const AssignKpiDialog = ({
 
         if (!employee) return;
         
-        const cascadedAssignments: AssignedCascadedKpi[] = [];
+        const cascadedAssignments: Omit<AssignedCascadedKpi, 'status'>[] = [];
         for (const kpiId in selectedKpis) {
             const selection = selectedKpis[kpiId];
             const kpiDetails = relevantKpis.find(k => k.id === kpiId);
@@ -679,7 +681,7 @@ const AssignKpiDialog = ({
             }
         }
 
-        const committedAssignments: CommittedKpi[] = committedKpis.map(draft => ({
+        const committedAssignments: Omit<CommittedKpi, 'status'>[] = committedKpis.map(draft => ({
             type: 'committed',
             employeeId: employee.id,
             kpiId: `committed-${draft.id}`,
@@ -1094,7 +1096,7 @@ export default function CascadePage() {
       toast({ title: "KPI Cascaded", description: `"${cascadedKpi.measure}" has been cascaded.` });
   };
 
-  const handleConfirmAssignment = async (assignments: IndividualKpi[]) => {
+  const handleConfirmAssignment = async (assignments: Omit<IndividualKpi, 'status'>[]) => {
       if (!user) {
           toast({ title: "Authentication Required", description: "Please log in to assign KPIs.", variant: 'destructive' });
           return;
@@ -1110,7 +1112,11 @@ export default function CascadePage() {
       });
 
       assignments.forEach(assignment => {
-        addDocumentNonBlocking(individualKpisCollection, assignment);
+        const finalAssignment: Omit<IndividualKpi, 'id'> = {
+            ...assignment,
+            status: 'Draft' // Set initial status to Draft as per SRS
+        };
+        addDocumentNonBlocking(individualKpisCollection, finalAssignment);
       });
       
       toast({ title: "KPIs Assigned", description: `${assignments.length} KPI(s) have been assigned to ${selectedEmployee.name}.` });

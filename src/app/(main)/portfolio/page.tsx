@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { CheckCircle, Clock, AlertCircle, Check, X, ShieldCheck } from 'lucide-react';
+import { CheckCircle, Clock, AlertCircle, Check, X, ShieldCheck, Edit, Send } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useUser, useFirestore, useCollection, useMemoFirebase, WithId } from '@/firebase';
@@ -23,7 +23,7 @@ interface IndividualKpiBase {
     kpiId: string;
     kpiMeasure: string;
     weight: number;
-    status: 'Pending' | 'Committed' | 'Approved' | 'Rejected';
+    status: 'Draft' | 'Agreed' | 'In-Progress' | 'Manager Review' | 'Upper Manager Approval' | 'Employee Acknowledged' | 'Closed' | 'Rejected';
     notes?: string;
     rejectionReason?: string;
 }
@@ -43,18 +43,21 @@ type IndividualKpi = AssignedCascadedKpi | CommittedKpi;
 
 
 const statusConfig = {
-    Committed: { icon: ShieldCheck, color: 'text-primary' },
-    Pending: { icon: Clock, color: 'text-accent' },
-    Rejected: { icon: AlertCircle, color: 'text-destructive' },
-    Approved: { icon: CheckCircle, color: 'text-success' },
+    Draft: { icon: Edit, color: 'text-gray-500', label: 'Draft' },
+    Agreed: { icon: UserCheck, color: 'text-blue-500', label: 'Agreed' },
+    'In-Progress': { icon: Clock, color: 'text-accent', label: 'In Progress' },
+    'Manager Review': { icon: ShieldCheck, color: 'text-primary', label: 'Manager Review' },
+    'Upper Manager Approval': { icon: ShieldCheck, color: 'text-purple-500', label: 'Final Approval' },
+    'Employee Acknowledged': { icon: CheckCircle, color: 'text-teal-500', label: 'Acknowledged' },
+    Closed: { icon: CheckCircle, color: 'text-success', label: 'Closed' },
+    Rejected: { icon: AlertCircle, color: 'text-destructive', label: 'Rejected' },
 };
 
-const KpiCommitDialog = ({ isOpen, onClose, kpi, onConfirm, onReject }: { 
+const KpiActionDialog = ({ isOpen, onClose, kpi, onConfirm }: { 
     isOpen: boolean, 
     onClose: () => void, 
     kpi: WithId<IndividualKpi> | null, 
-    onConfirm: (id: string, notes: string) => void, 
-    onReject: (id: string, notes: string) => void 
+    onConfirm: (id: string, notes: string, newStatus: IndividualKpi['status']) => void,
 }) => {
     const [notes, setNotes] = useState('');
 
@@ -66,7 +69,8 @@ const KpiCommitDialog = ({ isOpen, onClose, kpi, onConfirm, onReject }: {
 
     if (!kpi) return null;
 
-    const isRejectDisabled = notes.trim() === '';
+    const isRejectAction = kpi.status === 'Agreed';
+    const nextStatus: IndividualKpi['status'] = 'Agreed';
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
@@ -74,7 +78,7 @@ const KpiCommitDialog = ({ isOpen, onClose, kpi, onConfirm, onReject }: {
                 <DialogHeader>
                     <DialogTitle>Review KPI: {kpi.type === 'committed' ? kpi.task : kpi.kpiMeasure}</DialogTitle>
                     <DialogDescription>
-                        Please review and confirm your commitment, or provide a reason for rejection. This action is between you (Individual) and your Manager.
+                        Review and agree to your KPI. This will be sent to your manager for final agreement.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="py-4 space-y-4">
@@ -94,17 +98,19 @@ const KpiCommitDialog = ({ isOpen, onClose, kpi, onConfirm, onReject }: {
                             onChange={(e) => setNotes(e.target.value)}
                         />
                     </div>
-                     <p className="text-xs text-gray-600">By clicking "Confirm Commitment," you agree to work towards the set target. This will be sent to your manager for final agreement.</p>
+                     <p className="text-xs text-gray-600">By clicking "Agree & Submit," you agree to the terms of this KPI.</p>
                 </div>
                 <DialogFooter>
                     <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                    <Button onClick={() => onReject(kpi.id, notes)} variant="destructive" disabled={isRejectDisabled}>
-                        <X className="w-4 h-4 mr-2" />
-                        Reject
-                    </Button>
-                    <Button onClick={() => onConfirm(kpi.id, notes)} className="bg-primary hover:bg-primary/90">
-                        <Check className="w-4 h-4 mr-2" />
-                        Confirm Commitment
+                    {isRejectAction && (
+                        <Button onClick={() => onConfirm(kpi.id, notes, 'Rejected')} variant="destructive">
+                            <X className="w-4 h-4 mr-2" />
+                            Request Change
+                        </Button>
+                    )}
+                    <Button onClick={() => onConfirm(kpi.id, notes, nextStatus)} className="bg-primary hover:bg-primary/90">
+                        <Send className="w-4 h-4 mr-2" />
+                        Agree & Submit
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -119,7 +125,7 @@ export default function PortfolioPage() {
     const { user, isUserLoading } = useUser();
     const firestore = useFirestore();
     
-    const [isCommitModalOpen, setIsCommitModalOpen] = useState(false);
+    const [isActionModalOpen, setIsActionModalOpen] = useState(false);
     const [selectedKpi, setSelectedKpi] = useState<WithId<IndividualKpi> | null>(null);
 
     useEffect(() => {
@@ -128,10 +134,6 @@ export default function PortfolioPage() {
 
     const userKpisQuery = useMemoFirebase(() => {
         if (!firestore || !user) return null;
-        // In a real app, we'd get the employee ID from the user's profile.
-        // For now, we'll assume the user's display name matches the employee name for demo purposes.
-        // A more robust solution would be linking user.uid to an employee document.
-        // Let's assume we have user's employee ID, which is just user.uid for simplicity now.
         return query(collection(firestore, 'individual_kpis'), where('employeeId', '==', user.uid));
     }, [firestore, user]);
 
@@ -139,39 +141,25 @@ export default function PortfolioPage() {
     
     const handleReviewClick = (kpi: WithId<IndividualKpi>) => {
         setSelectedKpi(kpi);
-        setIsCommitModalOpen(true);
+        setIsActionModalOpen(true);
     };
 
-    const handleConfirmCommitment = (kpiId: string, notes: string) => {
+    const handleConfirmAction = (kpiId: string, notes: string, newStatus: IndividualKpi['status']) => {
         if (!firestore) return;
         const kpiRef = doc(firestore, 'individual_kpis', kpiId);
         const kpiToUpdate = portfolioData?.find(k => k.id === kpiId);
         if (kpiToUpdate) {
-            const updatedData = { ...kpiToUpdate, status: 'Committed' as const, notes, rejectionReason: '' };
+            const updatedData: Partial<IndividualKpi> = { status: newStatus, notes };
+            if(newStatus === 'Rejected') {
+                updatedData.rejectionReason = notes;
+            }
             setDocumentNonBlocking(kpiRef, updatedData, { merge: true });
             
             toast({
-                title: "KPI Committed",
-                description: "Your commitment has been sent to your manager for final agreement.",
+                title: `KPI Status Updated`,
+                description: `The KPI has been moved to the '${statusConfig[newStatus].label}' state.`,
             });
-            setIsCommitModalOpen(false);
-        }
-    };
-    
-    const handleRejectCommitment = (kpiId: string, reason: string) => {
-        if (!firestore) return;
-        const kpiRef = doc(firestore, 'individual_kpis', kpiId);
-        const kpiToUpdate = portfolioData?.find(k => k.id === kpiId);
-        if (kpiToUpdate) {
-            const updatedData = { ...kpiToUpdate, status: 'Rejected' as const, notes: reason, rejectionReason: reason };
-            setDocumentNonBlocking(kpiRef, updatedData, { merge: true });
-
-            toast({
-                title: "KPI Rejected",
-                description: "This KPI has been flagged for renegotiation.",
-                variant: "destructive"
-            });
-            setIsCommitModalOpen(false);
+            setIsActionModalOpen(false);
         }
     };
     
@@ -187,7 +175,7 @@ export default function PortfolioPage() {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>My Assigned KPIs - 2024</CardTitle>
+                    <CardTitle>My Assigned KPIs - FY2026</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <Table>
@@ -215,8 +203,10 @@ export default function PortfolioPage() {
                                 ))
                             ) : portfolioData && portfolioData.length > 0 ? (
                                 portfolioData.map(kpi => {
-                                    const config = statusConfig[kpi.status] || statusConfig.Pending;
-                                    const { icon: Icon, color } = config;
+                                    const config = statusConfig[kpi.status] || statusConfig.Draft;
+                                    const { icon: Icon, color, label } = config;
+                                    const canTakeAction = kpi.status === 'Draft' || kpi.status === 'Rejected';
+
                                     return (
                                         <TableRow key={kpi.id}>
                                             <TableCell className="font-medium">{kpi.type === 'committed' ? kpi.task : kpi.kpiMeasure}</TableCell>
@@ -228,17 +218,17 @@ export default function PortfolioPage() {
                                             <TableCell>
                                                 <div className="flex items-center">
                                                     <Icon className={`w-4 h-4 mr-2 ${color}`} />
-                                                    <span>{kpi.status}</span>
+                                                    <span>{label}</span>
                                                 </div>
                                             </TableCell>
                                             <TableCell className="text-right">
-                                                {kpi.status === 'Pending' || kpi.status === 'Rejected' ? (
+                                                {canTakeAction ? (
                                                     <Button size="sm" onClick={() => handleReviewClick(kpi)}>
-                                                        Review
+                                                        Review & Agree
                                                     </Button>
                                                 ) : (
                                                     <Button size="sm" variant="outline" disabled>
-                                                        {kpi.status === 'Committed' ? 'Pending Agreement' : 'Agreed'}
+                                                        No Action Needed
                                                     </Button>
                                                 )}
                                             </TableCell>
@@ -257,15 +247,12 @@ export default function PortfolioPage() {
                 </CardContent>
             </Card>
             
-            <KpiCommitDialog
-                isOpen={isCommitModalOpen}
-                onClose={() => setIsCommitModalOpen(false)}
+            <KpiActionDialog
+                isOpen={isActionModalOpen}
+                onClose={() => setIsActionModalOpen(false)}
                 kpi={selectedKpi}
-                onConfirm={handleConfirmCommitment}
-                onReject={handleRejectCommitment}
+                onConfirm={handleConfirmAction}
             />
         </div>
     );
 }
-
-    

@@ -24,7 +24,7 @@ interface IndividualKpiBase {
     kpiId: string;
     kpiMeasure: string;
     weight: number;
-    status: 'Pending' | 'Committed' | 'Approved' | 'Rejected';
+    status: 'Draft' | 'Agreed' | 'In-Progress' | 'Manager Review' | 'Upper Manager Approval' | 'Employee Acknowledged' | 'Closed' | 'Rejected';
     notes?: string;
 }
 interface AssignedCascadedKpi extends IndividualKpiBase { type: 'cascaded'; target: string; }
@@ -42,7 +42,7 @@ interface KpiSubmission {
     targetValue: string;
     notes: string;
     submissionDate: any; // Server timestamp
-    status: 'Pending';
+    status: 'Manager Review';
 }
 
 
@@ -137,20 +137,19 @@ export default function SubmitPage() {
     setPageTitle('Submit KPI');
   }, [setPageTitle]);
 
-  const approvedKpisQuery = useMemoFirebase(() => {
+  const kpisForSubmissionQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
     return query(
       collection(firestore, 'individual_kpis'), 
       where('employeeId', '==', user.uid),
-      where('status', '==', 'Approved')
+      where('status', 'in', ['In-Progress', 'Employee Acknowledged'])
     );
   }, [firestore, user]);
 
-  const { data: approvedKpis, isLoading: isKpisLoading } = useCollection<IndividualKpi>(approvedKpisQuery);
-  const userDocRef = useMemoFirebase(() => firestore && user ? doc(firestore, 'users', user.uid) : null, [firestore, user]);
+  const { data: kpisForSubmission, isLoading: isKpisLoading } = useCollection<IndividualKpi>(kpisForSubmissionQuery);
   
   const summaryStats = useMemo(() => {
-    const total = approvedKpis?.length || 0;
+    const total = kpisForSubmission?.length || 0;
     // In a real app, we'd cross-reference with a `submissions` collection to see what's pending.
     // For now, let's assume none are submitted yet.
     return {
@@ -158,7 +157,7 @@ export default function SubmitPage() {
         needsSubmission: total,
         submitted: 0,
     };
-  }, [approvedKpis]);
+  }, [kpisForSubmission]);
   
   const handleOpenSubmitDialog = (kpi: WithId<IndividualKpi>) => {
     setSelectedKpi(kpi);
@@ -177,7 +176,7 @@ export default function SubmitPage() {
         submitterName: user.displayName || 'Unknown User',
         department: 'My Department', // This should be fetched from user profile
         submissionDate: serverTimestamp(),
-        status: 'Pending',
+        status: 'Manager Review',
     };
     
     const submissionsCollection = collection(firestore, 'submissions');
@@ -192,9 +191,9 @@ export default function SubmitPage() {
   const isLoading = isUserLoading || isKpisLoading;
 
   const statCards = [
-    { label: 'Approved KPIs', value: summaryStats.totalApproved, icon: BadgeCheck, color: 'text-success' },
+    { label: 'In-Progress KPIs', value: summaryStats.totalApproved, icon: BadgeCheck, color: 'text-success' },
     { label: 'Needs Submission', value: summaryStats.needsSubmission, icon: FileText, color: 'text-accent' },
-    { label: 'Submitted', value: summaryStats.submitted, icon: Upload, color: 'text-primary' },
+    { label: 'Submitted (This Period)', value: summaryStats.submitted, icon: Upload, color: 'text-primary' },
   ];
 
   return (
@@ -220,7 +219,7 @@ export default function SubmitPage() {
 
       <Card>
         <CardHeader>
-             <CardTitle>My Approved KPIs for Submission</CardTitle>
+             <CardTitle>My KPIs Ready for Submission</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -245,8 +244,8 @@ export default function SubmitPage() {
                             <TableCell className="text-right"><Skeleton className="h-8 w-24 ml-auto" /></TableCell>
                         </TableRow>
                     ))
-                ) : approvedKpis && approvedKpis.length > 0 ? (
-                  approvedKpis.map((kpi) => (
+                ) : kpisForSubmission && kpisForSubmission.length > 0 ? (
+                  kpisForSubmission.map((kpi) => (
                     <TableRow key={kpi.id}>
                       <TableCell className="font-medium">{kpi.kpiMeasure}</TableCell>
                       <TableCell><Badge variant={kpi.type === 'cascaded' ? 'secondary' : 'default'}>{kpi.type}</Badge></TableCell>
@@ -265,7 +264,7 @@ export default function SubmitPage() {
                             <div className="flex flex-col items-center justify-center space-y-2">
                                 <Briefcase className="h-10 w-10 text-gray-300" />
                                 <p className="font-medium">No KPIs ready for submission.</p>
-                                <p className="text-sm">Approved KPIs from your portfolio will appear here.</p>
+                                <p className="text-sm">KPIs with a status of 'In-Progress' or 'Acknowledged' will appear here.</p>
                             </div>
                         </TableCell>
                     </TableRow>

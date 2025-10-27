@@ -162,7 +162,8 @@
         },
         "status": {
           "type": "string",
-          "description": "The status of the KPI submission (e.g., Pending, Approved, Rejected, Draft)."
+          "description": "The status of the KPI submission (e.g., Manager Review, Upper Manager Approval, Closed).",
+          "enum": ["Manager Review", "Upper Manager Approval", "Closed"]
         },
         "notes": {
           "type": "string",
@@ -396,7 +397,7 @@
                     "kpiId": { "type": "string" },
                     "kpiMeasure": { "type": "string" },
                     "weight": { "type": "number" },
-                    "status": { "type": "string", "enum": ["Pending", "Committed", "Approved", "Rejected"] },
+                    "status": { "type": "string", "enum": ["Draft", "Agreed", "In-Progress", "Manager Review", "Upper Manager Approval", "Employee Acknowledged", "Closed", "Rejected"] },
                     "notes": { "type": "string" },
                     "type": { "type": "string", "enum": ["cascaded", "committed"] }
                 },
