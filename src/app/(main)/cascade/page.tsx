@@ -9,7 +9,7 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
-import { useKpiData, type Employee, type Kpi, type CascadedKpi } from '@/context/KpiDataContext';
+import { useKpiData, type Employee, type Kpi } from '@/context/KpiDataContext';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -25,8 +25,21 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useToast } from '@/hooks/use-toast';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 
 // ==================== TYPE DEFINITIONS ====================
+
+// Add CascadedKpi to the existing types if not already present
+export interface CascadedKpi {
+  id?: string;
+  corporateKpiId: string;
+  measure: string;
+  department: string;
+  weight: number;
+  target: string; // Changed from departmentTarget to target
+  category?: string;
+  unit?: string;
+}
 
 type Role = 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee' | null;
 type CorporateKpi = WithId<Kpi>;
@@ -229,26 +242,36 @@ const MonthlyDeployDialog = ({
   const [customWeights, setCustomWeights] = useState<number[]>(Array(12).fill(1));
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
 
-  useEffect(() => {
-    if (kpi && isOpen) generatePreview();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [strategy, seasonalPattern, progressiveCurve, customWeights, kpi, isOpen]);
+  const generatePreview = useMemo(() => () => {
+    if (!kpi || !kpi.target) return;
 
-  const generatePreview = () => {
-    if (!kpi) return;
+    // Safely parse the target, assuming it might be a string like "≥ 194.10 ล้านบาท"
+    const yearlyTarget = parseFloat(String(kpi.target).replace(/[^0-9.]/g, '')) || 0;
+    if (String(kpi.target).includes('ล้าน')) {
+      // Note: This is a simplification. A robust solution would handle various units.
+    }
+
+
     let actualStrategy = strategy === 'auto' ? detectBestStrategy(kpi) : strategy;
     let preview: MonthlyDistribution[];
 
     switch (actualStrategy) {
-      case 'equal': preview = DISTRIBUTION_STRATEGIES.equal(kpi.target); break;
-      case 'weighted': preview = DISTRIBUTION_STRATEGIES.weighted(kpi.target, customWeights); break;
-      case 'seasonal': preview = DISTRIBUTION_STRATEGIES.seasonal(kpi.target, seasonalPattern); break;
-      case 'progressive': preview = DISTRIBUTION_STRATEGIES.progressive(kpi.target, progressiveCurve); break;
-      case 'historical': preview = DISTRIBUTION_STRATEGIES.equal(kpi.target); break;
-      default: preview = DISTRIBUTION_STRATEGIES.equal(kpi.target);
+      case 'equal': preview = DISTRIBUTION_STRATEGIES.equal(yearlyTarget); break;
+      case 'weighted': preview = DISTRIBUTION_STRATEGIES.weighted(yearlyTarget, customWeights); break;
+      case 'seasonal': preview = DISTRIBUTION_STRATEGIES.seasonal(yearlyTarget, seasonalPattern); break;
+      case 'progressive': preview = DISTRIBUTION_STRATEGIES.progressive(yearlyTarget, progressiveCurve); break;
+      case 'historical': preview = DISTRIBUTION_STRATEGIES.equal(yearlyTarget); break; // Placeholder
+      default: preview = DISTRIBUTION_STRATEGIES.equal(yearlyTarget);
     }
     setPreviewData(preview);
-  };
+  }, [strategy, seasonalPattern, progressiveCurve, customWeights, kpi]);
+
+
+  useEffect(() => {
+    if (kpi && isOpen) {
+      generatePreview();
+    }
+  }, [kpi, isOpen, generatePreview]);
 
   const getStrategyDisplayName = (strat: DistributionStrategy): string => {
     const names: Record<DistributionStrategy, string> = {
@@ -269,6 +292,7 @@ const MonthlyDeployDialog = ({
     onClose();
   };
 
+  const yearlyTargetDisplay = (typeof kpi?.target === 'string' ? kpi.target : (kpi?.target || 0));
   const totalPercentage = previewData.reduce((sum, m) => sum + m.percentage, 0);
   const totalTarget = previewData.reduce((sum, m) => sum + m.target, 0);
 
@@ -280,10 +304,10 @@ const MonthlyDeployDialog = ({
             <Calendar className="h-5 w-5" />
             Deploy KPI เป็นรายเดือน
           </DialogTitle>
-          <DialogDescription className="space-y-1">
+           <DialogDescription className="space-y-1">
             <span className="block font-semibold text-gray-700">{kpi?.measure}</span>
             <span className="block text-sm">
-              เป้าหมายรายปี: <span className="font-bold text-blue-600">{kpi?.target}</span> {kpi?.unit}
+              เป้าหมายรายปี: <span className="font-bold text-blue-600">{yearlyTargetDisplay}</span> {kpi?.unit}
             </span>
           </DialogDescription>
         </DialogHeader>
@@ -592,21 +616,27 @@ const CorporateLevel = ({
 // ==================== DEPARTMENT LEVEL COMPONENT ====================
 
 const DepartmentLevel = ({ 
+  cascadedKpis,
+  isLoading,
   onDeleteCascadedKpi, 
   userRole 
 }: { 
+  cascadedKpis: WithId<CascadedKpi>[] | null;
+  isLoading: boolean;
   onDeleteCascadedKpi: (kpiId: string) => void;
   userRole: Role;
 }) => {
-  const firestore = useFirestore();
-  const cascadedKpisQuery = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'cascaded_kpis') : null),
-    [firestore]
-  );
-  const { data: cascadedKpis } = useCollection<WithId<CascadedKpi>>(cascadedKpisQuery);
   const [deleteKpi, setDeleteKpi] = useState<WithId<CascadedKpi> | null>(null);
-
   const canDelete = ['Admin', 'VP', 'AVP', 'Manager'].includes(userRole || '');
+
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Skeleton className="h-48" />
+        <Skeleton className="h-48" />
+      </div>
+    )
+  }
 
   if (!cascadedKpis || cascadedKpis.length === 0) {
     return (
@@ -644,16 +674,16 @@ const DepartmentLevel = ({
                   <CardContent className="p-3">
                     <div className="flex items-start justify-between mb-2">
                       <span className="font-medium text-sm">{kpi.measure}</span>
-                      <Badge variant="outline" className="text-xs">{kpi.category}</Badge>
+                      {kpi.category && <Badge variant="outline" className="text-xs">{kpi.category}</Badge>}
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-lg font-bold">{kpi.target} {kpi.unit}</span>
                       {canDelete && (
                         <Button
-                          size="sm"
+                          size="icon"
                           variant="ghost"
                           onClick={() => setDeleteKpi(kpi)}
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 w-8"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -685,55 +715,60 @@ const DepartmentLevel = ({
 
 // ==================== INDIVIDUAL LEVEL COMPONENT ====================
 
-const IndividualLevel = ({ 
-  individualKpis, 
-  onAssignKpi, 
-  onEditIndividualKpi,
+const IndividualLevel = ({
+  employees,
+  individualKpis,
+  isLoading,
+  onAssignKpi,
   onDeleteIndividualKpi,
   userRole,
-  user
 }: {
+  employees: WithId<Employee>[] | null;
   individualKpis: WithId<IndividualKpi>[] | null;
+  isLoading: boolean;
   onAssignKpi: (employee: Employee) => void;
-  onEditIndividualKpi: (kpi: WithId<IndividualKpi>) => void;
   onDeleteIndividualKpi: (kpiId: string) => void;
   userRole: Role;
-  user: any;
 }) => {
-  const firestore = useFirestore();
-  const orgDataQuery = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'employees') : null),
-    [firestore]
-  );
-  const { data: orgData } = useCollection<WithId<Employee>>(orgDataQuery);
   const [deleteKpi, setDeleteKpi] = useState<WithId<IndividualKpi> | null>(null);
 
   const canAssign = ['Admin', 'VP', 'AVP', 'Manager'].includes(userRole || '');
   const canDelete = ['Admin', 'Manager'].includes(userRole || '');
 
-  if (!orgData || orgData.length === 0) {
+  const employeeKpiMap = useMemo(() => {
+    return (individualKpis || []).reduce((acc, kpi) => {
+      if (!acc[kpi.employeeId]) acc[kpi.employeeId] = [];
+      acc[kpi.employeeId].push(kpi);
+      return acc;
+    }, {} as { [key: string]: WithId<IndividualKpi>[] });
+  }, [individualKpis]);
+  
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-40" />
+        <Skeleton className="h-40" />
+      </div>
+    );
+  }
+
+  if (!employees || employees.length === 0) {
     return (
       <Card>
         <CardHeader>
           <CardTitle>Individual KPIs</CardTitle>
         </CardHeader>
         <CardContent className="p-6 text-center text-gray-500">
-          <p>No employee data available.</p>
+          <p>No employee data available. Please import organization data.</p>
         </CardContent>
       </Card>
     );
   }
 
-  const employeeKpiMap = (individualKpis || []).reduce((acc, kpi) => {
-    if (!acc[kpi.employeeId]) acc[kpi.employeeId] = [];
-    acc[kpi.employeeId].push(kpi);
-    return acc;
-  }, {} as { [key: string]: WithId<IndividualKpi>[] });
-
   return (
     <>
       <div className="space-y-4">
-        {orgData.map(employee => {
+        {employees.map(employee => {
           const empKpis = employeeKpiMap[employee.id] || [];
           return (
             <Card key={employee.id}>
@@ -757,7 +792,7 @@ const IndividualLevel = ({
                 ) : (
                   <div className="space-y-2">
                     {empKpis.map(kpi => (
-                      <div key={kpi.id} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div key={kpi.id} className="flex items-center justify-between p-3 border rounded-lg bg-gray-50/50">
                         <div className="flex-1">
                           <p className="font-medium text-sm">{kpi.kpiMeasure}</p>
                           <div className="flex items-center gap-2 mt-1">
@@ -767,10 +802,10 @@ const IndividualLevel = ({
                         </div>
                         {canDelete && (
                           <Button
-                            size="sm"
+                            size="icon"
                             variant="ghost"
                             onClick={() => setDeleteKpi(kpi)}
-                            className="text-red-600 hover:text-red-700"
+                            className="text-red-600 hover:text-red-700 h-8 w-8"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -801,6 +836,7 @@ const IndividualLevel = ({
   );
 };
 
+
 // ==================== PLACEHOLDER DIALOGS ====================
 
 const CascadeDialog = (props: any) => <div />;
@@ -810,14 +846,11 @@ const AssignKpiDialog = (props: any) => <div />;
 // ==================== MAIN COMPONENT ====================
 
 export default function KPICascadeManagement() {
-  useAppLayout({
-    title: 'KPI Management',
-    description: 'Manage and cascade KPIs across the organization'
-  });
+  useAppLayout();
 
   const { toast } = useToast();
   const firestore = useFirestore();
-  const { user, isLoading: isUserLoading } = useUser();
+  const { user, isUserLoading } = useUser();
 
   // States
   const [selectedKpi, setSelectedKpi] = useState<CorporateKpi | null>(null);
@@ -830,23 +863,23 @@ export default function KPICascadeManagement() {
   const [committedKpis, setCommittedKpis] = useState<any[]>([]);
 
   // Firestore collections
-  const individualKpisQuery = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'individual_kpis') : null),
-    [firestore]
-  );
-  const { data: individualKpis } = useCollection<WithId<IndividualKpi>>(individualKpisQuery);
-  
   const cascadedKpisQuery = useMemoFirebase(
     () => (firestore ? collection(firestore, 'cascaded_kpis') : null),
     [firestore]
   );
-  const { data: cascadedKpis } = useCollection<WithId<CascadedKpi>>(cascadedKpisQuery);
+  const { data: cascadedKpis, isLoading: isCascadedKpisLoading } = useCollection<WithId<CascadedKpi>>(cascadedKpisQuery);
+  
+  const individualKpisQuery = useMemoFirebase(
+    () => (firestore ? collection(firestore, 'individual_kpis') : null),
+    [firestore]
+  );
+  const { data: individualKpis, isLoading: isIndividualKpisLoading } = useCollection<WithId<IndividualKpi>>(individualKpisQuery);
 
-  const orgDataQuery = useMemoFirebase(
+  const employeesQuery = useMemoFirebase(
     () => (firestore ? collection(firestore, 'employees') : null),
     [firestore]
   );
-  const { data: orgData } = useCollection<Employee>(orgDataQuery);
+  const { data: employees, isLoading: isEmployeesLoading } = useCollection<WithId<Employee>>(employeesQuery);
 
 
   // Determine user role
@@ -857,9 +890,11 @@ export default function KPICascadeManagement() {
   }, [user]);
 
   const departments = useMemo(() => {
-    if (!orgData) return [];
-    return Array.from(new Set(orgData.map(emp => emp.department))).filter(Boolean);
-  }, [orgData]);
+    if (!employees) return [];
+    return Array.from(new Set(employees.map(emp => emp.department))).filter(Boolean);
+  }, [employees]);
+  
+  const overallLoading = isUserLoading || isCascadedKpisLoading || isIndividualKpisLoading || isEmployeesLoading;
 
   // ==================== HANDLERS ====================
 
@@ -900,13 +935,6 @@ export default function KPICascadeManagement() {
   const handleAssignKpiClick = (employee: Employee) => {
     setSelectedEmployee(employee);
     setIsAssignModalOpen(true);
-  };
-
-  const handleEditIndividualKpi = (kpi: WithId<IndividualKpi>) => {
-    const employee = orgData?.find(e => e.id === kpi.employeeId);
-    if (employee) {
-      handleAssignKpiClick(employee);
-    }
   };
 
   const handleDeleteIndividualKpi = (kpiId: string) => {
@@ -1103,20 +1131,22 @@ export default function KPICascadeManagement() {
           </TabsContent>
 
           <TabsContent value="department" className="mt-6">
-            <DepartmentLevel 
+            <DepartmentLevel
+              cascadedKpis={cascadedKpis}
+              isLoading={isCascadedKpisLoading}
               onDeleteCascadedKpi={handleDeleteCascadedKpi} 
               userRole={userRole} 
             />
           </TabsContent>
 
           <TabsContent value="individual" className="mt-6">
-            <IndividualLevel 
-              individualKpis={individualKpis} 
-              onAssignKpi={handleAssignKpiClick} 
-              onEditIndividualKpi={handleEditIndividualKpi}
+             <IndividualLevel
+              employees={employees}
+              individualKpis={individualKpis}
+              isLoading={overallLoading}
+              onAssignKpi={handleAssignKpiClick}
               onDeleteIndividualKpi={handleDeleteIndividualKpi}
-              userRole={userRole} 
-              user={user}
+              userRole={userRole}
             />
           </TabsContent>
         </Tabs>
@@ -1171,7 +1201,3 @@ export default function KPICascadeManagement() {
     </div>
   );
 }
-
-    
-
-    
