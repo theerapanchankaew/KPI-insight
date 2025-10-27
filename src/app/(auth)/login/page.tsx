@@ -13,6 +13,8 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc } from 'firebase/firestore';
+import { setUserClaims } from '@/ai/flows/set-user-claims';
+import { useToast } from '@/hooks/use-toast';
 
 const SignInForm = () => {
   const auth = useAuth();
@@ -70,11 +72,13 @@ const SignInForm = () => {
 const SignUpForm = () => {
   const auth = useAuth();
   const firestore = useFirestore();
+  const { toast } = useToast();
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [isSigningUp, setIsSigningUp] = useState(false);
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,12 +87,15 @@ const SignUpForm = () => {
       return;
     }
     setError(null);
+    setIsSigningUp(true);
+
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(userCredential.user, { displayName });
       
-      // Create user document in Firestore
       const userRef = doc(firestore, 'users', userCredential.user.uid);
+      const userRole = email.includes('admin') ? 'Admin' : 'Employee';
+      
       const newUser = {
         id: userCredential.user.uid,
         name: displayName,
@@ -96,7 +103,7 @@ const SignUpForm = () => {
         department: 'Unassigned',
         position: 'New User',
         manager: '',
-        role: 'Employee',
+        role: userRole,
         menuAccess: {
             '/dashboard': true,
             '/cascade': false,
@@ -109,10 +116,25 @@ const SignUpForm = () => {
             '/settings': false,
         }
       };
+      
       setDocumentNonBlocking(userRef, newUser, { merge: true });
+      
+      // Set custom claims
+      await setUserClaims({ uid: userCredential.user.uid, claims: { role: userRole }});
+      
+      // Force refresh the token to get the new claims
+      await userCredential.user.getIdToken(true);
+
+      toast({
+          title: "Account Created",
+          description: "Your account has been successfully created."
+      });
+      // The auth state listener in the layout will handle the redirect.
 
     } catch (err: any) {
       setError(err.message);
+    } finally {
+        setIsSigningUp(false);
     }
   };
 
@@ -121,26 +143,30 @@ const SignUpForm = () => {
       <CardContent className="space-y-4">
          <div className="space-y-2">
           <Label htmlFor="displayName">Display Name</Label>
-          <Input id="displayName" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
+          <Input id="displayName" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required disabled={isSigningUp} />
         </div>
         <div className="space-y-2">
           <Label htmlFor="signup-email">Email</Label>
-          <Input id="signup-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <Input id="signup-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={isSigningUp}/>
         </div>
         <div className="space-y-2">
           <Label htmlFor="signup-password">Password</Label>
-          <Input id="signup-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <Input id="signup-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required disabled={isSigningUp} />
         </div>
          <div className="space-y-2">
           <Label htmlFor="confirm-password">Confirm Password</Label>
-          <Input id="confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
+          <Input id="confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required disabled={isSigningUp} />
         </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
       </CardContent>
       <CardFooter>
-        <Button type="submit" className="w-full">
-          <UserPlus className="mr-2 h-4 w-4" />
-          Create Account
+        <Button type="submit" className="w-full" disabled={isSigningUp}>
+          {isSigningUp ? 'Creating Account...' : (
+              <>
+                <UserPlus className="mr-2 h-4 w-4" />
+                Create Account
+              </>
+          )}
         </Button>
       </CardFooter>
     </form>
@@ -159,9 +185,6 @@ export default function LoginPage() {
     }
   }, [user, isUserLoading, router]);
   
-  // While loading, or if the user exists and is about to be redirected,
-  // we can show a loader or just the blank page background.
-  // Rendering the full login form prevents hydration errors.
   if (isUserLoading || user) {
      return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
