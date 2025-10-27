@@ -216,14 +216,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     setIsClient(true);
   }, []);
 
+  if (!isClient) {
+    return null;
+  }
 
   return (
     <AppLayoutContext.Provider value={{ pageTitle, setPageTitle }}>
       <KpiDataProvider>
         <div className="h-full flex bg-background">
-          {isClient && <AppSidebar />}
+          <AppSidebar />
           <main className="flex-1 overflow-auto">
-            {isClient && <AppHeader />}
+            <AppHeader />
             <div className="p-6">
               {children}
             </div>
