@@ -16,7 +16,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { useCollection, useFirestore, useMemoFirebase, useUser } from '@/firebase';
+import { useCollection, useFirestore, useMemoFirebase, useUser, WithId } from '@/firebase';
 import { collection, doc } from 'firebase/firestore';
 import { addDocumentNonBlocking, deleteDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -26,6 +26,7 @@ type Role = 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee';
 interface AppUser {
   id: string;
   name: string;
+  email?: string;
   department: string;
   position: string;
   manager: string;
@@ -97,6 +98,9 @@ const AddUserDialog = ({ isOpen, onOpenChange, onAddUser }: { isOpen: boolean; o
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Add New User</DialogTitle>
+                    <DialogDescription>
+                        This will create a user document in Firestore. To create an actual login, the user must sign up through the login page.
+                    </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                     <div className="space-y-2">
@@ -118,7 +122,7 @@ const AddUserDialog = ({ isOpen, onOpenChange, onAddUser }: { isOpen: boolean; o
                 </div>
                 <DialogFooter>
                     <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-                    <Button onClick={handleAdd}>Add User</Button>
+                    <Button onClick={handleAdd}>Add User Document</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -131,38 +135,27 @@ export default function UserManagementPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user, isUserLoading: isAuthLoading } = useUser();
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  
+  const userDocRef = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return doc(firestore, 'users', user.uid);
+  }, [firestore, user]);
+  const { data: currentUserProfile } = useDoc<AppUser>(userDocRef);
+
+  const isAdmin = useMemo(() => currentUserProfile?.role === 'Admin', [currentUserProfile]);
 
   useEffect(() => {
     setPageTitle('User Management');
   }, [setPageTitle]);
 
-  useEffect(() => {
-      const checkAdminStatus = async () => {
-          if (user) {
-              try {
-                  const idTokenResult = await user.getIdTokenResult();
-                  setIsAdmin(idTokenResult.claims.role === 'Admin');
-              } catch (error) {
-                  console.error("Error fetching user claims:", error);
-                  setIsAdmin(false);
-              }
-          } else if (!isAuthLoading) {
-             // If user is not loading and there is no user, they are not an admin
-             setIsAdmin(false);
-          }
-      };
-      checkAdminStatus();
-  }, [user, isAuthLoading]);
-
   const usersQuery = useMemoFirebase(() => {
-    if (!firestore || isAdmin === null || !isAdmin) return null;
+    if (!firestore) return null;
     return collection(firestore, 'users');
-  }, [firestore, isAdmin]);
+  }, [firestore]);
   
   const { data: usersData, isLoading: isUsersLoading, error } = useCollection<AppUser>(usersQuery);
 
-  const [localUsers, setLocalUsers] = useState<AppUser[]>([]);
+  const [localUsers, setLocalUsers] = useState<WithId<AppUser>[]>([]);
   const [isAddUserModalOpen, setAddUserModalOpen] = useState(false);
 
   useEffect(() => {
@@ -195,8 +188,9 @@ export default function UserManagementPage() {
         return;
     }
     localUsers.forEach(user => {
-      const userRef = doc(firestore, 'users', user.id);
-      setDocumentNonBlocking(userRef, user, { merge: true });
+      const { id, ...userData } = user;
+      const userRef = doc(firestore, 'users', id);
+      setDocumentNonBlocking(userRef, userData, { merge: true });
     });
     toast({
         title: "User Permissions Saved",
@@ -225,10 +219,11 @@ export default function UserManagementPage() {
         menuAccess: defaultPermissions[role],
     };
     
+    // Note: This adds a document to the `users` collection but doesn't create an authentication entry.
     const usersCollection = collection(firestore, 'users');
     addDocumentNonBlocking(usersCollection, userToSave);
     
-    toast({ title: 'User Added', description: `${newUser.name} has been added.` });
+    toast({ title: 'User Document Added', description: `${newUser.name}'s document has been created.` });
   };
 
   const handleDeleteUser = (userId: string) => {
@@ -236,15 +231,16 @@ export default function UserManagementPage() {
         toast({ title: 'Error', description: 'Firestore is not available.', variant: 'destructive'});
         return;
       }
+      // This only deletes the Firestore document. It does NOT delete the Firebase Auth user.
       const userRef = doc(firestore, 'users', userId);
       deleteDocumentNonBlocking(userRef);
-      toast({ title: 'User Deleted', description: 'The user has been removed from Firestore.', variant: 'destructive' });
+      toast({ title: 'User Document Deleted', description: 'The user document has been removed from Firestore.', variant: 'destructive' });
   };
 
-  const isLoading = isAuthLoading || isAdmin === null;
+  const isLoading = isAuthLoading || isUsersLoading;
 
   const renderContent = () => {
-    if (isLoading || (isAdmin && isUsersLoading)) {
+    if (isLoading) {
        return (
          <TableRow>
             <TableCell colSpan={navItems.length + 4} className="h-96">
@@ -294,7 +290,7 @@ export default function UserManagementPage() {
         <TableCell>
           <div className="flex items-center space-x-3">
             <Avatar className="w-8 h-8">
-              <AvatarFallback>{employee.name ? employee.name.charAt(0) : '?'}</AvatarFallback>
+              <AvatarFallback>{employee.name ? employee.name.charAt(0).toUpperCase() : '?'}</AvatarFallback>
             </Avatar>
             <div>
               <p className="font-medium text-sm">{employee.name}</p>
@@ -341,12 +337,12 @@ export default function UserManagementPage() {
               <AlertDialogHeader>
                 <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This action cannot be undone. This will permanently delete the user and their associated data.
+                  This will permanently delete the user's data document. It will not delete their login account.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={() => handleDeleteUser(employee.id)}>Delete</AlertDialogAction>
+                <AlertDialogAction onClick={() => handleDeleteUser(employee.id)}>Delete Document</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
@@ -364,10 +360,12 @@ export default function UserManagementPage() {
               <CardTitle>User &amp; Permission Management</CardTitle>
               <CardDescription>Manage roles and grant menu access for each user.</CardDescription>
             </div>
-            <Button variant="outline" onClick={() => setAddUserModalOpen(true)} disabled={!isAdmin}>
-              <PlusCircle className="mr-2 h-4 w-4" />
-              Add User
-            </Button>
+            {isAdmin && (
+                <Button variant="outline" onClick={() => setAddUserModalOpen(true)}>
+                  <PlusCircle className="mr-2 h-4 w-4" />
+                  Add User
+                </Button>
+            )}
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="border rounded-lg overflow-hidden">
@@ -388,9 +386,11 @@ export default function UserManagementPage() {
                 </TableBody>
               </Table>
             </div>
-            <div className="pt-4 flex justify-end">
-              <Button onClick={handleSavePermissions} disabled={!isAdmin}>Save Permissions</Button>
-            </div>
+            {isAdmin && (
+                <div className="pt-4 flex justify-end">
+                  <Button onClick={handleSavePermissions}>Save Permissions</Button>
+                </div>
+            )}
           </CardContent>
         </Card>
       <AddUserDialog isOpen={isAddUserModalOpen} onOpenChange={setAddUserModalOpen} onAddUser={handleAddUser} />
