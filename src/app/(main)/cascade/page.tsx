@@ -460,6 +460,105 @@ const MonthlyDeployDialog = ({
   );
 };
 
+// ==================== CASCADE DIALOG ====================
+
+const CascadeDialog = ({ 
+  isOpen, 
+  onClose, 
+  kpi, 
+  departments, 
+  onConfirm,
+  user
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  kpi: CorporateKpi | null;
+  departments: string[];
+  onConfirm: (cascadedKpi: Omit<CascadedKpi, 'id'>) => void;
+  user: any;
+}) => {
+  const [selectedDept, setSelectedDept] = useState<string>('');
+  const [weight, setWeight] = useState<number>(0);
+  const [target, setTarget] = useState<string>('');
+
+  useEffect(() => {
+    if (!isOpen) {
+      setSelectedDept('');
+      setWeight(0);
+      setTarget('');
+    }
+  }, [isOpen]);
+
+  const handleConfirm = () => {
+    if (!kpi || !selectedDept || !target) {
+      // Basic validation
+      return;
+    }
+    onConfirm({
+      corporateKpiId: kpi.id,
+      measure: kpi.measure,
+      department: selectedDept,
+      weight,
+      target,
+      category: kpi.category,
+      unit: kpi.unit,
+    });
+    onClose();
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Cascade KPI: {kpi?.measure}</DialogTitle>
+          <DialogDescription>
+            Assign this corporate KPI to a department with a specific target.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4 space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="department">Department</Label>
+            <Select value={selectedDept} onValueChange={setSelectedDept}>
+              <SelectTrigger id="department">
+                <SelectValue placeholder="Select a department" />
+              </SelectTrigger>
+              <SelectContent>
+                {departments.map(dept => (
+                  <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="weight">Weight (%)</Label>
+            <Input 
+              id="weight" 
+              type="number"
+              value={weight}
+              onChange={e => setWeight(Number(e.target.value))}
+              placeholder="e.g., 20"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="target">Department Target</Label>
+            <Input 
+              id="target"
+              value={target}
+              onChange={e => setTarget(e.target.value)}
+              placeholder={`e.g., 100,000 ${kpi?.unit || ''}`}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleConfirm} disabled={!user || !selectedDept || !target}>Confirm Cascade</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+
 // ==================== CORPORATE LEVEL COMPONENT ====================
 
 const CorporateLevel = ({ 
@@ -837,7 +936,6 @@ const IndividualLevel = ({
 
 // ==================== PLACEHOLDER DIALOGS ====================
 
-const CascadeDialog = (props: any) => <div />;
 const EditKpiDialog = (props: any) => <div />;
 const AssignKpiDialog = (props: any) => <div />;
 
@@ -1043,7 +1141,7 @@ export default function KPICascadeManagement() {
     addDocumentNonBlocking(colRef, cascadedKpi);
     toast({ 
       title: "KPI Cascaded", 
-      description: `"${cascadedKpi.measure}" has been cascaded.` 
+      description: `"${cascadedKpi.measure}" has been cascaded to ${cascadedKpi.department}.` 
     });
   };
 
