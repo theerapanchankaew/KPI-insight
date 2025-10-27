@@ -14,7 +14,6 @@ import { useEffect, useState } from 'react';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
-import { setUserClaims } from '@/ai/flows/set-user-claims';
 
 const SignInForm = () => {
   const auth = useAuth();
@@ -120,15 +119,6 @@ const SignUpForm = () => {
       
       // Save user document to Firestore
       setDocumentNonBlocking(userRef, newUser, { merge: true });
-
-      // Securely set custom claims via the Genkit flow
-      await setUserClaims({
-        uid: user.uid,
-        claims: { role: userRole }
-      });
-      
-      // Force a token refresh to get the new custom claims on the client
-      await user.getIdToken(true);
       
       toast({
           title: "Account Created",
