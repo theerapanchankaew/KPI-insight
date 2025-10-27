@@ -274,7 +274,7 @@ const IndividualLevel = ({ cascadedKpis, individualKpis, onAssignKpi }: { cascad
     if (!orgData || orgData.length === 0) {
          return (
             <Card>
-                <CardHeader><CardTitle>Individual Performance</CardTitle></Header>
+                <CardHeader><CardTitle>Individual Performance</CardTitle></CardHeader>
                 <CardContent className="p-6 text-center text-gray-500">
                     <p>No Organization data has been imported.</p>
                     <p className="mt-2">Please go to the "Intake Data" page to upload an organization data file.</p>
@@ -665,11 +665,11 @@ const AssignKpiDialog = ({
                                             <div className="space-y-2">
                                                 <Label>ให้ปรับเป็น ระดับผลงาน</Label>
                                                 <div className="grid grid-cols-5 gap-2">
-                                                    <Input placeholder="Level 1 (<85%)" value={kpi.targets.level1} onChange={e => handleCommittedTargetChange(index, 'level1', e.target.value)} />
+                                                    <Input placeholder="Level 1 (&lt;85%)" value={kpi.targets.level1} onChange={e => handleCommittedTargetChange(index, 'level1', e.target.value)} />
                                                     <Input placeholder="Level 2 (85-95%)" value={kpi.targets.level2} onChange={e => handleCommittedTargetChange(index, 'level2', e.target.value)} />
                                                     <Input placeholder="Level 3 (95-105%)" value={kpi.targets.level3} onChange={e => handleCommittedTargetChange(index, 'level3', e.target.value)} />
                                                     <Input placeholder="Level 4 (105-115%)" value={kpi.targets.level4} onChange={e => handleCommittedTargetChange(index, 'level4', e.target.value)} />
-                                                    <Input placeholder="Level 5 (>115%)" value={kpi.targets.level5} onChange={e => handleCommittedTargetChange(index, 'level5', e.target.value)} />
+                                                    <Input placeholder="Level 5 (&gt;115%)" value={kpi.targets.level5} onChange={e => handleCommittedTargetChange(index, 'level5', e.target.value)} />
                                                 </div>
                                             </div>
                                         </CardContent>
@@ -798,3 +798,5 @@ export default function CascadePage() {
     </div>
   );
 }
+
+    
