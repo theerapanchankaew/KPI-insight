@@ -291,7 +291,7 @@ const MonthlyDeployDialog = ({
     onConfirm(previewData, actualStrategy, selectedYear);
     onClose();
   };
-
+  
   const yearlyTargetDisplay = (typeof kpi?.target === 'string' ? kpi.target : (kpi?.target || 0));
   const totalPercentage = previewData.reduce((sum, m) => sum + m.percentage, 0);
   const totalTarget = previewData.reduce((sum, m) => sum + m.target, 0);
@@ -1200,5 +1200,7 @@ export default function KPICascadeManagement() {
     </div>
   );
 }
+
+    
 
     
