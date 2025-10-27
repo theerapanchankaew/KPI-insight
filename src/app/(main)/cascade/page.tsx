@@ -66,6 +66,12 @@ type IndividualKpi = AssignedCascadedKpi | CommittedKpi;
 
 const CorporateLevel = ({ onCascadeClick, onEditClick, onDeleteClick, userRole }: { onCascadeClick: (kpi: CorporateKpi) => void, onEditClick: (kpi: CorporateKpi) => void, onDeleteClick: (kpiId: string) => void, userRole: Role }) => {
     const { kpiData, isKpiDataLoading } = useKpiData();
+    const [deleteKpiId, setDeleteKpiId] = useState<string | null>(null);
+    const kpiToDelete = useMemo(() => {
+      if (!deleteKpiId) return null;
+      return kpiData?.find(kpi => kpi.id === deleteKpiId) || null;
+    }, [deleteKpiId, kpiData]);
+
 
     const canEdit = userRole === 'Admin' || userRole === 'VP' || userRole === 'AVP' || userRole === 'Manager';
     const canDelete = userRole === 'Admin';
@@ -106,6 +112,7 @@ const CorporateLevel = ({ onCascadeClick, onEditClick, onDeleteClick, userRole }
     }, {} as { [key: string]: CorporateKpi[] });
 
     return (
+        <>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {Object.entries(groupedKpis).map(([perspective, kpis]) => (
                 <Card key={perspective}>
@@ -139,24 +146,10 @@ const CorporateLevel = ({ onCascadeClick, onEditClick, onDeleteClick, userRole }
                                                     </DropdownMenuItem>
                                                 )}
                                                 {canDelete && (
-                                                    <AlertDialog>
-                                                        <AlertDialogTrigger asChild>
-                                                          <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive">
-                                                              <Trash2 className="mr-2 h-4 w-4" />
-                                                              <span>Delete</span>
-                                                          </DropdownMenuItem>
-                                                        </AlertDialogTrigger>
-                                                        <AlertDialogContent>
-                                                            <AlertDialogHeader>
-                                                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                                                <AlertDialogDescription>This action cannot be undone. This will permanently delete the KPI from the catalog.</AlertDialogDescription>
-                                                            </AlertDialogHeader>
-                                                            <AlertDialogFooter>
-                                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                                <AlertDialogAction onClick={() => onDeleteClick(kpi.id)}>Delete</AlertDialogAction>
-                                                            </AlertDialogFooter>
-                                                        </AlertDialogContent>
-                                                    </AlertDialog>
+                                                    <DropdownMenuItem onSelect={() => setDeleteKpiId(kpi.id)} className="text-destructive">
+                                                        <Trash2 className="mr-2 h-4 w-4" />
+                                                        <span>Delete</span>
+                                                    </DropdownMenuItem>
                                                 )}
                                             </DropdownMenuContent>
                                         </DropdownMenu>
@@ -168,6 +161,26 @@ const CorporateLevel = ({ onCascadeClick, onEditClick, onDeleteClick, userRole }
                 </Card>
             ))}
         </div>
+        <AlertDialog open={deleteKpiId !== null} onOpenChange={(open) => !open && setDeleteKpiId(null)}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        This action will permanently delete the KPI "{kpiToDelete?.measure}". This cannot be undone.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel onClick={() => setDeleteKpiId(null)}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => {
+                        if (deleteKpiId) onDeleteClick(deleteKpiId);
+                        setDeleteKpiId(null);
+                    }}>
+                        Delete
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+        </>
     );
 };
 
@@ -1259,5 +1272,6 @@ export default function CascadePage() {
     
 
     
+
 
 
