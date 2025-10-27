@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useEffect, useState, useMemo } from 'react';
@@ -17,7 +18,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronsUpDown, PlusCircle, Trash2, Edit, AlertTriangle, MoreVertical, Calendar, TrendingUp, BarChart3 } from 'lucide-react';
-import { WithId, useCollection, useFirestore, useUser } from '@/firebase';
+import { WithId, useCollection, useFirestore, useUser, useMemoFirebase } from '@/firebase';
 import { addDocumentNonBlocking, deleteDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { collection, doc } from 'firebase/firestore';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -598,9 +599,11 @@ const DepartmentLevel = ({
   userRole: Role;
 }) => {
   const firestore = useFirestore();
-  const cascadedKpis = useCollection<WithId<CascadedKpi>>(
-    firestore ? collection(firestore, 'cascaded_kpis') : null
+  const cascadedKpisQuery = useMemoFirebase(
+    () => (firestore ? collection(firestore, 'cascaded_kpis') : null),
+    [firestore]
   );
+  const { data: cascadedKpis } = useCollection<WithId<CascadedKpi>>(cascadedKpisQuery);
   const [deleteKpi, setDeleteKpi] = useState<WithId<CascadedKpi> | null>(null);
 
   const canDelete = ['Admin', 'VP', 'AVP', 'Manager'].includes(userRole || '');
@@ -698,9 +701,11 @@ const IndividualLevel = ({
   user: any;
 }) => {
   const firestore = useFirestore();
-  const orgData = useCollection<WithId<Employee>>(
-    firestore ? collection(firestore, 'employees') : null
+  const orgDataQuery = useMemoFirebase(
+    () => (firestore ? collection(firestore, 'employees') : null),
+    [firestore]
   );
+  const { data: orgData } = useCollection<WithId<Employee>>(orgDataQuery);
   const [deleteKpi, setDeleteKpi] = useState<WithId<IndividualKpi> | null>(null);
 
   const canAssign = ['Admin', 'VP', 'AVP', 'Manager'].includes(userRole || '');
@@ -825,15 +830,24 @@ export default function KPICascadeManagement() {
   const [committedKpis, setCommittedKpis] = useState<any[]>([]);
 
   // Firestore collections
-  const cascadedKpis = useCollection<CascadedKpi>(
-    firestore ? collection(firestore, 'cascaded_kpis') : null
+  const individualKpisQuery = useMemoFirebase(
+    () => (firestore ? collection(firestore, 'individual_kpis') : null),
+    [firestore]
   );
-  const individualKpis = useCollection<WithId<IndividualKpi>>(
-    firestore ? collection(firestore, 'individual_kpis') : null
+  const { data: individualKpis } = useCollection<WithId<IndividualKpi>>(individualKpisQuery);
+  
+  const cascadedKpisQuery = useMemoFirebase(
+    () => (firestore ? collection(firestore, 'cascaded_kpis') : null),
+    [firestore]
   );
-  const orgData = useCollection<Employee>(
-    firestore ? collection(firestore, 'employees') : null
+  const { data: cascadedKpis } = useCollection<WithId<CascadedKpi>>(cascadedKpisQuery);
+
+  const orgDataQuery = useMemoFirebase(
+    () => (firestore ? collection(firestore, 'employees') : null),
+    [firestore]
   );
+  const { data: orgData } = useCollection<Employee>(orgDataQuery);
+
 
   // Determine user role
   const userRole: Role = useMemo(() => {
@@ -1157,3 +1171,5 @@ export default function KPICascadeManagement() {
     </div>
   );
 }
+
+    
