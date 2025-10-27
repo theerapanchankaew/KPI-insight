@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, createContext, useContext } from 'react';
+import React, { useState, createContext, useContext, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -38,6 +38,11 @@ export function useAppLayout() {
 const AppSidebar = () => {
   const pathname = usePathname();
   const { settings } = useKpiData();
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   return (
     <nav className="w-72 bg-card border-r border-border flex-col hidden lg:flex">
@@ -48,7 +53,7 @@ const AppSidebar = () => {
           </div>
           <div>
             <h1 className="text-lg font-bold">{appConfig.title}</h1>
-            <p className="text-sm opacity-90">{settings.orgName}</p>
+            {isClient ? <p className="text-sm opacity-90">{settings.orgName}</p> : <Skeleton className="h-4 w-32 mt-1" />}
           </div>
         </div>
       </div>
@@ -89,6 +94,11 @@ const AppHeader = () => {
   const { pageTitle } = useAppLayout();
   const { settings } = useKpiData();
   const { user, isUserLoading } = useUser();
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   return (
     <header className="bg-card shadow-sm border-b border-border px-4 sm:px-6 py-4 sticky top-0 z-10">
@@ -110,7 +120,7 @@ const AppHeader = () => {
                     </div>
                     <div>
                       <h1 className="text-lg font-bold">{appConfig.title}</h1>
-                      <p className="text-sm opacity-90">{settings.orgName}</p>
+                      {isClient ? <p className="text-sm opacity-90">{settings.orgName}</p> : <Skeleton className="h-4 w-32 mt-1" />}
                     </div>
                   </div>
                 </div>
@@ -139,7 +149,7 @@ const AppHeader = () => {
 
           <div>
             <h2 className="text-xl sm:text-2xl font-bold text-foreground">{pageTitle}</h2>
-            <p className="text-sm text-muted-foreground mt-1">งวดปัจจุบัน: {settings.period}</p>
+            {isClient ? <p className="text-sm text-muted-foreground mt-1">งวดปัจจุบัน: {settings.period}</p> : <Skeleton className="h-4 w-24 mt-1" />}
           </div>
         </div>
 
@@ -155,7 +165,7 @@ const AppHeader = () => {
             </Button>
           </div>
           <div className="flex items-center space-x-3">
-            {isUserLoading ? (
+            {isUserLoading || !isClient ? (
               <div className="hidden sm:flex items-center space-x-3">
                 <div className="flex flex-col items-end">
                   <Skeleton className="h-4 w-24 mb-1" />
