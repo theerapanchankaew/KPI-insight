@@ -210,14 +210,20 @@ const AppHeader = () => {
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [pageTitle, setPageTitle] = useState('Dashboard');
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
 
   return (
     <AppLayoutContext.Provider value={{ pageTitle, setPageTitle }}>
       <KpiDataProvider>
         <div className="h-full flex bg-background">
-          <AppSidebar />
+          {isClient && <AppSidebar />}
           <main className="flex-1 overflow-auto">
-            <AppHeader />
+            {isClient && <AppHeader />}
             <div className="p-6">
               {children}
             </div>
