@@ -17,7 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronsUpDown, PlusCircle, Trash2, Edit, AlertTriangle, MoreVertical, Calendar, TrendingUp, BarChart3 } from 'lucide-react';
+import { ChevronsUpDown, PlusCircle, Trash2, Edit, AlertTriangle, MoreVertical, Calendar, TrendingUp, BarChart3, Building, Share2 } from 'lucide-react';
 import { WithId, useCollection, useFirestore, useUser, useMemoFirebase } from '@/firebase';
 import { addDocumentNonBlocking, deleteDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { collection, doc } from 'firebase/firestore';
@@ -223,34 +223,40 @@ const DeleteConfirmDialog = ({
   );
 };
 
-// ==================== MONTHLY DEPLOY DIALOG ====================
 
-const MonthlyDeployDialog = ({
-  kpi, isOpen, onClose, onConfirm, user
+// ==================== DEPLOY AND CASCADE DIALOG (NEW) ====================
+
+interface DepartmentCascadeInput {
+  department: string;
+  weight: number;
+  target: string;
+}
+
+const DeployAndCascadeDialog = ({
+  kpi, isOpen, onClose, onConfirm, user, departments
 }: {
   kpi: CorporateKpi | null;
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (distributions: MonthlyDistribution[], strategy: DistributionStrategy, year: number) => void;
+  onConfirm: (monthlyDist: MonthlyDistribution[], cascadeInputs: DepartmentCascadeInput[], strategy: DistributionStrategy, year: number) => void;
   user: any;
+  departments: string[];
 }) => {
+  // Monthly Distribution State
   const [strategy, setStrategy] = useState<DistributionStrategy>('auto');
   const [seasonalPattern, setSeasonalPattern] = useState<SeasonalPattern>('retail');
   const [progressiveCurve, setProgressiveCurve] = useState<ProgressiveCurve>('linear');
   const [previewData, setPreviewData] = useState<MonthlyDistribution[]>([]);
   const [customWeights, setCustomWeights] = useState<number[]>(Array(12).fill(1));
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  
+  // Department Cascade State
+  const [cascadedDepts, setCascadedDepts] = useState<DepartmentCascadeInput[]>([]);
 
   const generatePreview = useMemo(() => () => {
     if (!kpi || !kpi.target) return;
-
-    // Safely parse the target, assuming it might be a string like "≥ 194.10 ล้านบาท"
     const yearlyTarget = parseFloat(String(kpi.target).replace(/[^0-9.]/g, '')) || 0;
-    if (String(kpi.target).includes('ล้าน')) {
-      // Note: This is a simplification. A robust solution would handle various units.
-    }
-
-
+    
     let actualStrategy = strategy === 'auto' ? detectBestStrategy(kpi) : strategy;
     let preview: MonthlyDistribution[];
 
@@ -265,45 +271,63 @@ const MonthlyDeployDialog = ({
     setPreviewData(preview);
   }, [strategy, seasonalPattern, progressiveCurve, customWeights, kpi]);
 
-
   useEffect(() => {
     if (kpi && isOpen) {
       generatePreview();
+    } else {
+      // Reset state on close
+      setCascadedDepts([]);
+      setStrategy('auto');
+      setSelectedYear(new Date().getFullYear());
     }
   }, [kpi, isOpen, generatePreview]);
 
+  const handleAddDept = () => {
+    setCascadedDepts([...cascadedDepts, { department: '', weight: 0, target: '' }]);
+  };
+
+  const handleRemoveDept = (index: number) => {
+    setCascadedDepts(cascadedDepts.filter((_, i) => i !== index));
+  };
+  
+  const handleDeptChange = (index: number, field: keyof DepartmentCascadeInput, value: string | number) => {
+    const newDepts = [...cascadedDepts];
+    const dept = newDepts[index];
+    if (field === 'weight') {
+      dept.weight = Number(value)
+    } else {
+      dept[field] = value as string;
+    }
+    setCascadedDepts(newDepts);
+  };
+
   const getStrategyDisplayName = (strat: DistributionStrategy): string => {
     const names: Record<DistributionStrategy, string> = {
-      'auto': '🤖 อัตโนมัติ (AI แนะนำ)',
-      'equal': '⚖️ เท่ากันทุกเดือน',
-      'weighted': '⚡ กำหนดน้ำหนักเอง',
-      'seasonal': '📊 ตามฤดูกาล',
-      'progressive': '📈 เพิ่มขึ้นแบบก้าวหน้า',
-      'historical': '📜 ตามข้อมูลในอดีต'
+      'auto': '🤖 อัตโนมัติ (AI แนะนำ)', 'equal': '⚖️ เท่ากันทุกเดือน', 'weighted': '⚡ กำหนดน้ำหนักเอง',
+      'seasonal': '📊 ตามฤดูกาล', 'progressive': '📈 เพิ่มขึ้นแบบก้าวหน้า', 'historical': '📜 ตามข้อมูลในอดีต'
     };
     return names[strat];
   };
 
   const handleDeploy = () => {
-    if (!user) return;
-    let actualStrategy = strategy === 'auto' ? detectBestStrategy(kpi!) : strategy;
-    onConfirm(previewData, actualStrategy, selectedYear);
+    if (!user || !kpi) return;
+    const validCascades = cascadedDepts.filter(d => d.department && d.target);
+    let actualStrategy = strategy === 'auto' ? detectBestStrategy(kpi) : strategy;
+    onConfirm(previewData, validCascades, actualStrategy, selectedYear);
     onClose();
   };
   
   const yearlyTargetDisplay = (typeof kpi?.target === 'string' ? kpi.target : (kpi?.target || 0));
-  const totalPercentage = previewData.reduce((sum, m) => sum + m.percentage, 0);
-  const totalTarget = previewData.reduce((sum, m) => sum + m.target, 0);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-5xl max-h-[90vh]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5" />
-            Deploy KPI เป็นรายเดือน
+            <Share2 className="h-5 w-5" />
+            Deploy & Cascade KPI
           </DialogTitle>
-           <DialogDescription className="space-y-1">
+           <DialogDescription>
             <span className="block font-semibold text-gray-700">{kpi?.measure}</span>
             <span className="block text-sm">
               เป้าหมายรายปี: <span className="font-bold text-blue-600">{yearlyTargetDisplay}</span> {kpi?.unit}
@@ -311,247 +335,92 @@ const MonthlyDeployDialog = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>ปีที่ต้องการ Deploy</Label>
-              <Select value={String(selectedYear)} onValueChange={(val) => setSelectedYear(Number(val))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() + i).map(year => (
-                    <SelectItem key={year} value={String(year)}>{year}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label>กลยุทธ์การกระจาย</Label>
-              <Select value={strategy} onValueChange={(val) => setStrategy(val as DistributionStrategy)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(['auto', 'equal', 'weighted', 'seasonal', 'progressive', 'historical'] as DistributionStrategy[]).map(strat => (
-                    <SelectItem key={strat} value={strat}>
-                      {getStrategyDisplayName(strat)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {strategy === 'seasonal' && (
-            <div>
-              <Label>รูปแบบฤดูกาล</Label>
-              <Select value={seasonalPattern} onValueChange={(val) => setSeasonalPattern(val as SeasonalPattern)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="retail">🛍️ Retail (เพิ่มสูงสุดธันวาคม)</SelectItem>
-                  <SelectItem value="tourism">✈️ Tourism (เพิ่มสูง Q4)</SelectItem>
-                  <SelectItem value="agriculture">🌾 Agriculture (เพิ่มสูงกลางปี)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {strategy === 'progressive' && (
-            <div>
-              <Label>รูปแบบการเติบโต</Label>
-              <Select value={progressiveCurve} onValueChange={(val) => setProgressiveCurve(val as ProgressiveCurve)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="linear">📈 Linear (เพิ่มเท่าๆ กัน)</SelectItem>
-                  <SelectItem value="exponential">🚀 Exponential (เพิ่มเร็วขึ้นเรื่อยๆ)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {strategy === 'weighted' && (
-            <div className="border rounded-lg p-4 bg-gray-50">
-              <Label className="mb-3 block font-semibold">กำหนดน้ำหนักแต่ละเดือน</Label>
-              <div className="grid grid-cols-6 gap-3">
-                {customWeights.map((weight, i) => (
-                  <div key={i}>
-                    <Label className="text-xs mb-1">{MONTH_NAMES_TH[i]}</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      value={weight}
-                      onChange={(e) => {
-                        const newWeights = [...customWeights];
-                        newWeights[i] = parseFloat(e.target.value) || 0;
-                        setCustomWeights(newWeights);
-                      }}
-                      className="text-sm"
-                    />
-                  </div>
-                ))}
+        <ScrollArea className="max-h-[calc(80vh-10rem)] pr-6">
+          <div className="space-y-8">
+            {/* --- MONTHLY DEPLOY SECTION --- */}
+            <div className="space-y-4 p-4 border rounded-lg">
+              <h4 className="font-semibold flex items-center gap-2"><Calendar className="h-5 w-5" />ขั้นตอนที่ 1: Deploy รายเดือน</h4>
+              <div className="grid grid-cols-2 gap-4">
+                  <Select value={String(selectedYear)} onValueChange={(val) => setSelectedYear(Number(val))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() + i).map(year => (
+                        <SelectItem key={year} value={String(year)}>{year}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={strategy} onValueChange={(val) => setStrategy(val as DistributionStrategy)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {(['auto', 'equal', 'weighted', 'seasonal', 'progressive', 'historical'] as DistributionStrategy[]).map(strat => (
+                        <SelectItem key={strat} value={strat}>{getStrategyDisplayName(strat)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
               </div>
+              <Collapsible>
+                  <CollapsibleTrigger asChild>
+                      <Button variant="link" className="p-0 h-auto text-sm">ดูตัวอย่างการกระจายรายเดือน <ChevronsUpDown className="ml-1 h-4 w-4" /></Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-4 space-y-2">
+                      {previewData.map((month) => (
+                        <div key={month.month} className="flex items-center gap-4 p-2 hover:bg-gray-50 rounded text-sm">
+                          <span className="w-12 font-medium text-gray-700">{month.monthName}</span>
+                          <div className="flex-1"><Progress value={month.percentage} className="h-2" /></div>
+                          <span className="w-28 text-right font-semibold text-gray-800">{month.target.toFixed(2)}</span>
+                          <span className="w-16 text-right text-gray-500 bg-gray-100 px-2 py-1 rounded">{month.percentage.toFixed(1)}%</span>
+                        </div>
+                      ))}
+                  </CollapsibleContent>
+              </Collapsible>
             </div>
-          )}
 
-          <div className="border rounded-lg p-4 bg-white">
-            <div className="flex items-center justify-between mb-4">
-              <h4 className="font-semibold flex items-center gap-2">
-                <BarChart3 className="h-4 w-4" />
-                ตัวอย่างการกระจาย
-              </h4>
-              <div className="text-sm text-gray-500">
-                รวม: {totalTarget.toFixed(2)} {kpi?.unit} ({totalPercentage.toFixed(1)}%)
-              </div>
-            </div>
-
-            <ScrollArea className="h-96">
-              <div className="space-y-2">
-                {previewData.map((month) => (
-                  <div key={month.month} className="flex items-center gap-4 p-2 hover:bg-gray-50 rounded">
-                    <span className="w-12 text-sm font-medium text-gray-700">
-                      {month.monthName}
-                    </span>
-                    <div className="flex-1">
-                      <Progress value={month.percentage} className="h-3" />
-                    </div>
-                    <span className="w-28 text-right font-semibold text-gray-800">
-                      {month.target.toFixed(2)}
-                    </span>
-                    <span className="w-16 text-right text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                      {month.percentage.toFixed(1)}%
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
-          </div>
-
-          {strategy === 'auto' && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
-              <div className="flex gap-2">
-                <TrendingUp className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                <div>
-                  <strong>โหมดอัตโนมัติ:</strong> ระบบจะวิเคราะห์ KPI และเลือกกลยุทธ์ที่เหมาะสมที่สุด
-                  <div className="mt-1 text-blue-700">
-                    กำลังใช้: {getStrategyDisplayName(detectBestStrategy(kpi!))}
-                  </div>
+            {/* --- DEPARTMENT CASCADE SECTION --- */}
+            <div className="space-y-4 p-4 border rounded-lg">
+                <div className="flex justify-between items-center">
+                    <h4 className="font-semibold flex items-center gap-2"><Building className="h-5 w-5" />ขั้นตอนที่ 2: Cascade ไปยังฝ่าย</h4>
+                    <Button size="sm" variant="outline" onClick={handleAddDept}><PlusCircle className="mr-2 h-4 w-4" />เพิ่มฝ่าย</Button>
                 </div>
-              </div>
+                
+                <div className="space-y-3">
+                  {cascadedDepts.map((dept, index) => (
+                    <div key={index} className="grid grid-cols-12 gap-2 items-center p-2 bg-gray-50 rounded-md">
+                      <div className="col-span-5">
+                          <Select value={dept.department} onValueChange={(val) => handleDeptChange(index, 'department', val)}>
+                              <SelectTrigger><SelectValue placeholder="เลือกฝ่าย..." /></SelectTrigger>
+                              <SelectContent>
+                                  {departments.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                              </SelectContent>
+                          </Select>
+                      </div>
+                      <div className="col-span-3">
+                          <Input type="number" placeholder="Weight (%)" value={dept.weight || ''} onChange={(e) => handleDeptChange(index, 'weight', e.target.value)} />
+                      </div>
+                      <div className="col-span-3">
+                          <Input placeholder={`Target (${kpi?.unit})`} value={dept.target} onChange={(e) => handleDeptChange(index, 'target', e.target.value)} />
+                      </div>
+                      <div className="col-span-1">
+                          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleRemoveDept(index)}>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {cascadedDepts.length === 0 && <p className="text-sm text-center text-gray-500 py-4">ยังไม่มีการ Cascade ไปยังฝ่าย</p>}
+                </div>
+                 <p className="text-xs text-gray-500">
+                    * Total weight should ideally be 100%. You can assign KPIs to multiple departments here.
+                 </p>
             </div>
-          )}
-        </div>
+          </div>
+        </ScrollArea>
 
-        <DialogFooter className="flex gap-2">
-          <Button variant="outline" onClick={onClose}>ยกเลิก</Button>
+        <DialogFooter className="flex gap-2 !mt-6">
+          <DialogClose asChild><Button variant="outline" onClick={onClose}>ยกเลิก</Button></DialogClose>
           <Button onClick={handleDeploy} disabled={!user}>
-            <Calendar className="mr-2 h-4 w-4" />
-            Deploy เป็นรายเดือน
+            <Share2 className="mr-2 h-4 w-4" />
+            Deploy & Cascade
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-};
-
-// ==================== CASCADE DIALOG ====================
-
-const CascadeDialog = ({ 
-  isOpen, 
-  onClose, 
-  kpi, 
-  departments, 
-  onConfirm,
-  user
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  kpi: CorporateKpi | null;
-  departments: string[];
-  onConfirm: (cascadedKpi: Omit<CascadedKpi, 'id'>) => void;
-  user: any;
-}) => {
-  const [selectedDept, setSelectedDept] = useState<string>('');
-  const [weight, setWeight] = useState<number>(0);
-  const [target, setTarget] = useState<string>('');
-
-  useEffect(() => {
-    if (!isOpen) {
-      setSelectedDept('');
-      setWeight(0);
-      setTarget('');
-    }
-  }, [isOpen]);
-
-  const handleConfirm = () => {
-    if (!kpi || !selectedDept || !target) {
-      // Basic validation
-      return;
-    }
-    onConfirm({
-      corporateKpiId: kpi.id,
-      measure: kpi.measure,
-      department: selectedDept,
-      weight,
-      target,
-      category: kpi.category,
-      unit: kpi.unit,
-    });
-    onClose();
-  };
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Cascade KPI: {kpi?.measure}</DialogTitle>
-          <DialogDescription>
-            Assign this corporate KPI to a department with a specific target.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="py-4 space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="department">Department</Label>
-            <Select value={selectedDept} onValueChange={setSelectedDept}>
-              <SelectTrigger id="department">
-                <SelectValue placeholder="Select a department" />
-              </SelectTrigger>
-              <SelectContent>
-                {departments.map(dept => (
-                  <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="weight">Weight (%)</Label>
-            <Input 
-              id="weight" 
-              type="number"
-              value={weight}
-              onChange={e => setWeight(Number(e.target.value))}
-              placeholder="e.g., 20"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="target">Department Target</Label>
-            <Input 
-              id="target"
-              value={target}
-              onChange={e => setTarget(e.target.value)}
-              placeholder={`e.g., 100,000 ${kpi?.unit || ''}`}
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleConfirm} disabled={!user || !selectedDept || !target}>Confirm Cascade</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -562,16 +431,14 @@ const CascadeDialog = ({
 // ==================== CORPORATE LEVEL COMPONENT ====================
 
 const CorporateLevel = ({ 
-  onCascadeClick, 
+  onDeployAndCascadeClick,
   onEditClick, 
   onDeleteClick,
-  onMonthlyDeployClick,
   userRole 
 }: { 
-  onCascadeClick: (kpi: CorporateKpi) => void;
+  onDeployAndCascadeClick: (kpi: CorporateKpi) => void;
   onEditClick: (kpi: CorporateKpi) => void;
   onDeleteClick: (kpi: CorporateKpi) => void;
-  onMonthlyDeployClick: (kpi: CorporateKpi) => void;
   userRole: Role;
 }) => {
   const { kpiData, isKpiDataLoading } = useKpiData();
@@ -639,25 +506,15 @@ const CorporateLevel = ({
                     <Progress value={75} className="h-2 mt-2" />
                     
                     <div className="flex justify-end mt-4 space-x-2">
-                      {canCascade && (
-                        <Button 
-                          size="sm" 
-                          variant="default"
-                          onClick={() => onMonthlyDeployClick(kpi)}
-                          className="bg-blue-600 hover:bg-blue-700"
-                        >
-                          <Calendar className="mr-2 h-4 w-4" />
-                          Deploy รายเดือน
-                        </Button>
-                      )}
-                      
                       <Button 
                         size="sm" 
-                        variant="outline" 
-                        onClick={() => onCascadeClick(kpi)}
+                        variant="default"
+                        onClick={() => onDeployAndCascadeClick(kpi)}
                         disabled={!canCascade}
+                        className="bg-blue-600 hover:bg-blue-700"
                       >
-                        Cascade ฝ่าย
+                        <Share2 className="mr-2 h-4 w-4" />
+                        Deploy & Cascade
                       </Button>
                       
                       <DropdownMenu>
@@ -954,9 +811,8 @@ export default function KPICascadeManagement() {
 
   // States
   const [selectedKpi, setSelectedKpi] = useState<CorporateKpi | null>(null);
-  const [isCascadeModalOpen, setIsCascadeModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isMonthlyDeployOpen, setIsMonthlyDeployOpen] = useState(false);
+  const [isDeployAndCascadeOpen, setIsDeployAndCascadeOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [selectedKpis, setSelectedKpis] = useState<any>({});
@@ -998,38 +854,73 @@ export default function KPICascadeManagement() {
 
   // ==================== HANDLERS ====================
 
-  const handleCascadeClick = (kpi: CorporateKpi) => {
+  const handleDeployAndCascadeClick = (kpi: CorporateKpi) => {
     setSelectedKpi(kpi);
-    setIsCascadeModalOpen(true);
+    setIsDeployAndCascadeOpen(true);
   };
+  
+  const handleConfirmDeployAndCascade = async (
+    distributions: MonthlyDistribution[],
+    cascadeInputs: DepartmentCascadeInput[],
+    strategy: DistributionStrategy,
+    year: number
+  ) => {
+     if (!user || !firestore || !selectedKpi) {
+      toast({ title: "Authentication Required", variant: 'destructive' });
+      return;
+    }
+
+    try {
+      // 1. Deploy Monthly KPIs
+      const monthlyKpisCollection = collection(firestore, 'monthly_kpis');
+      for (const m of distributions) {
+        const monthlyKpi: Omit<MonthlyKpi, 'id' | 'createdAt' | 'updatedAt'> = {
+          parentKpiId: selectedKpi.id, measure: selectedKpi.measure, perspective: selectedKpi.perspective || '',
+          category: selectedKpi.category || '', year, month: m.month, target: m.target, actual: 0,
+          progress: 0, percentage: m.percentage, unit: selectedKpi.unit || '', status: 'Active',
+          distributionStrategy: strategy, createdBy: user.uid,
+        };
+        addDocumentNonBlocking(monthlyKpisCollection, { ...monthlyKpi, createdAt: new Date() });
+      }
+
+      // 2. Cascade to Departments
+      const cascadedKpisCollection = collection(firestore, 'cascaded_kpis');
+      for (const input of cascadeInputs) {
+        const cascadedKpi: Omit<CascadedKpi, 'id'> = {
+          corporateKpiId: selectedKpi.id, measure: selectedKpi.measure, department: input.department,
+          weight: input.weight, target: input.target, category: selectedKpi.category, unit: selectedKpi.unit,
+        };
+        addDocumentNonBlocking(cascadedKpisCollection, cascadedKpi);
+      }
+
+      toast({ 
+        title: "KPI Deployed & Cascaded! 🎉", 
+        description: `"${selectedKpi.measure}" for ${year} is deployed and cascaded to ${cascadeInputs.length} departments.`,
+        duration: 7000
+      });
+
+      setIsDeployAndCascadeOpen(false);
+      setSelectedKpi(null);
+    } catch (err) {
+      console.error('Error in deploy & cascade process:', err);
+      toast({ title: "Process Failed", description: "An error occurred.", variant: 'destructive' });
+    }
+  };
+
 
   const handleEditClick = (kpi: CorporateKpi) => {
     setSelectedKpi(kpi);
     setIsEditModalOpen(true);
   };
 
-  const handleMonthlyDeployClick = (kpi: CorporateKpi) => {
-    setSelectedKpi(kpi);
-    setIsMonthlyDeployOpen(true);
-  };
-
   const handleDeleteClick = (kpi: CorporateKpi) => {
     if (!user || !firestore) {
-      toast({ 
-        title: "Authentication Required", 
-        description: "Please log in to delete KPIs.", 
-        variant: 'destructive' 
-      });
+      toast({ title: "Authentication Required", description: "Please log in to delete KPIs.", variant: 'destructive' });
       return;
     }
-    
     const ref = doc(firestore, 'kpi_catalog', kpi.id);
     deleteDocumentNonBlocking(ref);
-    toast({ 
-      title: "KPI Deleted", 
-      description: `"${kpi.measure}" has been removed from the catalog.`, 
-      variant: 'destructive' 
-    });
+    toast({ title: "KPI Deleted", description: `"${kpi.measure}" has been removed.`, variant: 'destructive' });
   };
 
   const handleAssignKpiClick = (employee: Employee) => {
@@ -1039,140 +930,37 @@ export default function KPICascadeManagement() {
 
   const handleDeleteIndividualKpi = (kpiId: string) => {
     if (!user || !firestore) {
-      toast({ 
-        title: "Authentication Required", 
-        description: "Please log in to delete KPIs.", 
-        variant: 'destructive' 
-      });
+      toast({ title: "Authentication Required", variant: 'destructive' });
       return;
     }
-    
     const ref = doc(firestore, 'individual_kpis', kpiId);
     deleteDocumentNonBlocking(ref);
-    toast({ 
-      title: "Assigned KPI Deleted", 
-      description: "The KPI has been removed from the individual's portfolio." 
-    });
+    toast({ title: "Assigned KPI Deleted", description: "The KPI has been removed from the individual's portfolio." });
   };
 
   const handleDeleteCascadedKpi = (kpiId: string) => {
     if (!user || !firestore) {
-      toast({ 
-        title: "Authentication Required", 
-        description: "Please log in to delete KPIs.", 
-        variant: 'destructive' 
-      });
+      toast({ title: "Authentication Required", variant: 'destructive' });
       return;
     }
-    
     const ref = doc(firestore, 'cascaded_kpis', kpiId);
     deleteDocumentNonBlocking(ref);
-    toast({ 
-      title: "Cascaded KPI Deleted", 
-      description: "The KPI has been removed from the department.", 
-      variant: 'destructive' 
-    });
-  };
-
-  const handleConfirmMonthlyDeploy = async (
-    distributions: MonthlyDistribution[], 
-    strategy: DistributionStrategy, 
-    year: number
-  ) => {
-    if (!user || !firestore || !selectedKpi) {
-      toast({ 
-        title: "Authentication Required", 
-        description: "Please log in to deploy KPIs.", 
-        variant: 'destructive' 
-      });
-      return;
-    }
-
-    try {
-      const monthlyKpisCollection = collection(firestore, 'monthly_kpis');
-      
-      for (const m of distributions) {
-        const monthlyKpi: Omit<MonthlyKpi, 'id' | 'createdAt' | 'updatedAt'> = {
-          parentKpiId: selectedKpi.id,
-          measure: selectedKpi.measure,
-          perspective: selectedKpi.perspective || '',
-          category: selectedKpi.category || '',
-          year,
-          month: m.month,
-          target: m.target,
-          actual: 0,
-          progress: 0,
-          percentage: m.percentage,
-          unit: selectedKpi.unit || '',
-          status: 'Active',
-          distributionStrategy: strategy,
-          createdBy: user.uid,
-        };
-        
-        addDocumentNonBlocking(monthlyKpisCollection, { ...monthlyKpi, createdAt: new Date() });
-      }
-
-      toast({ 
-        title: "KPI Deployed Successfully! 🎉", 
-        description: `"${selectedKpi.measure}" for ${year} is deployed. Next, cascade this KPI to the relevant departments.`,
-        duration: 7000
-      });
-
-      setIsMonthlyDeployOpen(false);
-      setSelectedKpi(null);
-    } catch (err) {
-      console.error('Error deploying monthly KPIs:', err);
-      toast({ 
-        title: "Deployment Failed", 
-        description: "An error occurred while deploying KPIs.", 
-        variant: 'destructive' 
-      });
-    }
-  };
-
-  const handleConfirmCascade = (cascadedKpi: Omit<CascadedKpi, 'id'>) => {
-    if (!user || !firestore) {
-      toast({ 
-        title: "Authentication Required", 
-        description: "Please log in to cascade KPIs.", 
-        variant: 'destructive' 
-      });
-      return;
-    }
-    
-    const colRef = collection(firestore, 'cascaded_kpis');
-    addDocumentNonBlocking(colRef, cascadedKpi);
-    toast({ 
-      title: "KPI Cascaded", 
-      description: `"${cascadedKpi.measure}" has been cascaded to ${cascadedKpi.department}.` 
-    });
+    toast({ title: "Cascaded KPI Deleted", description: "The KPI has been removed from the department.", variant: 'destructive' });
   };
 
   const handleConfirmEdit = (editedKpi: Kpi) => {
     if (!user || !firestore || !('id' in editedKpi)) {
-      toast({ 
-        title: "Authentication or Data Error", 
-        description: "Cannot update KPI.", 
-        variant: 'destructive' 
-      });
+      toast({ title: "Authentication or Data Error", variant: 'destructive' });
       return;
     }
-    
     const ref = doc(firestore, 'kpi_catalog', editedKpi.id);
     setDocumentNonBlocking(ref, editedKpi, { merge: true });
-    toast({ 
-      title: "KPI Updated", 
-      description: `"${editedKpi.measure}" has been updated.` 
-    });
+    toast({ title: "KPI Updated", description: `"${editedKpi.measure}" has been updated.` });
   };
 
   const handleConfirmAssignment = async (assignments: Omit<IndividualKpi, 'status'>[]) => {
     if (!user || !firestore || !selectedEmployee) {
-      toast({ 
-        title: "Authentication Required", 
-        description: "Please log in to assign KPIs.", 
-        variant: 'destructive' 
-      });
+      toast({ title: "Authentication Required", variant: 'destructive' });
       return;
     }
 
@@ -1188,10 +976,7 @@ export default function KPICascadeManagement() {
       addDocumentNonBlocking(colRef, { ...a, status: 'Draft' as const });
     });
     
-    toast({ 
-      title: "KPIs Assigned", 
-      description: `${assignments.length} KPI(s) have been assigned to ${selectedEmployee.name}.` 
-    });
+    toast({ title: "KPIs Assigned", description: `${assignments.length} KPI(s) have been assigned to ${selectedEmployee.name}.` });
   };
 
   // ==================== RENDER ====================
@@ -1222,9 +1007,8 @@ export default function KPICascadeManagement() {
 
           <TabsContent value="corporate" className="mt-6">
             <CorporateLevel 
-              onCascadeClick={handleCascadeClick} 
+              onDeployAndCascadeClick={handleDeployAndCascadeClick} 
               onEditClick={handleEditClick}
-              onMonthlyDeployClick={handleMonthlyDeployClick}
               onDeleteClick={handleDeleteClick} 
               userRole={userRole} 
             />
@@ -1253,24 +1037,16 @@ export default function KPICascadeManagement() {
       )}
 
       {/* Dialogs */}
-      <MonthlyDeployDialog
+      <DeployAndCascadeDialog
         kpi={selectedKpi}
-        isOpen={isMonthlyDeployOpen}
+        isOpen={isDeployAndCascadeOpen}
         onClose={() => { 
-          setIsMonthlyDeployOpen(false); 
+          setIsDeployAndCascadeOpen(false); 
           setSelectedKpi(null); 
         }}
-        onConfirm={handleConfirmMonthlyDeploy}
+        onConfirm={handleConfirmDeployAndCascade}
         user={user}
-      />
-
-      <CascadeDialog 
-        isOpen={isCascadeModalOpen}
-        onClose={() => setIsCascadeModalOpen(false)}
-        kpi={selectedKpi}
         departments={departments}
-        onConfirm={handleConfirmCascade}
-        user={user}
       />
       
       <EditKpiDialog 
