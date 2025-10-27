@@ -281,10 +281,10 @@ const MonthlyDeployDialog = ({
             Deploy KPI เป็นรายเดือน
           </DialogTitle>
           <DialogDescription className="space-y-1">
-            <div className="font-semibold text-gray-700">{kpi?.measure}</div>
-            <div className="text-sm">
+            <span className="block font-semibold text-gray-700">{kpi?.measure}</span>
+            <span className="block text-sm">
               เป้าหมายรายปี: <span className="font-bold text-blue-600">{kpi?.target}</span> {kpi?.unit}
-            </div>
+            </span>
           </DialogDescription>
         </DialogHeader>
 
@@ -1171,5 +1171,7 @@ export default function KPICascadeManagement() {
     </div>
   );
 }
+
+    
 
     
