@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
+import { setUserClaims } from '@/ai/flows/set-user-claims';
 
 const SignInForm = () => {
   const auth = useAuth();
@@ -90,13 +91,14 @@ const SignUpForm = () => {
 
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      await updateProfile(userCredential.user, { displayName });
+      const user = userCredential.user;
+      await updateProfile(user, { displayName });
       
-      const userRef = doc(firestore, 'users', userCredential.user.uid);
+      const userRef = doc(firestore, 'users', user.uid);
       const userRole = email.includes('admin') ? 'Admin' : 'Employee';
       
       const newUser = {
-        id: userCredential.user.uid,
+        id: user.uid,
         name: displayName,
         email: email,
         department: 'Unassigned',
@@ -105,18 +107,28 @@ const SignUpForm = () => {
         role: userRole,
         menuAccess: {
             '/dashboard': true,
-            '/cascade': false,
+            '/cascade': userRole === 'Admin',
             '/portfolio': true,
-            '/submit': true,
-            '/approvals': false,
-            '/reports': false,
-            '/kpi-import': false,
-            '/user-management': false,
-            '/settings': false,
+            '/submit': userRole === 'Employee',
+            '/approvals': userRole !== 'Employee',
+            '/reports': true,
+            '/kpi-import': userRole === 'Admin',
+            '/user-management': userRole === 'Admin',
+            '/settings': userRole === 'Admin',
         }
       };
       
+      // Save user document to Firestore
       setDocumentNonBlocking(userRef, newUser, { merge: true });
+
+      // Securely set custom claims via the Genkit flow
+      await setUserClaims({
+        uid: user.uid,
+        claims: { role: userRole }
+      });
+      
+      // Force a token refresh to get the new custom claims on the client
+      await user.getIdToken(true);
       
       toast({
           title: "Account Created",
