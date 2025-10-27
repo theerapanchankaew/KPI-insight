@@ -3,205 +3,257 @@
  *
  * Core Philosophy:
  * This ruleset prioritizes secure data access based on user roles and ownership.
- * It leverages Firebase Authentication to verify user identity and enforces
- * granular permissions for reading and writing data.  Data validation is minimized to
- * allow for rapid prototyping.
+ * It implements a combination of role-based and attribute-based access control.
+ * User data is strictly controlled, while common data is broadly accessible.
  *
  * Data Structure:
- * - /users/{userId}: Stores user profile data, accessible to the user and admins.
- * - /employees/{employeeId}: Stores employee data, readable by all authenticated users, writable by admins.
- * - /departments/{departmentId}: Stores department data, readable by all authenticated users, writable by admins.
- * - /kpi_categories/{kpiCategoryId}: Stores KPI categories, readable by all authenticated users, writable by admins.
- * - /kpi_catalog/{kpiId}: Stores the master KPI list, readable by all authenticated users, writable by admins.
- * - /cascaded_kpis/{cascadedKpiId}: Stores KPIs cascaded to departments, readable by all, writable by managers/admins.
- * - /individual_kpis/{individualKpiId}: Stores KPIs assigned to individual employees, read/write access controlled by role and ownership.
- * - /kpi_submissions/{kpiSubmissionId}: Stores KPI submissions, accessible to the submitter and their manager.
- * - /kpi_approvals/{kpiApprovalId}: Stores KPI approvals, accessible to involved parties.
- * - /reports/{reportId}: Stores performance reports, access control to be determined.
- * - /settings/global: Stores global application settings, readable by all, writable by admins.
- * - /monthly_kpis/{monthlyKpiId}: Stores monthly KPI breakdowns, readable by all, writable by admins.
+ * - /users/{userId}: User profile data, accessible to the user and admins.
+ * - /employees/{employeeId}: Employee data, publicly readable, admin-writable.
+ * - /departments/{departmentId}: Department data, publicly readable, admin-writable.
+ * - /kpi_categories/{kpiCategoryId}: KPI Category data, publicly readable, admin-writable.
+ * - /kpi_catalog/{kpiId}: Corporate KPI definitions, publicly readable, admin-writable.
+ * - /cascaded_kpis/{cascadedKpiId}: KPIs cascaded to departments.
+ * - /individual_kpis/{individualKpiId}: KPIs assigned to employees.
+ * - /kpi_submissions/{kpiSubmissionId}: KPI submission data with user ownership.
+ * - /kpi_approvals/{kpiApprovalId}: KPI approval records.
+ * - /reports/{reportId}: Performance reports.
+ * - /settings/global: Global application settings, publicly readable, admin-writable.
+ * - /monthly_kpis/{monthlyKpiId}: Monthly KPI data, publicly readable, admin-writable.
  *
  * Key Security Decisions:
- * - User listing is restricted to admins only.
- * - All write operations require authentication.
- * - Data validation is minimized in favor of rapid prototyping.  Focus is on authorization.
- *
- * Role-Based Access Control:
- * - Admins have full read/write access to most collections.
- * - Managers can write to cascaded and individual KPIs.
- * - Employees can update the status of their individual KPIs.
+ * - Listing the /users collection is restricted to admins only.
+ * - Read access to other collections is generally open to authenticated users.
+ * - Write access to most collections is restricted to admins.
+ * - Data validation is relaxed in this prototyping phase, focusing on authorization.
  *
  * Denormalization for Authorization:
- *  - The `MonthlyKpi` entity contains a `createdBy` field to track the user who deployed it.  This field is used for authorization.
+ * - The `KpiSubmission` entity includes a `submittedByUserId` field to simplify ownership checks.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Allows access to user profiles based on ownership.
-     * @path /users/{userId}
-     * @allow (get, update, delete): Authenticated user with matching userId.
-     * @allow (create): Authenticated user creating their own profile.
-     * @deny (get, list): Non-authenticated user.
-     * @deny (create, update, delete): Authenticated user attempting to modify another user's profile.
-     * @principle Enforces user-ownership for profile data.
+     * @description Checks if the user is signed in.
+     * @return {boolean} True if the user is signed in, false otherwise.
      */
-    match /users/{userId} {
-      function isOwner(userId) {
-        return request.auth != null && request.auth.uid == userId;
-      }
-      allow get, update, delete: if isOwner(userId);
-      allow create: if request.auth.uid == userId;
-      allow list: if false;
-    }
-
-    /**
-     * @description Allows read access to employee data for all authenticated users. Write access is restricted to admins.
-     * @path /employees/{employeeId}
-     * @allow get, list: All authenticated users.
-     * @allow create, update, delete: Admins only.
-     * @deny create, update, delete: Non-admin users.
-     * @principle Provides public read access to employee data while restricting write access to admins.
-     */
-    match /employees/{employeeId} {
-      allow get, list: if isSignedIn();
-      allow create, update, delete: if isAdmin();
-    }
-
-    /**
-     * @description Allows read access to department data for all authenticated users. Write access is restricted to admins.
-     * @path /departments/{departmentId}
-     * @allow get, list: All authenticated users.
-     * @allow create, update, delete: Admins only.
-     * @deny create, update, delete: Non-admin users.
-     * @principle Provides public read access to department data while restricting write access to admins.
-     */
-    match /departments/{departmentId} {
-      allow get, list: if isSignedIn();
-      allow create, update, delete: if isAdmin();
-    }
-
-    /**
-     * @description Allows read access to KPI category data for all authenticated users. Write access is restricted to admins.
-     * @path /kpi_categories/{kpiCategoryId}
-     * @allow get, list: All authenticated users.
-     * @allow create, update, delete: Admins only.
-     * @deny create, update, delete: Non-admin users.
-     * @principle Provides public read access to KPI category data while restricting write access to admins.
-     */
-    match /kpi_categories/{kpiCategoryId} {
-      allow get, list: if isSignedIn();
-      allow create, update, delete: if isAdmin();
-    }
-
-    /**
-     * @description Allows read access to KPI catalog data for all authenticated users. Write access is restricted to admins.
-     * @path /kpi_catalog/{kpiId}
-     * @allow get, list: All authenticated users.
-     * @allow create, update, delete: Admins only.
-     * @deny create, update, delete: Non-admin users.
-     * @principle Provides public read access to KPI catalog data while restricting write access to admins.
-     */
-    match /kpi_catalog/{kpiId} {
-      allow get, list: if isSignedIn();
-      allow create, update, delete: if isAdmin();
-    }
-
-     /**
-      * @description Allows read access to cascaded KPI data for all authenticated users. Write access is restricted to managers and admins.
-      * @path /cascaded_kpis/{cascadedKpiId}
-      * @allow get, list: All authenticated users.
-      * @allow create, update, delete: Managers and admins only.
-      * @deny create, update, delete: Non-manager/admin users.
-      * @principle Provides public read access to cascaded KPI data while restricting write access to managers and admins.
-      */
-    match /cascaded_kpis/{cascadedKpiId} {
-        allow get, list: if isSignedIn();
-        allow create, update, delete: if isManager() || isAdmin();
-    }
-
-    /**
-     * @description Allows access to individual KPI data based on role and ownership.
-     * @path /individual_kpis/{individualKpiId}
-     */
-    match /individual_kpis/{individualKpiId} {
-      allow get, list: if isSignedIn(); // Placeholder: Refine with manager access
-      allow create, update, delete: if isManager() || isAdmin(); // Placeholder: refine with employee self-update for specific fields.
-    }
-
-    /**
-     * @description Allows access to KPI submission data based on ownership.
-     * @path /kpi_submissions/{kpiSubmissionId}
-     */
-    match /kpi_submissions/{kpiSubmissionId} {
-      allow get, list: if isSignedIn(); // Placeholder: Refine with manager access
-      allow create: if isSignedIn();
-      allow update, delete: if isSubmitter(getAfter(request).submittedByUserId) || isManager() || isAdmin();
-    }
-
-    /**
-     * @description Allows access to KPI approval data.
-     * @path /kpi_approvals/{kpiApprovalId}
-     */
-    match /kpi_approvals/{kpiApprovalId} {
-      allow get, list: if isSignedIn(); // Placeholder: Add granular access control
-      allow create, update, delete: if isAdmin(); // Placeholder: Add approval logic
-    }
-
-    /**
-     * @description Allows access to report data.
-     * @path /reports/{reportId}
-     */
-    match /reports/{reportId} {
-      allow get, list: if isSignedIn(); // Placeholder: Add granular access control
-      allow create, update, delete: if isAdmin(); // Placeholder: Add report creation logic
-    }
-
-    /**
-     * @description Allows read access to global settings for all authenticated users. Write access is restricted to admins.
-     * @path /settings/global
-     */
-    match /settings/global {
-      allow get: if isSignedIn();
-      allow create, update, delete: if isAdmin();
-      allow list: if false;
-    }
-
-    /**
-     * @description Allows read access to monthly KPI data for all authenticated users. Write access is restricted to admins.
-     * @path /monthly_kpis/{monthlyKpiId}
-     * @allow get, list: All authenticated users.
-     * @allow create, update, delete: Admins only.
-     * @deny create, update, delete: Non-admin users.
-     * @principle Provides public read access to monthly KPI data while restricting write access to admins.
-     */
-    match /monthly_kpis/{monthlyKpiId} {
-      allow get, list: if isSignedIn();
-      allow create: if isAdmin();
-      allow update, delete: if isAdmin();
-    }
-
-    // ---- Helper Functions ----
-
     function isSignedIn() {
       return request.auth != null;
     }
 
+    /**
+     * @description Checks if the user's ID matches the provided user ID.
+     * @param {string} userId The user ID to compare against.
+     * @return {boolean} True if the user is signed in and their UID matches the provided user ID.
+     */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /**
+     * @description Checks if the user is an admin.
+     * @return {boolean} True if the user is an admin, false otherwise.
+     */
     function isAdmin() {
-      return request.auth.token.role == 'Admin';
+      return isSignedIn() && request.auth.token.role == 'Admin';
     }
 
-    function isManager() {
-      return request.auth.token.role == 'Manager';
+    /**
+     * @description Checks if the user is the owner of the existing document.
+     * @param {string} userId The user ID to compare against.
+     * @return {boolean} True if the user is the owner and the document exists, false otherwise.
+     */
+    function isExistingOwner(userId) {
+        return isOwner(userId) && resource != null;
     }
 
-    function isSubmitter(submittedByUserId) {
-        return request.auth.uid == submittedByUserId;
+    /**
+     * @description Rules for user profile data.
+     * @path /users/{userId}
+     * @allow (get) Signed-in user can read their own profile.
+     * @allow (list) Admin can list all profiles.
+     * @allow (create) User can create their own profile (self-registration).
+     * @allow (update) Signed-in user can update their own profile.
+     * @allow (delete) Signed-in user can delete their own profile.
+     * @deny (get) User cannot read another user's profile.
+     * @deny (list) Non-admin users cannot list all user profiles.
+     * @deny (create) User cannot create a profile with a mismatched ID.
+     * @deny (update) User cannot update another user's profile.
+     * @deny (delete) User cannot delete another user's profile.
+     * @principle Enforces document ownership for writes and restricts listing to admins.
+     */
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if isAdmin();
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
+      allow delete: if isExistingOwner(userId);
     }
 
-    function getAfter(request) {
-        return request.resource.data;
+    /**
+     * @description Rules for employee data.
+     * @path /employees/{employeeId}
+     * @allow (get) Any signed-in user can read employee data.
+     * @allow (list) Any signed-in user can list employee data.
+     * @allow (create) Only admins can create employee data.
+     * @allow (update) Only admins can update employee data.
+     * @allow (delete) Only admins can delete employee data.
+     * @deny (create) Non-admins cannot create employee data.
+     * @deny (update) Non-admins cannot update employee data.
+     * @deny (delete) Non-admins cannot delete employee data.
+     * @principle Allows public read access but restricts writes to admins.
+     */
+    match /employees/{employeeId} {
+      allow get, list: if isSignedIn();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    /**
+     * @description Rules for department data.
+     * @path /departments/{departmentId}
+     * @allow (get) Any signed-in user can read department data.
+     * @allow (list) Any signed-in user can list department data.
+     * @allow (create) Only admins can create department data.
+     * @allow (update) Only admins can update department data.
+     * @allow (delete) Only admins can delete department data.
+     * @deny (create) Non-admins cannot create department data.
+     * @deny (update) Non-admins cannot update department data.
+     * @deny (delete) Non-admins cannot delete department data.
+     * @principle Allows public read access but restricts writes to admins.
+     */
+    match /departments/{departmentId} {
+      allow get, list: if isSignedIn();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    /**
+     * @description Rules for KPI category data.
+     * @path /kpi_categories/{kpiCategoryId}
+     * @allow (get) Any signed-in user can read KPI category data.
+     * @allow (list) Any signed-in user can list KPI category data.
+     * @allow (create) Only admins can create KPI category data.
+     * @allow (update) Only admins can update KPI category data.
+     * @allow (delete) Only admins can delete KPI category data.
+     * @deny (create) Non-admins cannot create KPI category data.
+     * @deny (update) Non-admins cannot update KPI category data.
+     * @deny (delete) Non-admins cannot delete KPI category data.
+     * @principle Allows public read access but restricts writes to admins.
+     */
+    match /kpi_categories/{kpiCategoryId} {
+      allow get, list: if isSignedIn();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    /**
+     * @description Rules for KPI catalog data.
+     * @path /kpi_catalog/{kpiId}
+     * @allow (get) Any signed-in user can read KPI catalog data.
+     * @allow (list) Any signed-in user can list KPI catalog data.
+     * @allow (create) Only admins can create KPI catalog data.
+     * @allow (update) Only admins can update KPI catalog data.
+     * @allow (delete) Only admins can delete KPI catalog data.
+     * @deny (create) Non-admins cannot create KPI catalog data.
+     * @deny (update) Non-admins cannot update KPI catalog data.
+     * @deny (delete) Non-admins cannot delete KPI catalog data.
+     * @principle Allows public read access but restricts writes to admins.
+     */
+    match /kpi_catalog/{kpiId} {
+      allow get, list: if isSignedIn();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    /**
+     * @description Rules for cascaded KPI data.
+     * @path /cascaded_kpis/{cascadedKpiId}
+     */
+    match /cascaded_kpis/{cascadedKpiId} {
+      allow get, list: if isSignedIn();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    /**
+     * @description Rules for individual KPI data.
+     * @path /individual_kpis/{individualKpiId}
+     */
+    match /individual_kpis/{individualKpiId} {
+      allow get, list: if isSignedIn();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    /**
+     * @description Rules for KPI submission data.
+     * @path /kpi_submissions/{kpiSubmissionId}
+     */
+    match /kpi_submissions/{kpiSubmissionId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.submittedByUserId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.submittedByUserId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.submittedByUserId == request.auth.uid;
+    }
+
+    /**
+     * @description Rules for KPI approval data.
+     * @path /kpi_approvals/{kpiApprovalId}
+     */
+    match /kpi_approvals/{kpiApprovalId} {
+      allow get, list: if isSignedIn();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    /**
+     * @description Rules for report data.
+     * @path /reports/{reportId}
+     */
+    match /reports/{reportId} {
+      allow get, list: if isSignedIn();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    /**
+     * @description Rules for global settings.
+     * @path /settings/global
+     */
+    match /settings/global {
+        allow get, list: if isSignedIn();
+        allow create: if isAdmin();
+        allow update: if isAdmin();
+        allow delete: if isAdmin();
+    }
+
+    /**
+     * @description Rules for monthly KPI data.
+     * @path /monthly_kpis/{monthlyKpiId}
+     * @allow (get) Any signed-in user can read monthly KPI data.
+     * @allow (list) Any signed-in user can list monthly KPI data.
+     * @allow (create) Only admins can create monthly KPI data.
+     * @allow (update) Only admins can update monthly KPI data.
+     * @allow (delete) Only admins can delete monthly KPI data.
+     * @deny (create) Non-admins cannot create monthly KPI data.
+     * @deny (update) Non-admins cannot update monthly KPI data.
+     * @deny (delete) Non-admins cannot delete monthly KPI data.
+     * @principle Allows public read access but restricts writes to admins.
+     */
+    match /monthly_kpis/{monthlyKpiId} {
+        allow get, list: if isSignedIn();
+        allow create: if isAdmin();
+        allow update: if isAdmin();
+        allow delete: if isAdmin();
     }
   }
 }
