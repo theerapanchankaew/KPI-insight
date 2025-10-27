@@ -110,10 +110,11 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   }, [firestore, isAdmin]);
   const { data: cascadedKpis, isLoading: isCascadedKpisLoading } = useCollection<CascadedKpi>(cascadedKpisQuery);
   
+  // Settings should be readable by any authenticated user.
   const settingsDocRef = useMemoFirebase(() => {
-    if (!firestore) return null;
+    if (!firestore || !user) return null; // Only fetch if user is logged in.
     return doc(firestore, 'settings', 'global');
-  }, [firestore]);
+  }, [firestore, user]);
   
   const { data: settingsData, isLoading: isSettingsLoading } = useDoc<AppSettings>(settingsDocRef);
   
@@ -122,8 +123,11 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (settingsData) {
       setLocalSettings(settingsData);
+    } else if (!isSettingsLoading) {
+      // If not loading and no data, fallback to default.
+      setLocalSettings(defaultSettings);
     }
-  }, [settingsData]);
+  }, [settingsData, isSettingsLoading]);
 
 
   const setSettings = (newSettings: Partial<AppSettings>) => {
@@ -133,17 +137,19 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
         setDocumentNonBlocking(settingsDocRef, updatedSettings, { merge: true });
     }
   };
+  
+  const isLoading = isAuthLoading || isSettingsLoading;
 
   const contextValue = {
     kpiData,
-    isKpiDataLoading: isAdmin ? isKpiDataLoading : false,
+    isKpiDataLoading: isLoading || (isAdmin ? isKpiDataLoading : false),
     orgData,
-    isOrgDataLoading: isAdmin ? isOrgDataLoading : false,
+    isOrgDataLoading: isLoading || (isAdmin ? isOrgDataLoading : false),
     cascadedKpis,
-    isCascadedKpisLoading: isAdmin ? isCascadedKpisLoading : false,
+    isCascadedKpisLoading: isLoading || (isAdmin ? isCascadedKpisLoading : false),
     settings: localSettings,
     setSettings,
-    isSettingsLoading,
+    isSettingsLoading: isLoading,
   };
 
 
@@ -162,5 +168,3 @@ export const useKpiData = () => {
   }
   return context;
 };
-
-    
