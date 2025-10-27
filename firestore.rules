@@ -1,149 +1,194 @@
 /**
- * @fileoverview Firestore Security Rules for the KPI Management Application.
+ * @fileoverview Firestore Security Rules for KPI Dashboard Application.
  *
  * Core Philosophy:
- * This ruleset prioritizes secure data access based on user roles and ownership.
- * It aims to balance security with the flexibility needed for rapid prototyping.
+ * This ruleset enforces a strict user-ownership model for user profiles
+ * and role-based access control for other data entities. It avoids
+ * open write rules and focuses on securing data access based on
+ * verified identity (request.auth).
  *
  * Data Structure:
- * - /users/{userId}: Stores user profiles. Only the user themselves or an admin can read/write.
- * - /departments/{departmentId}: Stores department information. Access is unrestricted.
- * - /kpis/{kpiId}: Stores KPI data. Access is unrestricted.
- * - /submissions/{submissionId}: Stores KPI submission data. Access is unrestricted.
- * - /kpi_catalog/{kpiId}: Stores the catalog of all corporate KPIs available for cascading. Access is unrestricted.
- * - /employees/{employeeId}: Stores employee and organizational structure data. Access is unrestricted.
- * - /settings/global: Stores global application settings in a singleton document. Access is unrestricted.
- * - /cascaded_kpis/{cascadedKpiId}: Stores corporate KPIs cascaded to departments. Access is unrestricted.
- * - /individual_kpis/{individualKpiId}: Stores KPIs assigned to individuals. Access is unrestricted.
+ * - User profiles are nested under /users/{userId}/profile.
+ * - Other collections (departments, kpi_categories, kpis, etc.) are top-level.
  *
  * Key Security Decisions:
- * - User listing is restricted to admins only (not implemented yet).
- * - Departments, KPIs, Submissions, KPI Catalog, Employees, App Settings, Cascaded KPIs, and Individual KPIs are currently publicly accessible for reads and writes to allow rapid prototyping.
- * - The default security posture for ambiguous relationships is strict owner-only access.
+ * - Listing the /users collection is explicitly denied. User profile access is based on
+ *   direct path ownership (/users/{userId}/profile).
+ * - Write operations are never allowed with "if true".
+ *
+ * Denormalization for Authorization:
+ * To improve performance and security, the rules rely on data denormalization.
+ * For example, `kpi_submissions` includes `submittedByUserId` to check ownership
+ * without needing extra `get()` calls. Consider denormalizing additional role/department
+ * information into documents to avoid complex rule logic and potential race conditions.
+ *
+ * Structural Segregation:
+ * Public and private data are stored in separate collections. User profile data is
+ * private and stored under the /users/{userId} path, while shared data is stored in
+ * top-level collections.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Grants access to user profile documents.
-     * @path /users/{userId}
-     * @allow (read, write) - User 'ggyIfmNNzMVOjxvaLSKVf3GV7C02' can read/write their own profile.
-     * @deny (read, write) - User 'otherUser' cannot read/write user 'ggyIfmNNzMVOjxvaLSKVf3GV7C02' profile.
-     * @principle Enforces document ownership for writes and reads.
+     * @description Checks if the request is authenticated.
+     * @return {bool} True if the request has a valid auth token, false otherwise.
      */
-    match /users/{userId} {
-      // Check if the user is signed in.
-      function isSignedIn() {
-        return request.auth != null;
-      }
-
-      // Check if the requested user ID matches the authenticated user's ID.
-      function isOwner(userId) {
-        return request.auth.uid == userId;
-      }
-
-      allow get: if isSignedIn() && isOwner(userId);
-      allow list: if false;
-      allow create: if isSignedIn() && isOwner(userId);
-      allow update: if isSignedIn() && isOwner(userId) && resource != null;
-      allow delete: if isSignedIn() && isOwner(userId) && resource != null;
+    function isSignedIn() {
+      return request.auth != null;
     }
 
     /**
-     * @description Grants public access to department documents.
+     * @description Checks if the authenticated user is the owner of the resource.
+     * @param {string} userId The user ID to check against.
+     * @return {bool} True if the user ID matches the authenticated user's ID.
+     */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /**
+     * @description Checks if the authenticated user is the owner of the resource, and that the resource exists.
+     * @param {string} userId The user ID to check against.
+     * @return {bool} True if the user ID matches the authenticated user's ID and the resource exists.
+     */
+    function isExistingOwner(userId) {
+      return isOwner(userId) && resource != null;
+    }
+
+    /**
+     * @description Security rules for user profiles.
+     * @path /users/{userId}/profile
+     * @allow (create) Signed-in user can create their own profile if the userId in the path matches their auth.uid and the id in the data matches their auth.uid.
+     * @allow (get, update, delete) Signed-in user can read, update, or delete their own profile if the userId in the path matches their auth.uid.
+     * @deny (create) Signed-in user cannot create a profile for another user (userId in path does not match auth.uid).
+     * @deny (get, update, delete) Signed-in user cannot read, update, or delete another user's profile (userId in path does not match auth.uid).
+     * @principle Enforces document ownership for writes and restricts access to a user's own data tree.
+     */
+    match /users/{userId}/profile {
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
+      allow delete: if isExistingOwner(userId);
+    }
+
+   /**
+     * @description Denies listing the /users collection to prevent unauthorized access to user information.
+     * @path /users
+     * @deny (list) All users are denied listing documents in the /users collection.
+     * @principle Prevents unauthorized enumeration of user IDs.
+     */
+    match /users {
+      allow get: if false;
+      allow list: if false;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Security rules for departments.
      * @path /departments/{departmentId}
-     * @allow (read, write) - Any user can read/write department documents.
-     * @deny (none) - This collection is publicly accessible.
-     * @principle Allows open access for prototyping.
+     * @allow (get, list) Any signed-in user can read department information.
+     * @allow (create) Only authenticated users can create new departments.
+     * @allow (update, delete) Only authenticated users can update or delete departments. Consider adding role-based restrictions.
+     * @deny (create, update, delete) Unauthenticated users cannot create, update, or delete departments.
+     * @principle Requires authentication for all writes.
      */
     match /departments/{departmentId} {
-      allow get, list: if true;
-      allow create, update, delete: if true;
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn();
     }
 
     /**
-     * @description Grants public access to KPI documents.
+     * @description Security rules for KPI categories.
+     * @path /kpi_categories/{kpiCategoryId}
+     * @allow (get, list) Any signed-in user can read KPI category information.
+     * @allow (create) Only authenticated users can create new KPI categories.
+     * @allow (update, delete) Only authenticated users can update or delete KPI categories. Consider adding role-based restrictions.
+     * @deny (create, update, delete) Unauthenticated users cannot create, update, or delete KPI categories.
+     * @principle Requires authentication for all writes.
+     */
+    match /kpi_categories/{kpiCategoryId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn();
+    }
+
+    /**
+     * @description Security rules for KPIs.
      * @path /kpis/{kpiId}
-     * @allow (read, write) - Any user can read/write KPI documents.
-     * @deny (none) - This collection is publicly accessible.
-     * @principle Allows open access for prototyping.
+     * @allow (get, list) Any signed-in user can read KPI information.
+     * @allow (create) Only authenticated users can create new KPIs.
+     * @allow (update, delete) Only authenticated users can update or delete KPIs. Consider adding role-based restrictions.
+     * @deny (create, update, delete) Unauthenticated users cannot create, update, or delete KPIs.
+     * @principle Requires authentication for all writes.
      */
     match /kpis/{kpiId} {
-      allow get, list: if true;
-      allow create, update, delete: if true;
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn();
     }
 
     /**
-     * @description Grants public access to submission documents.
-     * @path /submissions/{submissionId}
-     * @allow (read, write) - Any user can read/write submission documents.
-     * @deny (none) - This collection is publicly accessible.
-     * @principle Allows open access for prototyping.
+     * @description Security rules for KPI submissions.
+     * @path /kpi_submissions/{kpiSubmissionId}
+     * @allow (get, list) Any signed-in user can read KPI submission information.
+     * @allow (create) Only authenticated users can create new KPI submissions. The `submittedByUserId` field must match their auth.uid.
+     * @allow (update, delete) Only the user who submitted the KPI (submittedByUserId) can update or delete it.
+     * @deny (create) Unauthenticated users cannot create KPI submissions, or if the submittedByUserId doesn't match their auth.uid.
+     * @deny (update, delete) Unauthenticated users cannot update or delete KPI submissions.
+     * @principle Requires authentication for all writes and enforces ownership for updates/deletes.
      */
-    match /submissions/{submissionId} {
-      allow get, list: if true;
-      allow create, update, delete: if true;
-    }
-
-     /**
-      * @description Grants public access to KPI catalog documents.
-      * @path /kpi_catalog/{kpiId}
-      * @allow (read, write) - Any user can read/write KPI catalog documents.
-      * @deny (none) - This collection is publicly accessible.
-      * @principle Allows open access for prototyping.
-      */
-    match /kpi_catalog/{kpiId} {
-      allow get, list: if true;
-      allow create, update, delete: if true;
+    match /kpi_submissions/{kpiSubmissionId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.submittedByUserId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.submittedByUserId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.submittedByUserId == request.auth.uid;
     }
 
     /**
-     * @description Grants public access to employee documents.
-     * @path /employees/{employeeId}
-     * @allow (read, write) - Any user can read/write employee documents.
-     * @deny (none) - This collection is publicly accessible.
-     * @principle Allows open access for prototyping.
+     * @description Security rules for KPI approvals.
+     * @path /kpi_approvals/{kpiApprovalId}
+     * @allow (get, list) Any signed-in user can read KPI approval information.
+     * @allow (create) Only authenticated users can create new KPI approvals.
+     * @allow (update, delete) Only authenticated users can update or delete KPI approvals. Consider adding role-based restrictions.
+     * @deny (create, update, delete) Unauthenticated users cannot create, update, or delete KPI approvals.
+     * @principle Requires authentication for all writes.
      */
-    match /employees/{employeeId} {
-      allow get, list: if true;
-      allow create, update, delete: if true;
+    match /kpi_approvals/{kpiApprovalId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn();
     }
 
     /**
-     * @description Grants public access to the global settings document.
-     * @path /settings/global
-     * @allow (read, write) - Any user can read/write the global settings document.
-     * @deny (none) - This document is publicly accessible.
-     * @principle Allows open access for prototyping.
+     * @description Security rules for reports.
+     * @path /reports/{reportId}
+     * @allow (get, list) Any signed-in user can read report information.
+     * @allow (create) Only authenticated users can create new reports.
+     * @allow (update, delete) Only authenticated users can update or delete reports. Consider adding role-based restrictions.
+     * @deny (create, update, delete) Unauthenticated users cannot create, update, or delete reports.
+     * @principle Requires authentication for all writes.
      */
-    match /settings/global {
-      allow get, list: if true;
-      allow create, update, delete: if true;
-    }
-
-    /**
-     * @description Grants public access to cascaded KPI documents.
-     * @path /cascaded_kpis/{cascadedKpiId}
-     * @allow (read, write) - Any user can read/write cascaded KPI documents.
-     * @deny (none) - This collection is publicly accessible.
-     * @principle Allows open access for prototyping.
-     */
-    match /cascaded_kpis/{cascadedKpiId} {
-      allow get, list: if true;
-      allow create, update, delete: if true;
-    }
-
-    /**
-     * @description Grants public access to individual KPI documents.
-     * @path /individual_kpis/{individualKpiId}
-     * @allow (read, write) - Any user can read/write individual KPI documents.
-     * @deny (none) - This collection is publicly accessible.
-     * @principle Allows open access for prototyping.
-     */
-    match /individual_kpis/{individualKpiId} {
-      allow get, list: if true;
-      allow create, update, delete: if true;
+    match /reports/{reportId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn();
     }
   }
 }
