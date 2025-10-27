@@ -236,7 +236,7 @@ const MonthlyDeployDialog = ({
       generatePreview();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [strategy, seasonalPattern, progressiveCurve, customWeights, kpi, isOpen]);
+  }, [strategy, seasonalPattern, progressiveCurve, customWeights, kpi, isOpen, selectedYear]);
 
   const generatePreview = () => {
     if (!kpi) return;
@@ -503,9 +503,8 @@ const CorporateLevel = ({ onCascadeClick, onEditClick, onDeleteClick, onMonthlyD
                                         <Button size="sm" variant="outline" onClick={() => onCascadeClick(kpi)}>Cascading to ระดับฝ่าย</Button>
                                         <DropdownMenu>
                                             <DropdownMenuTrigger asChild>
-                                                <Button size="sm" variant="outline">
-                                                    Action
-                                                    <MoreVertical className="ml-2 h-4 w-4" />
+                                                <Button size="icon" variant="ghost" className="h-8 w-8">
+                                                    <MoreVertical className="h-4 w-4" />
                                                 </Button>
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end">
@@ -544,7 +543,7 @@ const CorporateLevel = ({ onCascadeClick, onEditClick, onDeleteClick, onMonthlyD
                     <AlertDialogAction onClick={() => {
                         if (deleteKpiId) onDeleteClick(deleteKpiId);
                         setDeleteKpiId(null);
-                    }}>
+                    }} className={buttonVariants({ variant: "destructive" })}>
                         Delete
                     </AlertDialogAction>
                 </AlertDialogFooter>
@@ -637,7 +636,7 @@ const DepartmentLevel = ({ onDeleteCascadedKpi, userRole }: { onDeleteCascadedKp
                                                 </AlertDialogHeader>
                                                 <AlertDialogFooter>
                                                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                    <AlertDialogAction onClick={() => onDeleteCascadedKpi(kpi.id)}>Delete</AlertDialogAction>
+                                                    <AlertDialogAction onClick={() => onDeleteCascadedKpi(kpi.id)} className={buttonVariants({ variant: "destructive" })}>Delete</AlertDialogAction>
                                                 </AlertDialogFooter>
                                             </AlertDialogContent>
                                         </AlertDialog>
@@ -733,7 +732,7 @@ const AssignedKpiGrid = ({ kpis, canEdit, onEdit, onDelete, user }: {
                                             <AlertDialogFooter>
                                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
                                                 {isUserLoggedIn && (
-                                                    <AlertDialogAction onClick={() => onDelete(kpi.id)}>Delete</AlertDialogAction>
+                                                    <AlertDialogAction onClick={() => onDelete(kpi.id)} className={buttonVariants({ variant: "destructive" })}>Delete</AlertDialogAction>
                                                 )}
                                             </AlertDialogFooter>
                                         </AlertDialogContent>
@@ -1731,5 +1730,7 @@ export default function CascadePage() {
     </div>
   );
 }
+
+    
 
     
