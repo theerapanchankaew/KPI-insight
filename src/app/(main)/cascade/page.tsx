@@ -18,19 +18,54 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronsUpDown, PlusCircle, Trash2, Edit, AlertTriangle, MoreVertical } from 'lucide-react';
+import { ChevronsUpDown, PlusCircle, Trash2, Edit, AlertTriangle, MoreVertical, Calendar, TrendingUp, BarChart3 } from 'lucide-react';
 import { WithId, useCollection, useFirestore, useMemoFirebase, useUser } from '@/firebase';
 import { addDocumentNonBlocking, deleteDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { collection, doc } from 'firebase/firestore';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 
 type Role = 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee' | null;
 
 // Type for a corporate KPI
 type CorporateKpi = WithId<Kpi>;
+
+// Monthly Distribution Types
+interface MonthlyDistribution {
+  month: number; // 1-12
+  monthName: string;
+  percentage: number; // 0-100
+  target: number;
+  weight?: number;
+}
+
+type DistributionStrategy = 'auto' | 'equal' | 'weighted' | 'seasonal' | 'progressive' | 'historical';
+type SeasonalPattern = 'tourism' | 'retail' | 'agriculture' | 'custom';
+type ProgressiveCurve = 'linear' | 'exponential';
+
+// Monthly KPI in Firestore
+interface MonthlyKpi {
+  id?: string;
+  parentKpiId: string;
+  measure: string;
+  perspective: string;
+  category: string;
+  year: number;
+  month: number;
+  target: number;
+  actual: number;
+  progress: number;
+  percentage: number;
+  unit: string;
+  status: 'Active' | 'Completed' | 'Overdue';
+  distributionStrategy: string;
+  createdAt: any; // serverTimestamp
+  updatedAt?: any; // serverTimestamp
+  createdBy: string;
+}
 
 // Base type for any individual KPI
 interface IndividualKpiBase {
@@ -64,7 +99,337 @@ interface CommittedKpi extends IndividualKpiBase {
 type IndividualKpi = AssignedCascadedKpi | CommittedKpi;
 
 
-const CorporateLevel = ({ onCascadeClick, onEditClick, onDeleteClick, userRole }: { onCascadeClick: (kpi: CorporateKpi) => void, onEditClick: (kpi: CorporateKpi) => void, onDeleteClick: (kpiId: string) => void, userRole: Role }) => {
+// ==================== DISTRIBUTION STRATEGIES ====================
+
+const MONTH_NAMES_TH = [
+  'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+  'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'
+];
+
+const DISTRIBUTION_STRATEGIES = {
+  // 1. Equal Distribution - แบ่งเท่าๆ กัน
+  equal: (yearlyTarget: number): MonthlyDistribution[] => {
+    const monthlyTarget = yearlyTarget / 12;
+    return Array(12).fill(null).map((_, i) => ({
+      month: i + 1,
+      monthName: MONTH_NAMES_TH[i],
+      percentage: 8.33,
+      target: parseFloat(monthlyTarget.toFixed(2))
+    }));
+  },
+
+  // 2. Weighted Distribution - แบบถ่วงน้ำหนัก
+  weighted: (yearlyTarget: number, weights: number[]): MonthlyDistribution[] => {
+    const totalWeight = weights.reduce((a, b) => a + b, 0);
+    if (totalWeight === 0) return DISTRIBUTION_STRATEGIES.equal(yearlyTarget);
+    return weights.map((weight, i) => ({
+      month: i + 1,
+      monthName: MONTH_NAMES_TH[i],
+      percentage: parseFloat(((weight / totalWeight) * 100).toFixed(2)),
+      target: parseFloat(((yearlyTarget * weight) / totalWeight).toFixed(2)),
+      weight
+    }));
+  },
+
+  // 3. Seasonal Distribution - ตามฤดูกาล
+  seasonal: (yearlyTarget: number, pattern: SeasonalPattern = 'retail'): MonthlyDistribution[] => {
+    const patterns: Record<SeasonalPattern, number[]> = {
+      tourism: [6, 5, 4, 4, 5, 6, 8, 10, 12, 14, 12, 14], // High season Q4
+      retail: [8, 8, 8, 9, 9, 9, 10, 10, 11, 12, 14, 16], // Peak December
+      agriculture: [4, 4, 6, 8, 10, 12, 14, 12, 10, 8, 6, 6], // Mid-year peak
+      custom: Array(12).fill(1) // Placeholder
+    };
+    
+    const weights = patterns[pattern] || patterns.retail;
+    return DISTRIBUTION_STRATEGIES.weighted(yearlyTarget, weights);
+  },
+
+  // 4. Progressive Distribution - แบบก้าวหน้า
+  progressive: (yearlyTarget: number, curve: ProgressiveCurve = 'linear'): MonthlyDistribution[] => {
+    let weights: number[];
+    
+    if (curve === 'linear') {
+      weights = Array(12).fill(null).map((_, i) => i + 1);
+    } else {
+      weights = Array(12).fill(null).map((_, i) => Math.pow(1.2, i));
+    }
+    
+    return DISTRIBUTION_STRATEGIES.weighted(yearlyTarget, weights);
+  },
+
+  // 5. Historical Distribution - ตามข้อมูลในอดีต
+  historical: (yearlyTarget: number, historicalData: number[][]): MonthlyDistribution[] => {
+    if (!historicalData || historicalData.length === 0) {
+      return DISTRIBUTION_STRATEGIES.equal(yearlyTarget);
+    }
+    const avgMonthlyPattern = Array(12).fill(0);
+    historicalData.forEach(yearData => {
+      yearData.forEach((value, month) => {
+        if (month < 12) avgMonthlyPattern[month] += value;
+      });
+    });
+    
+    const yearCount = historicalData.length;
+    const avgPattern = avgMonthlyPattern.map(sum => sum / yearCount);
+    const totalAvg = avgPattern.reduce((a, b) => a + b, 0);
+
+    if (totalAvg === 0) return DISTRIBUTION_STRATEGIES.equal(yearlyTarget);
+    
+    return avgPattern.map((avg, i) => ({
+      month: i + 1,
+      monthName: MONTH_NAMES_TH[i],
+      percentage: parseFloat(((avg / totalAvg) * 100).toFixed(2)),
+      target: parseFloat(((yearlyTarget * avg) / totalAvg).toFixed(2))
+    }));
+  }
+};
+
+const calculateVariance = (data: number[][]): number => {
+  const flatData = data.flat();
+  if (flatData.length === 0) return 0;
+  const mean = flatData.reduce((a, b) => a + b, 0) / flatData.length;
+  const variance = flatData.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / flatData.length;
+  return Math.sqrt(variance) / mean; // Coefficient of variation
+};
+
+const detectBestStrategy = (
+  kpi: CorporateKpi | null, 
+  historicalData?: number[][]
+): DistributionStrategy => {
+  if (!kpi) return 'equal';
+  if (historicalData && historicalData.length >= 2) {
+    const variance = calculateVariance(historicalData);
+    if (variance > 0.15) return 'historical';
+  }
+
+  const measure = kpi.measure.toLowerCase();
+  const seasonalKeywords = ['sale', 'sales', 'revenue', 'customer', 'order', 'visitor', 'ขาย', 'รายได้', 'ลูกค้า'];
+  if (seasonalKeywords.some(keyword => measure.includes(keyword))) return 'seasonal';
+
+  const growthKeywords = ['growth', 'increase', 'expand', 'new', 'เติบโต', 'เพิ่ม', 'ขยาย'];
+  if (growthKeywords.some(keyword => measure.includes(keyword))) return 'progressive';
+  
+  return 'equal';
+};
+
+const MonthlyDeployDialog = ({ 
+  kpi, 
+  isOpen, 
+  onClose,
+  onConfirm,
+  user
+}: { 
+  kpi: CorporateKpi | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: (distributions: MonthlyDistribution[], strategy: DistributionStrategy, year: number) => void;
+  user: any;
+}) => {
+  const [strategy, setStrategy] = useState<DistributionStrategy>('auto');
+  const [seasonalPattern, setSeasonalPattern] = useState<SeasonalPattern>('retail');
+  const [progressiveCurve, setProgressiveCurve] = useState<ProgressiveCurve>('linear');
+  const [previewData, setPreviewData] = useState<MonthlyDistribution[]>([]);
+  const [customWeights, setCustomWeights] = useState<number[]>(Array(12).fill(1));
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+
+  useEffect(() => {
+    if (kpi && isOpen) {
+      generatePreview();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [strategy, seasonalPattern, progressiveCurve, customWeights, kpi, isOpen]);
+
+  const generatePreview = () => {
+    if (!kpi) return;
+    
+    let preview: MonthlyDistribution[];
+    const yearlyTarget = Number(String(kpi.target).replace(/[^0-9.-]+/g,""));
+    
+    let actualStrategy = strategy;
+    if (strategy === 'auto') {
+      actualStrategy = detectBestStrategy(kpi);
+    }
+
+    switch (actualStrategy) {
+      case 'equal':
+        preview = DISTRIBUTION_STRATEGIES.equal(yearlyTarget);
+        break;
+      case 'weighted':
+        preview = DISTRIBUTION_STRATEGIES.weighted(yearlyTarget, customWeights);
+        break;
+      case 'seasonal':
+        preview = DISTRIBUTION_STRATEGIES.seasonal(yearlyTarget, seasonalPattern);
+        break;
+      case 'progressive':
+        preview = DISTRIBUTION_STRATEGIES.progressive(yearlyTarget, progressiveCurve);
+        break;
+      case 'historical':
+        preview = DISTRIBUTION_STRATEGIES.equal(yearlyTarget); // Fallback for demo
+        break;
+      default:
+        preview = DISTRIBUTION_STRATEGIES.equal(yearlyTarget);
+    }
+    setPreviewData(preview);
+  };
+
+  const getStrategyDisplayName = (strat: DistributionStrategy): string => {
+    const names: Record<DistributionStrategy, string> = {
+      'auto': '🤖 อัตโนมัติ (AI แนะนำ)',
+      'equal': '⚖️ เท่ากันทุกเดือน',
+      'weighted': '⚡ กำหนดน้ำหนักเอง',
+      'seasonal': '📊 ตามฤดูกาล',
+      'progressive': '📈 เพิ่มขึ้นแบบก้าวหน้า',
+      'historical': '📜 ตามข้อมูลในอดีต'
+    };
+    return names[strat];
+  };
+
+  const handleDeploy = () => {
+    if (!user) return;
+    let actualStrategy = strategy === 'auto' ? detectBestStrategy(kpi!) : strategy;
+    onConfirm(previewData, actualStrategy, selectedYear);
+    onClose();
+  };
+
+  const totalPercentage = previewData.reduce((sum, m) => sum + m.percentage, 0);
+  const totalTarget = previewData.reduce((sum, m) => sum + m.target, 0);
+
+  if (!kpi) return null;
+  const yearlyTargetValue = Number(String(kpi.target).replace(/[^0-9.-]+/g,""));
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-5xl max-h-[90vh]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Calendar className="h-5 w-5" />
+            Deploy KPI เป็นรายเดือน
+          </DialogTitle>
+          <DialogDescription className="space-y-1">
+            <div className="font-semibold text-gray-700">{kpi?.measure}</div>
+            <div className="text-sm">เป้าหมายรายปี: <span className="font-bold text-blue-600">{kpi?.target}</span> {kpi?.unit}</div>
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
+            {/* Left Column: Controls */}
+            <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <Label>ปีที่ต้องการ Deploy</Label>
+                        <Select value={String(selectedYear)} onValueChange={(val) => setSelectedYear(Number(val))}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() + i - 2).map(year => (
+                                    <SelectItem key={year} value={String(year)}>{year}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div>
+                        <Label>กลยุทธ์การกระจาย</Label>
+                        <Select value={strategy} onValueChange={(val) => setStrategy(val as DistributionStrategy)}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                {(['auto', 'equal', 'weighted', 'seasonal', 'progressive', 'historical'] as DistributionStrategy[]).map(strat => (
+                                    <SelectItem key={strat} value={strat}>{getStrategyDisplayName(strat)}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+
+                {strategy === 'auto' && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
+                    <div className="flex gap-2">
+                        <TrendingUp className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                        <div><strong>โหมดอัตโนมัติ:</strong> ระบบจะเลือกกลยุทธ์ที่เหมาะสมที่สุด<div className="mt-1 text-blue-700">กำลังใช้: {getStrategyDisplayName(detectBestStrategy(kpi))}</div></div>
+                    </div>
+                    </div>
+                )}
+                {strategy === 'seasonal' && (
+                    <div>
+                        <Label>รูปแบบฤดูกาล</Label>
+                        <Select value={seasonalPattern} onValueChange={(val) => setSeasonalPattern(val as SeasonalPattern)}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                            <SelectItem value="retail">🛍️ Retail (เพิ่มสูงสุดธันวาคม)</SelectItem>
+                            <SelectItem value="tourism">✈️ Tourism (เพิ่มสูง Q4)</SelectItem>
+                            <SelectItem value="agriculture">🌾 Agriculture (เพิ่มสูงกลางปี)</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                )}
+                {strategy === 'progressive' && (
+                    <div>
+                    <Label>รูปแบบการเติบโต</Label>
+                    <Select value={progressiveCurve} onValueChange={(val) => setProgressiveCurve(val as ProgressiveCurve)}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                        <SelectItem value="linear">📈 Linear (เพิ่มเท่าๆ กัน)</SelectItem>
+                        <SelectItem value="exponential">🚀 Exponential (เพิ่มเร็วขึ้นเรื่อยๆ)</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    </div>
+                )}
+                 {strategy === 'weighted' && (
+                    <Card className="p-4 bg-gray-50">
+                        <CardHeader className="p-2"><CardTitle className="text-base">กำหนดน้ำหนักเอง</CardTitle></CardHeader>
+                        <CardContent className="p-2">
+                            <div className="grid grid-cols-4 gap-2">
+                                {customWeights.map((weight, i) => (
+                                <div key={i} className="space-y-1">
+                                    <Label className="text-xs">{MONTH_NAMES_TH[i]}</Label>
+                                    <Input type="number" min="0" step="0.1" value={weight} onChange={(e) => {
+                                        const newWeights = [...customWeights];
+                                        newWeights[i] = parseFloat(e.target.value) || 0;
+                                        setCustomWeights(newWeights);
+                                    }} className="h-8 text-sm" />
+                                </div>
+                                ))}
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+            </div>
+
+            {/* Right Column: Preview */}
+            <div className="border rounded-lg bg-white">
+                <div className="flex items-center justify-between p-4 border-b">
+                    <h4 className="font-semibold flex items-center gap-2"><BarChart3 className="h-4 w-4" />ตัวอย่างการกระจาย</h4>
+                    <div className={cn("text-sm font-medium", Math.abs(totalTarget - yearlyTargetValue) > 0.01 ? 'text-destructive' : 'text-gray-500')}>
+                        รวม: {totalTarget.toFixed(2)} ({totalPercentage.toFixed(1)}%)
+                    </div>
+                </div>
+                <ScrollArea className="h-[400px]">
+                    <div className="p-4 space-y-2">
+                        {previewData.map((month) => (
+                        <div key={month.month} className="flex items-center gap-4 p-1.5 hover:bg-gray-50 rounded">
+                            <span className="w-12 text-sm font-medium text-gray-700">{month.monthName}</span>
+                            <div className="flex-1"><Progress value={month.percentage} className="h-3" /></div>
+                            <span className="w-24 text-right font-semibold text-gray-800 tabular-nums">{month.target.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                            <span className="w-16 text-right text-sm text-gray-500 bg-gray-100 px-2 py-0.5 rounded tabular-nums">{month.percentage.toFixed(1)}%</span>
+                        </div>
+                        ))}
+                    </div>
+                </ScrollArea>
+            </div>
+        </div>
+
+        <DialogFooter className="flex gap-2 pt-4 border-t">
+          <Button variant="outline" onClick={onClose}>ยกเลิก</Button>
+          <Button onClick={handleDeploy} disabled={!user}>
+            <Calendar className="mr-2 h-4 w-4" />
+            Deploy {previewData.length} เดือน
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+
+const CorporateLevel = ({ onCascadeClick, onEditClick, onDeleteClick, onMonthlyDeployClick, userRole }: { onCascadeClick: (kpi: CorporateKpi) => void, onEditClick: (kpi: CorporateKpi) => void, onDeleteClick: (kpiId: string) => void, onMonthlyDeployClick: (kpi: CorporateKpi) => void, userRole: Role }) => {
     const { kpiData, isKpiDataLoading } = useKpiData();
     const [deleteKpiId, setDeleteKpiId] = useState<string | null>(null);
     const kpiToDelete = useMemo(() => {
@@ -130,6 +495,12 @@ const CorporateLevel = ({ onCascadeClick, onEditClick, onDeleteClick, userRole }
                                     </div>
                                     <Progress value={75} className="h-2 mt-2" />
                                     <div className="flex justify-end mt-4 space-x-2">
+                                        {canCascade && (
+                                          <Button size="sm" variant="default" onClick={() => onMonthlyDeployClick(kpi)} className="bg-blue-600 hover:bg-blue-700">
+                                            <Calendar className="mr-2 h-4 w-4" />
+                                            Deploy รายเดือน
+                                          </Button>
+                                        )}
                                         <Button size="sm" variant="outline" onClick={() => onCascadeClick(kpi)}>Cascading to ระดับฝ่าย</Button>
                                         <DropdownMenu>
                                             <DropdownMenuTrigger asChild>
@@ -1037,10 +1408,10 @@ export default function CascadePage() {
                 setUserRole(token.claims.role as Role || 'Employee');
             } catch (error) {
                 console.error("Error fetching user claims", error);
-                setUserRole('Employee'); // Default to lowest permission on error
+                setUserRole('Employee');
             }
         } else {
-            setUserRole(null); // No user, no role
+            setUserRole(null);
         }
     }
     if (!isUserLoading) {
@@ -1054,6 +1425,7 @@ export default function CascadePage() {
   const [isCascadeModalOpen, setIsCascadeModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isMonthlyDeployOpen, setIsMonthlyDeployOpen] = useState(false);
   
   const [selectedKpi, setSelectedKpi] = useState<CorporateKpi | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<WithId<Employee> | null>(null);
@@ -1075,6 +1447,11 @@ export default function CascadePage() {
   const handleEditClick = (kpi: CorporateKpi) => {
       setSelectedKpi(kpi);
       setIsEditModalOpen(true);
+  };
+
+  const handleMonthlyDeployClick = (kpi: CorporateKpi) => {
+    setSelectedKpi(kpi);
+    setIsMonthlyDeployOpen(true);
   };
 
   const handleAssignKpiClick = (employee: WithId<Employee>) => {
@@ -1125,6 +1502,46 @@ export default function CascadePage() {
       deleteDocumentNonBlocking(kpiRef);
       toast({ title: "Assigned KPI Deleted", description: "The KPI has been removed from the individual's portfolio."});
   }
+
+  const handleConfirmMonthlyDeploy = async (distributions: MonthlyDistribution[], strategy: DistributionStrategy, year: number) => {
+    if (!user || !firestore || !selectedKpi) {
+      toast({ title: "Authentication Required", description: "Please log in to deploy KPIs.", variant: 'destructive' });
+      return;
+    }
+
+    try {
+      const monthlyKpisCollection = collection(firestore, 'monthly_kpis');
+      for (const month of distributions) {
+        const monthlyKpi: Omit<MonthlyKpi, 'id' | 'createdAt'> = {
+          parentKpiId: selectedKpi.id,
+          measure: selectedKpi.measure,
+          perspective: selectedKpi.perspective || '',
+          category: selectedKpi.category || '',
+          year: year,
+          month: month.month,
+          target: month.target,
+          actual: 0,
+          progress: 0,
+          percentage: month.percentage,
+          unit: selectedKpi.unit || '',
+          status: 'Active',
+          distributionStrategy: strategy,
+          createdBy: user.uid
+        };
+        await addDocumentNonBlocking(monthlyKpisCollection, monthlyKpi);
+      }
+
+      toast({ 
+        title: "KPI Deployed Successfully! 🎉", 
+        description: `"${selectedKpi.measure}" has been deployed to 12 monthly targets for ${year}.`,
+        duration: 5000
+      });
+
+    } catch (error) {
+      console.error('Error deploying monthly KPIs:', error);
+      toast({ title: "Deployment Failed", description: "An error occurred while deploying KPIs.", variant: 'destructive' });
+    }
+  };
 
   const handleConfirmCascade = (cascadedKpi: Omit<CascadedKpi, 'id'>) => {
       if (!user) {
@@ -1218,7 +1635,8 @@ export default function CascadePage() {
             <TabsContent value="corporate" className="mt-6">
               <CorporateLevel 
                 onCascadeClick={handleCascadeClick} 
-                onEditClick={handleEditClick} 
+                onEditClick={handleEditClick}
+                onMonthlyDeployClick={handleMonthlyDeployClick}
                 onDeleteClick={handleDelete} 
                 userRole={userRole} 
               />
@@ -1238,6 +1656,16 @@ export default function CascadePage() {
             </TabsContent>
           </Tabs>
       )}
+      <MonthlyDeployDialog
+        kpi={selectedKpi}
+        isOpen={isMonthlyDeployOpen}
+        onClose={() => {
+          setIsMonthlyDeployOpen(false);
+          setSelectedKpi(null);
+        }}
+        onConfirm={handleConfirmMonthlyDeploy}
+        user={user}
+      />
       <CascadeDialog 
         isOpen={isCascadeModalOpen}
         onClose={() => setIsCascadeModalOpen(false)}
@@ -1272,6 +1700,7 @@ export default function CascadePage() {
     
 
     
+
 
 
 

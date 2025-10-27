@@ -295,6 +295,30 @@
         "department",
         "position"
       ]
+    },
+    "MonthlyKpi": {
+      "title": "MonthlyKpi",
+      "type": "object",
+      "description": "Represents a monthly breakdown of a corporate KPI.",
+      "properties": {
+        "parentKpiId": { "type": "string", "description": "ID of the parent yearly KPI." },
+        "measure": { "type": "string" },
+        "perspective": { "type": "string" },
+        "category": { "type": "string" },
+        "year": { "type": "number" },
+        "month": { "type": "number", "description": "1-12 for Jan-Dec" },
+        "target": { "type": "number" },
+        "actual": { "type": "number" },
+        "progress": { "type": "number", "description": "Percentage completion" },
+        "percentage": { "type": "number", "description": "Weight percentage for the month" },
+        "unit": { "type": "string" },
+        "status": { "type": "string", "enum": ["Active", "Completed", "Overdue"] },
+        "distributionStrategy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string", "description": "UID of the user who deployed it." }
+      },
+      "required": ["parentKpiId", "year", "month", "target", "status", "createdBy"]
     }
   },
   "auth": {
@@ -565,6 +589,20 @@
             }
           },
           "description": "Global application settings. Readable by all authenticated users, writable only by admins."
+        }
+      },
+      {
+        "path": "/monthly_kpis/{monthlyKpiId}",
+        "definition": {
+          "entityName": "MonthlyKpi",
+          "schema": { "$ref": "#/entities/MonthlyKpi" },
+          "description": "Stores the monthly breakdown of corporate KPIs. Readable by authenticated users, writable by admins.",
+          "params": [
+            {
+              "name": "monthlyKpiId",
+              "description": "The unique ID of the monthly KPI record."
+            }
+          ]
         }
       }
     ],
