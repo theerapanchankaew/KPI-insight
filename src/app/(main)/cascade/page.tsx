@@ -228,7 +228,7 @@ const DepartmentLevel = ({ cascadedKpis }: { cascadedKpis: WithId<CascadedKpi>[]
     );
 }
 
-const AssignedKpiGrid = ({ kpis }: { kpis: WithId<IndividualKpi>[] }) => {
+const AssignedKpiGrid = ({ kpis, canEdit, onEdit, onDelete }: { kpis: WithId<IndividualKpi>[], canEdit: boolean, onEdit: (kpi: WithId<IndividualKpi>) => void, onDelete: (kpiId: string) => void }) => {
     const summary = useMemo(() => {
         const totalWeight = kpis.reduce((sum, kpi) => sum + kpi.weight, 0);
         const cascadedCount = kpis.filter(kpi => kpi.type === 'cascaded').length;
@@ -246,6 +246,7 @@ const AssignedKpiGrid = ({ kpis }: { kpis: WithId<IndividualKpi>[] }) => {
                         <TableHead>KPI/Task</TableHead>
                         <TableHead>Target</TableHead>
                         <TableHead>Weight</TableHead>
+                        {canEdit && <TableHead className="text-right">Actions</TableHead>}
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -261,6 +262,30 @@ const AssignedKpiGrid = ({ kpis }: { kpis: WithId<IndividualKpi>[] }) => {
                                 {kpi.type === 'cascaded' ? kpi.target : "5-level scale"}
                             </TableCell>
                             <TableCell>{kpi.weight}%</TableCell>
+                             {canEdit && (
+                                <TableCell className="text-right">
+                                    <Button variant="ghost" size="icon" onClick={() => onEdit(kpi)} className="mr-2 h-8 w-8">
+                                        <Edit className="h-4 w-4" />
+                                    </Button>
+                                    <AlertDialog>
+                                        <AlertDialogTrigger asChild>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                                                <Trash2 className="h-4 w-4 text-destructive" />
+                                            </Button>
+                                        </AlertDialogTrigger>
+                                        <AlertDialogContent>
+                                            <AlertDialogHeader>
+                                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                                <AlertDialogDescription>This will permanently delete the assigned KPI. This action cannot be undone.</AlertDialogDescription>
+                                            </AlertDialogHeader>
+                                            <AlertDialogFooter>
+                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                <AlertDialogAction onClick={() => onDelete(kpi.id)}>Delete</AlertDialogAction>
+                                            </AlertDialogFooter>
+                                        </AlertDialogContent>
+                                    </AlertDialog>
+                                </TableCell>
+                            )}
                         </TableRow>
                     ))}
                 </TableBody>
@@ -284,10 +309,10 @@ const AssignedKpiGrid = ({ kpis }: { kpis: WithId<IndividualKpi>[] }) => {
 }
 
 
-const IndividualLevel = ({ cascadedKpis, individualKpis, onAssignKpi, userRole }: { cascadedKpis: WithId<CascadedKpi>[] | null, individualKpis: WithId<IndividualKpi>[] | null, onAssignKpi: (employee: WithId<Employee>) => void, userRole: Role }) => {
+const IndividualLevel = ({ cascadedKpis, individualKpis, onAssignKpi, onEditIndividualKpi, onDeleteIndividualKpi, userRole }: { cascadedKpis: WithId<CascadedKpi>[] | null, individualKpis: WithId<IndividualKpi>[] | null, onAssignKpi: (employee: WithId<Employee>) => void, onEditIndividualKpi: (kpi: WithId<IndividualKpi>) => void, onDeleteIndividualKpi: (kpiId: string) => void, userRole: Role }) => {
     const { orgData, isOrgDataLoading } = useKpiData();
 
-    const canAssign = userRole === 'Admin' || userRole === 'VP' || userRole === 'AVP' || userRole === 'Manager';
+    const canAssignOrEdit = userRole === 'Admin' || userRole === 'VP' || userRole === 'AVP' || userRole === 'Manager';
 
     if (isOrgDataLoading) {
         return (
@@ -344,8 +369,13 @@ const IndividualLevel = ({ cascadedKpis, individualKpis, onAssignKpi, userRole }
                                             </div>
                                         </CollapsibleTrigger>
                                         <CollapsibleContent>
-                                            <AssignedKpiGrid kpis={assignedForPerson} />
-                                            {canAssign && (
+                                            <AssignedKpiGrid 
+                                                kpis={assignedForPerson} 
+                                                canEdit={canAssignOrEdit}
+                                                onEdit={onEditIndividualKpi}
+                                                onDelete={onDeleteIndividualKpi}
+                                            />
+                                            {canAssignOrEdit && (
                                                 <div className="p-4 bg-gray-50/50 border-t flex justify-end">
                                                     <Button variant="outline" size="sm" onClick={() => onAssignKpi(person)}>
                                                         Assign KPI
@@ -836,6 +866,7 @@ export default function CascadePage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   
   const [selectedKpi, setSelectedKpi] = useState<CorporateKpi | null>(null);
+  const [selectedIndividualKpi, setSelectedIndividualKpi] = useState<WithId<IndividualKpi> | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<WithId<Employee> | null>(null);
   
   // State for the Assign KPI dialog lifted up
@@ -861,10 +892,80 @@ export default function CascadePage() {
 
   const handleAssignKpiClick = (employee: WithId<Employee>) => {
     setSelectedEmployee(employee);
-    setSelectedKpis({});
-    setCommittedKpis([]);
+    setSelectedIndividualKpi(null); // Clear any previously selected individual kpi
+    
+    // Filter to only the kpis already assigned to this employee
+    const assignedCascaded = (individualKpis || []).filter(ik => ik.employeeId === employee.id && ik.type === 'cascaded');
+    const assignedCommitted = (individualKpis || []).filter(ik => ik.employeeId === employee.id && ik.type === 'committed');
+
+    const initialSelected: CascadedKpiSelection = {};
+    assignedCascaded.forEach(kpi => {
+        if(kpi.type === 'cascaded') {
+            initialSelected[kpi.kpiId] = { selected: true, weight: String(kpi.weight), target: kpi.target };
+        }
+    });
+
+    const initialCommitted: CommittedKpiDraft[] = assignedCommitted.map((kpi, index) => {
+        if(kpi.type === 'committed') {
+            return {
+                id: Date.now() + index, // Ensure unique ID for new drafts
+                task: kpi.task,
+                kpiMeasure: kpi.kpiMeasure,
+                weight: String(kpi.weight),
+                targets: kpi.targets
+            }
+        }
+        return null;
+    }).filter((kpi): kpi is CommittedKpiDraft => kpi !== null);
+
+    setSelectedKpis(initialSelected);
+    setCommittedKpis(initialCommitted);
     setIsAssignModalOpen(true);
   };
+  
+  const handleEditIndividualKpi = (kpi: WithId<IndividualKpi>) => {
+    const employee = orgData?.find(e => e.id === kpi.employeeId);
+    if (employee) {
+        setSelectedEmployee(employee);
+        setSelectedIndividualKpi(kpi); // Keep track of the kpi being edited
+
+        // Pre-populate the dialog state
+        const assignedCascaded = (individualKpis || []).filter(ik => ik.employeeId === employee.id && ik.type === 'cascaded');
+        const assignedCommitted = (individualKpis || []).filter(ik => ik.employeeId === employee.id && ik.type === 'committed');
+        
+        const initialSelected: CascadedKpiSelection = {};
+        assignedCascaded.forEach(indKpi => {
+            if (indKpi.type === 'cascaded') {
+                initialSelected[indKpi.kpiId] = { selected: true, weight: String(indKpi.weight), target: indKpi.target };
+            }
+        });
+
+        const initialCommitted: CommittedKpiDraft[] = assignedCommitted.map((comKpi, index) => {
+             if (comKpi.type === 'committed') {
+                return {
+                    id: Date.now() + index,
+                    task: comKpi.task,
+                    kpiMeasure: comKpi.kpiMeasure,
+                    weight: String(comKpi.weight),
+                    targets: comKpi.targets
+                }
+            }
+            return null;
+        }).filter((k): k is CommittedKpiDraft => k !== null);
+
+        setSelectedKpis(initialSelected);
+        setCommittedKpis(initialCommitted);
+        setIsAssignModalOpen(true);
+    }
+  }
+  
+  const handleDeleteIndividualKpi = (kpiId: string) => {
+      if (!firestore) return;
+      const kpiRef = doc(firestore, 'individual_kpis', kpiId);
+      deleteDocumentNonBlocking(kpiRef);
+      toast({ title: "Assigned KPI Deleted", description: "The KPI has been removed from the individual's portfolio."});
+  }
+
 
   const handleConfirmCascade = (cascadedKpi: CascadedKpi) => {
       if (!firestore) return;
@@ -873,13 +974,24 @@ export default function CascadePage() {
       toast({ title: "KPI Cascaded", description: `"${cascadedKpi.measure}" has been cascaded.` });
   };
 
-  const handleConfirmAssignment = (assignments: IndividualKpi[]) => {
-      if (!firestore) return;
+  const handleConfirmAssignment = async (assignments: IndividualKpi[]) => {
+      if (!firestore || !selectedEmployee) return;
+      
       const individualKpisCollection = collection(firestore, 'individual_kpis');
+      const existingAssignments = (individualKpis || []).filter(ik => ik.employeeId === selectedEmployee.id);
+      
+      // Delete all existing assignments for this user
+      existingAssignments.forEach(assignment => {
+        const docRef = doc(firestore, 'individual_kpis', assignment.id);
+        deleteDocumentNonBlocking(docRef);
+      });
+
+      // Add new assignments
       assignments.forEach(assignment => {
         addDocumentNonBlocking(individualKpisCollection, assignment);
       });
-      toast({ title: "KPIs Assigned", description: `${assignments.length} KPI(s) have been assigned.` });
+      
+      toast({ title: "KPIs Assigned", description: `${assignments.length} KPI(s) have been assigned to ${selectedEmployee.name}.` });
   };
 
   const handleConfirmEdit = (editedKpi: Kpi) => {
@@ -899,6 +1011,9 @@ export default function CascadePage() {
   const handleCloseAssignDialog = () => {
     setIsAssignModalOpen(false);
     setSelectedEmployee(null);
+    setSelectedIndividualKpi(null);
+    setSelectedKpis({});
+    setCommittedKpis([]);
   }
 
   return (
@@ -923,7 +1038,13 @@ export default function CascadePage() {
               <DepartmentLevel cascadedKpis={cascadedKpis} />
             </TabsContent>
             <TabsContent value="individual" className="mt-6">
-              <IndividualLevel cascadedKpis={cascadedKpis} individualKpis={individualKpis} onAssignKpi={handleAssignKpiClick} userRole={userRole} />
+              <IndividualLevel 
+                cascadedKpis={cascadedKpis} 
+                individualKpis={individualKpis} 
+                onAssignKpi={handleAssignKpiClick} 
+                onEditIndividualKpi={handleEditIndividualKpi}
+                onDeleteIndividualKpi={handleDeleteIndividualKpi}
+                userRole={userRole} />
             </TabsContent>
           </Tabs>
       )}
@@ -954,5 +1075,7 @@ export default function CascadePage() {
     </div>
   );
 }
+
+    
 
     
