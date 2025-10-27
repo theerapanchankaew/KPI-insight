@@ -430,54 +430,43 @@ const CascadeDialog = ({
     );
 };
 
+// Types for state managed by AssignKpiDialog
+export type CascadedKpiSelection = { [kpiId: string]: { selected: boolean; weight: string; target: string } };
+export type CommittedKpiDraft = {
+    id: number;
+    task: string;
+    kpiMeasure: string;
+    weight: string;
+    targets: { level1: string; level2: string; level3: string; level4: string; level5: string; };
+};
+
 const AssignKpiDialog = ({
     isOpen,
     onClose,
     employee,
     departmentKpis,
     onConfirm,
+    selectedKpis,
+    setSelectedKpis,
+    committedKpis,
+    setCommittedKpis,
 }: {
     isOpen: boolean;
     onClose: () => void;
     employee: WithId<Employee> | null;
     departmentKpis: WithId<CascadedKpi>[];
-    onConfirm: (assignment: IndividualKpi[]) => void;
+    onConfirm: (assignments: IndividualKpi[]) => void;
+    selectedKpis: CascadedKpiSelection;
+    setSelectedKpis: React.Dispatch<React.SetStateAction<CascadedKpiSelection>>;
+    committedKpis: CommittedKpiDraft[];
+    setCommittedKpis: React.Dispatch<React.SetStateAction<CommittedKpiDraft[]>>;
 }) => {
     const [assignmentType, setAssignmentType] = useState<'cascaded' | 'committed'>('cascaded');
     
-    // State for assigning cascaded KPI
-    type CascadedKpiSelection = { [kpiId: string]: { selected: boolean; weight: string; target: string } };
-    const [selectedKpis, setSelectedKpis] = useState<CascadedKpiSelection>({});
-
-    // State for creating a list of committed KPIs
-    type CommittedKpiDraft = {
-        id: number;
-        task: string;
-        kpiMeasure: string;
-        weight: string;
-        targets: { level1: string; level2: string; level3: string; level4: string; level5: string; };
-    };
-    const [committedKpis, setCommittedKpis] = useState<CommittedKpiDraft[]>([]);
-
     const relevantKpis = useMemo(() => {
         if (!employee) return [];
         return departmentKpis.filter(kpi => kpi.department === employee.department);
     }, [departmentKpis, employee]);
-
-    useEffect(() => {
-        if (isOpen) {
-            const initialSelection: CascadedKpiSelection = {};
-            relevantKpis.forEach(kpi => {
-                initialSelection[kpi.id] = { selected: false, weight: '', target: '' };
-            });
-            setSelectedKpis(initialSelection);
-        } else {
-            // Reset all state on close
-            setAssignmentType('cascaded');
-            setSelectedKpis({});
-            setCommittedKpis([]);
-        }
-    }, [isOpen, relevantKpis]);
 
     const handleKpiSelectionChange = (kpiId: string, field: 'selected' | 'weight' | 'target', value: string | boolean) => {
         setSelectedKpis(prev => ({
@@ -496,10 +485,10 @@ const AssignKpiDialog = ({
         }]);
     };
 
-    const handleCommittedKpiChange = (index: number, field: keyof CommittedKpiDraft, value: string) => {
+    const handleCommittedKpiChange = (index: number, field: keyof Omit<CommittedKpiDraft, 'id' | 'targets'>, value: string) => {
         setCommittedKpis(prev => {
             const newKpis = [...prev];
-            (newKpis[index] as any)[field] = value;
+            newKpis[index][field] = value;
             return newKpis;
         });
     };
@@ -723,6 +712,11 @@ export default function CascadePage() {
   
   const [selectedKpi, setSelectedKpi] = useState<CorporateKpi | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<WithId<Employee> | null>(null);
+  
+  // State for the Assign KPI dialog lifted up
+  const [selectedKpis, setSelectedKpis] = useState<CascadedKpiSelection>({});
+  const [committedKpis, setCommittedKpis] = useState<CommittedKpiDraft[]>([]);
+
 
   useEffect(() => {
     setPageTitle('Cascade KPI');
@@ -736,8 +730,19 @@ export default function CascadePage() {
   };
 
   const handleAssignKpiClick = (employee: WithId<Employee>) => {
-      setSelectedEmployee(employee);
-      setIsAssignModalOpen(true);
+    setSelectedEmployee(employee);
+    // Reset state when opening the dialog for a new employee
+    const initialSelection: CascadedKpiSelection = {};
+    if(cascadedKpis) {
+        cascadedKpis
+            .filter(kpi => kpi.department === employee.department)
+            .forEach(kpi => {
+                initialSelection[kpi.id] = { selected: false, weight: '', target: '' };
+            });
+    }
+    setSelectedKpis(initialSelection);
+    setCommittedKpis([]);
+    setIsAssignModalOpen(true);
   };
 
   const handleConfirmCascade = (cascadedKpi: CascadedKpi) => {
@@ -753,6 +758,14 @@ export default function CascadePage() {
         addDocumentNonBlocking(individualKpisCollection, assignment);
       });
   };
+  
+  const handleCloseAssignDialog = () => {
+    setIsAssignModalOpen(false);
+    setSelectedEmployee(null);
+    // Clear state when dialog is closed
+    setSelectedKpis({});
+    setCommittedKpis([]);
+  }
 
   return (
     <div className="fade-in space-y-6">
@@ -785,13 +798,15 @@ export default function CascadePage() {
       />
       <AssignKpiDialog
         isOpen={isAssignModalOpen}
-        onClose={() => setIsAssignModalOpen(false)}
+        onClose={handleCloseAssignDialog}
         employee={selectedEmployee}
         departmentKpis={cascadedKpis || []}
         onConfirm={handleConfirmAssignment}
+        selectedKpis={selectedKpis}
+        setSelectedKpis={setSelectedKpis}
+        committedKpis={committedKpis}
+        setCommittedKpis={setCommittedKpis}
       />
     </div>
   );
 }
-
-    
