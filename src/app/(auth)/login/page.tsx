@@ -172,6 +172,12 @@ const SignUpForm = () => {
 export default function LoginPage() {
   const router = useRouter();
   const { user, isUserLoading } = useUser();
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    // This ensures the component has mounted on the client.
+    setIsClient(true);
+  }, []);
 
   useEffect(() => {
     // If user is logged in, redirect to dashboard
@@ -180,7 +186,9 @@ export default function LoginPage() {
     }
   }, [user, isUserLoading, router]);
   
-  if (isUserLoading || user) {
+  // Always render the loading screen on the server and initial client render.
+  // This guarantees the client and server match, preventing the hydration error.
+  if (!isClient || isUserLoading || user) {
      return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <div className="flex flex-col items-center space-y-4">
