@@ -16,7 +16,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { useCollection, useFirestore, useMemoFirebase, useUser, WithId, useDoc } from '@/firebase';
+import { useCollection, useFirestore, useMemoFirebase, useUser, WithId } from '@/firebase';
 import { collection, doc } from 'firebase/firestore';
 import { addDocumentNonBlocking, deleteDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -142,20 +142,32 @@ export default function UserManagementPage() {
   const { user, isUserLoading: isAuthLoading } = useUser();
   const { orgData, isOrgDataLoading } = useKpiData();
 
-  const userDocRef = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
-    return doc(firestore, 'users', user.uid);
-  }, [firestore, user]);
-  const { data: currentUserProfile } = useDoc<AppUser>(userDocRef);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
-  const isAdmin = useMemo(() => currentUserProfile?.role === 'Admin', [currentUserProfile]);
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+        if (user) {
+            try {
+                const idTokenResult = await user.getIdTokenResult();
+                setIsAdmin(idTokenResult.claims.role === 'Admin');
+            } catch (error) {
+                console.error("Error fetching user claims:", error);
+                setIsAdmin(false);
+            }
+        } else if (!isAuthLoading) {
+           setIsAdmin(false);
+        }
+    };
+    checkAdminStatus();
+  }, [user, isAuthLoading]);
 
   useEffect(() => {
     setPageTitle('User Management');
   }, [setPageTitle]);
 
   const usersQuery = useMemoFirebase(() => {
-    if (!firestore || !isAdmin) return null; // Only query if user is admin
+    // IMPORTANT: Only fetch all users if the current user is an admin.
+    if (!firestore || !isAdmin) return null;
     return collection(firestore, 'users');
   }, [firestore, isAdmin]);
   
@@ -253,7 +265,7 @@ export default function UserManagementPage() {
       toast({ title: 'User Removed', description: 'The user has been removed from the organization list.', variant: 'destructive' });
   };
 
-  const isLoading = isAuthLoading || isUsersLoading || isOrgDataLoading;
+  const isLoading = isAuthLoading || isUsersLoading || isOrgDataLoading || isAdmin === null;
 
   const renderContent = () => {
     if (isLoading) {
@@ -413,5 +425,3 @@ export default function UserManagementPage() {
     </div>
   );
 }
-
-    
