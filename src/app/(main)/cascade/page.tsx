@@ -36,7 +36,7 @@ export interface CascadedKpi {
   measure: string;
   department: string;
   weight: number;
-  target: string; // Changed from departmentTarget to target
+  target: string;
   category?: string;
   unit?: string;
 }
