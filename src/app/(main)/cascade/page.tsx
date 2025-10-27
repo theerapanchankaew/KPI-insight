@@ -471,7 +471,7 @@ const AssignKpiDialog = ({
     const handleKpiSelectionChange = (kpiId: string, field: 'selected' | 'weight' | 'target', value: string | boolean) => {
         setSelectedKpis(prev => ({
             ...prev,
-            [kpiId]: { ...prev[kpiId], [field]: value }
+            [kpiId]: { ...(prev[kpiId] || { selected: false, weight: '', target: '' }), [field]: value }
         }));
     };
 
@@ -737,6 +737,7 @@ export default function CascadePage() {
         cascadedKpis
             .filter(kpi => kpi.department === employee.department)
             .forEach(kpi => {
+                // Ensure initial state is clean
                 initialSelection[kpi.id] = { selected: false, weight: '', target: '' };
             });
     }
@@ -762,7 +763,7 @@ export default function CascadePage() {
   const handleCloseAssignDialog = () => {
     setIsAssignModalOpen(false);
     setSelectedEmployee(null);
-    // Clear state when dialog is closed
+    // Clear state when dialog is closed to ensure it's fresh on next open
     setSelectedKpis({});
     setCommittedKpis([]);
   }
@@ -810,3 +811,5 @@ export default function CascadePage() {
     </div>
   );
 }
+
+    
