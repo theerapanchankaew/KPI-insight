@@ -555,8 +555,10 @@ const CorporateLevel = ({ onCascadeClick, onEditClick, onDeleteClick, onMonthlyD
 };
 
 
-const DepartmentLevel = () => {
+const DepartmentLevel = ({ onDeleteCascadedKpi, userRole }: { onDeleteCascadedKpi: (kpiId: string) => void, userRole: Role }) => {
     const { orgData, isOrgDataLoading, cascadedKpis, isCascadedKpisLoading } = useKpiData();
+
+    const canDelete = userRole === 'Admin' || userRole === 'VP' || userRole === 'AVP' || userRole === 'Manager';
 
     if (isOrgDataLoading || isCascadedKpisLoading) {
         return (
@@ -613,10 +615,33 @@ const DepartmentLevel = () => {
                     <CardContent className="space-y-4">
                         {kpisByDepartment[dept] && kpisByDepartment[dept].length > 0 ? (
                             kpisByDepartment[dept].map(kpi => (
-                                <div key={kpi.id} className="pl-4 border-l-4 border-primary">
-                                    <p className="font-medium text-gray-800">{kpi.measure}</p>
-                                    <p className="text-sm text-gray-500">Weight: {kpi.weight}%</p>
-                                    <p className="text-xl font-bold text-primary">{kpi.departmentTarget}</p>
+                                <div key={kpi.id} className="group flex justify-between items-start pl-4 border-l-4 border-primary">
+                                    <div>
+                                        <p className="font-medium text-gray-800">{kpi.measure}</p>
+                                        <p className="text-sm text-gray-500">Weight: {kpi.weight}%</p>
+                                        <p className="text-xl font-bold text-primary">{kpi.departmentTarget}</p>
+                                    </div>
+                                    {canDelete && (
+                                        <AlertDialog>
+                                            <AlertDialogTrigger asChild>
+                                                <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                                </Button>
+                                            </AlertDialogTrigger>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader>
+                                                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                                    <AlertDialogDescription>
+                                                        This will permanently delete the cascaded KPI "{kpi.measure}" for the {kpi.department} department.
+                                                    </AlertDialogDescription>
+                                                </AlertDialogHeader>
+                                                <AlertDialogFooter>
+                                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                    <AlertDialogAction onClick={() => onDeleteCascadedKpi(kpi.id)}>Delete</AlertDialogAction>
+                                                </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
+                                    )}
                                 </div>
                             ))
                         ) : (
@@ -1552,6 +1577,17 @@ export default function CascadePage() {
       addDocumentNonBlocking(cascadedKpisCollection, cascadedKpi);
       toast({ title: "KPI Cascaded", description: `"${cascadedKpi.measure}" has been cascaded.` });
   };
+  
+  const handleDeleteCascadedKpi = (kpiId: string) => {
+    if (!user) {
+        toast({ title: "Authentication Required", description: "Please log in to delete KPIs.", variant: 'destructive' });
+        return;
+    }
+    if (!firestore) return;
+    const kpiRef = doc(firestore, 'cascaded_kpis', kpiId);
+    deleteDocumentNonBlocking(kpiRef);
+    toast({ title: "Cascaded KPI Deleted", description: `The KPI has been removed from the department.`, variant: 'destructive' });
+  };
 
   const handleConfirmAssignment = async (assignments: Omit<IndividualKpi, 'status'>[]) => {
       if (!user) {
@@ -1641,7 +1677,7 @@ export default function CascadePage() {
               />
             </TabsContent>
             <TabsContent value="department" className="mt-6">
-              <DepartmentLevel />
+              <DepartmentLevel onDeleteCascadedKpi={handleDeleteCascadedKpi} userRole={userRole} />
             </TabsContent>
             <TabsContent value="individual" className="mt-6">
               <IndividualLevel 
