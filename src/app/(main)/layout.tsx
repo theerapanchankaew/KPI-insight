@@ -17,7 +17,7 @@ import {
   User as UserIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { appConfig, navItems, headerData } from '@/lib/data/layout-data';
+import { appConfig, navItems } from '@/lib/data/layout-data';
 import { KpiDataProvider, useKpiData } from '@/context/KpiDataContext';
 import { useUser, useAuth, useDoc, useFirestore, useMemoFirebase } from '@/firebase';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
