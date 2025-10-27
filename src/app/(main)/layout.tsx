@@ -201,6 +201,23 @@ const AppHeader = () => {
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [pageTitle, setPageTitle] = useState('Dashboard');
+  const { isUserLoading } = useUser();
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+      setIsClient(true);
+  }, []);
+
+  if (!isClient || isUserLoading) {
+      return (
+          <div className="flex h-screen w-full items-center justify-center bg-background">
+              <div className="flex flex-col items-center space-y-4">
+                  <ShieldCheck className="h-12 w-12 text-primary animate-pulse" />
+                  <p className="text-muted-foreground">Initializing Application...</p>
+              </div>
+          </div>
+      );
+  }
 
   return (
     <AppLayoutContext.Provider value={{ pageTitle, setPageTitle }}>
