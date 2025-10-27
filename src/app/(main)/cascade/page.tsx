@@ -732,16 +732,7 @@ export default function CascadePage() {
   const handleAssignKpiClick = (employee: WithId<Employee>) => {
     setSelectedEmployee(employee);
     // Reset state when opening the dialog for a new employee
-    const initialSelection: CascadedKpiSelection = {};
-    if(cascadedKpis) {
-        cascadedKpis
-            .filter(kpi => kpi.department === employee.department)
-            .forEach(kpi => {
-                // Ensure initial state is clean
-                initialSelection[kpi.id] = { selected: false, weight: '', target: '' };
-            });
-    }
-    setSelectedKpis(initialSelection);
+    setSelectedKpis({});
     setCommittedKpis([]);
     setIsAssignModalOpen(true);
   };
@@ -763,9 +754,6 @@ export default function CascadePage() {
   const handleCloseAssignDialog = () => {
     setIsAssignModalOpen(false);
     setSelectedEmployee(null);
-    // Clear state when dialog is closed to ensure it's fresh on next open
-    setSelectedKpis({});
-    setCommittedKpis([]);
   }
 
   return (
