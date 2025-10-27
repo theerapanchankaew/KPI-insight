@@ -1,13 +1,14 @@
+
 "use client";
 
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { generateKpiInsights, type GenerateKpiInsightsOutput } from '@/ai/flows/generate-kpi-insights';
-import { summaryCardsData, performanceChartData } from '@/lib/data/dashboard-data';
 import { Wand2, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { useKpiData } from '@/context/KpiDataContext';
 
 const iconMap = {
     TrendingUp: {
@@ -28,16 +29,24 @@ export default function KpiInsights() {
     const [insights, setInsights] = useState<GenerateKpiInsightsOutput['insights']>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const { kpiData, orgData, cascadedKpis, isKpiDataLoading, isOrgDataLoading, isCascadedKpisLoading } = useKpiData();
 
     const handleGenerateInsights = async () => {
         setLoading(true);
         setError(null);
+        if (!kpiData || !orgData || !cascadedKpis) {
+             setError("Insufficient data to generate insights. Please import all required data.");
+             setLoading(false);
+             return;
+        }
+
         try {
             const kpiDataForAnalysis = {
-                summary: summaryCardsData,
-                performance: performanceChartData.data
+                corporateKpis: kpiData,
+                organizationStructure: orgData,
+                cascadedKpis: cascadedKpis,
             };
-            const result = await generateKpiInsights({ kpiData: JSON.stringify(kpiDataForAnalysis) });
+            const result = await generateKpiInsights({ kpiData: JSON.stringify(kpiDataForAnalysis, null, 2) });
             setInsights(result.insights);
         } catch (e) {
             console.error(e);
@@ -48,12 +57,14 @@ export default function KpiInsights() {
     };
 
     useEffect(() => {
-        handleGenerateInsights();
+       if(!isKpiDataLoading && !isOrgDataLoading && !isCascadedKpisLoading) {
+           handleGenerateInsights();
+       }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [isKpiDataLoading, isOrgDataLoading, isCascadedKpisLoading]);
 
     const renderContent = () => {
-        if (loading) {
+        if (loading || isKpiDataLoading || isOrgDataLoading || isCascadedKpisLoading) {
             return (
                 <div className="space-y-4">
                     {[...Array(3)].map((_, i) => (
@@ -97,7 +108,7 @@ export default function KpiInsights() {
             );
         }
 
-        return <p className="text-gray-500 text-sm">Click "Generate Insights" to get an AI-powered analysis of your KPIs.</p>;
+        return <p className="text-gray-500 text-sm">Click "Regenerate" to get an AI-powered analysis of your KPIs.</p>;
     }
 
     return (

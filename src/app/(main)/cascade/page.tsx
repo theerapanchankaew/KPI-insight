@@ -9,7 +9,7 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
-import { useKpiData, type Employee, type Kpi } from '@/context/KpiDataContext';
+import { useKpiData, type Employee, type Kpi, type CascadedKpi } from '@/context/KpiDataContext';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -28,15 +28,6 @@ type Role = 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee' | null;
 
 // Type for a corporate KPI
 type CorporateKpi = WithId<Kpi>;
-
-// Type for a cascaded KPI in a department
-interface CascadedKpi {
-  corporateKpiId: string;
-  measure: string;
-  department: string;
-  weight: number;
-  departmentTarget: string;
-}
 
 // Base type for any individual KPI
 interface IndividualKpiBase {
@@ -158,17 +149,17 @@ const CorporateLevel = ({ onCascadeClick, onEditClick, onDeleteClick, userRole }
 };
 
 
-const DepartmentLevel = ({ cascadedKpis }: { cascadedKpis: WithId<CascadedKpi>[] | null }) => {
-    const { orgData, isOrgDataLoading } = useKpiData();
+const DepartmentLevel = () => {
+    const { orgData, isOrgDataLoading, cascadedKpis, isCascadedKpisLoading } = useKpiData();
 
-     if (isOrgDataLoading) {
+     if (isOrgDataLoading || isCascadedKpisLoading) {
         return (
              <Card>
                 <CardHeader>
                     <CardTitle>Department Performance</CardTitle>
                 </CardHeader>
                 <CardContent className="p-6 text-center text-gray-500">
-                    <p>Loading Organization data from Firestore...</p>
+                    <p>Loading Organization and KPI data from Firestore...</p>
                 </CardContent>
             </Card>
         )
@@ -348,7 +339,6 @@ const AssignedKpiGrid = ({ kpis, canEdit, onEdit, onDelete, user }: {
 
 
 const IndividualLevel = ({ 
-    cascadedKpis, 
     individualKpis, 
     onAssignKpi, 
     onEditIndividualKpi, 
@@ -356,7 +346,6 @@ const IndividualLevel = ({
     userRole,
     user 
 }: { 
-    cascadedKpis: WithId<CascadedKpi>[] | null, 
     individualKpis: WithId<IndividualKpi>[] | null, 
     onAssignKpi: (employee: WithId<Employee>) => void, 
     onEditIndividualKpi: (kpi: WithId<IndividualKpi>) => void, 
@@ -468,7 +457,7 @@ const CascadeDialog = ({
     onClose: () => void;
     kpi: CorporateKpi | null;
     departments: string[];
-    onConfirm: (cascadedKpi: CascadedKpi) => void;
+    onConfirm: (cascadedKpi: Omit<CascadedKpi, 'id'>) => void;
     user: any;
 }) => {
     const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
@@ -991,7 +980,7 @@ const EditKpiDialog = ({
 
 export default function CascadePage() {
   const { setPageTitle } = useAppLayout();
-  const { orgData } = useKpiData();
+  const { orgData, cascadedKpis } = useKpiData();
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
   const { toast } = useToast();
@@ -1015,9 +1004,6 @@ export default function CascadePage() {
         checkUserRole();
     }
   }, [user, isUserLoading]);
-
-  const cascadedKpisQuery = useMemoFirebase(() => firestore ? collection(firestore, 'cascaded_kpis') : null, [firestore]);
-  const { data: cascadedKpis } = useCollection<CascadedKpi>(cascadedKpisQuery);
 
   const individualKpisQuery = useMemoFirebase(() => firestore ? collection(firestore, 'individual_kpis') : null, [firestore]);
   const { data: individualKpis } = useCollection<IndividualKpi>(individualKpisQuery);
@@ -1097,7 +1083,7 @@ export default function CascadePage() {
       toast({ title: "Assigned KPI Deleted", description: "The KPI has been removed from the individual's portfolio."});
   }
 
-  const handleConfirmCascade = (cascadedKpi: CascadedKpi) => {
+  const handleConfirmCascade = (cascadedKpi: Omit<CascadedKpi, 'id'>) => {
       if (!user) {
           toast({ title: "Authentication Required", description: "Please log in to cascade KPIs.", variant: 'destructive' });
           return;
@@ -1200,11 +1186,10 @@ export default function CascadePage() {
               />
             </TabsContent>
             <TabsContent value="department" className="mt-6">
-              <DepartmentLevel cascadedKpis={cascadedKpis} />
+              <DepartmentLevel />
             </TabsContent>
             <TabsContent value="individual" className="mt-6">
               <IndividualLevel 
-                cascadedKpis={cascadedKpis} 
                 individualKpis={individualKpis} 
                 onAssignKpi={handleAssignKpiClick} 
                 onEditIndividualKpi={handleEditIndividualKpi}

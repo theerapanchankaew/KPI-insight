@@ -34,6 +34,15 @@ export interface AppSettings {
   periodDate?: string;
 }
 
+// Type for a cascaded KPI in a department
+export interface CascadedKpi {
+  corporateKpiId: string;
+  measure: string;
+  department: string;
+  weight: number;
+  departmentTarget: string;
+}
+
 const defaultSettings: AppSettings = {
     orgName: 'บริษัท ABC จำกัด (เริ่มต้น)',
     period: 'รายไตรมาส (Quarterly)',
@@ -47,6 +56,8 @@ interface KpiDataContextType {
   isKpiDataLoading: boolean;
   orgData: WithId<Employee>[] | null;
   isOrgDataLoading: boolean;
+  cascadedKpis: WithId<CascadedKpi>[] | null;
+  isCascadedKpisLoading: boolean;
   settings: AppSettings;
   setSettings: (settings: Partial<AppSettings>) => void;
   isSettingsLoading: boolean;
@@ -71,6 +82,12 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
     return collection(firestore, 'employees');
   }, [firestore, user]);
   const { data: orgData, isLoading: isOrgDataLoading } = useCollection<Employee>(orgQuery);
+  
+  const cascadedKpisQuery = useMemoFirebase(() => {
+      if (!firestore || !user) return null;
+      return collection(firestore, 'cascaded_kpis');
+  }, [firestore, user]);
+  const { data: cascadedKpis, isLoading: isCascadedKpisLoading } = useCollection<CascadedKpi>(cascadedKpisQuery);
   
   const settingsDocRef = useMemoFirebase(() => {
     if (!firestore) return null;
@@ -101,6 +118,8 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
     isKpiDataLoading,
     orgData,
     isOrgDataLoading,
+    cascadedKpis,
+    isCascadedKpisLoading,
     settings: localSettings,
     setSettings,
     isSettingsLoading,
