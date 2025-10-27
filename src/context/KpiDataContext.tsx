@@ -3,7 +3,7 @@
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, doc } from 'firebase/firestore';
+import { collection, doc, query } from 'firebase/firestore';
 import { WithId } from '@/firebase/firestore/use-collection';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
@@ -69,24 +69,45 @@ const KpiDataContext = createContext<KpiDataContextType | undefined>(undefined);
 // Create the provider component
 export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   const firestore = useFirestore();
-  const { user } = useUser();
+  const { user, isUserLoading: isAuthLoading } = useUser();
+  const [isAdmin, setIsAdmin] = useState(false);
 
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+        if (user) {
+            try {
+                const idTokenResult = await user.getIdTokenResult();
+                setIsAdmin(idTokenResult.claims.role === 'Admin');
+            } catch (error) {
+                console.error("Error fetching user claims:", error);
+                setIsAdmin(false);
+            }
+        } else {
+           setIsAdmin(false);
+        }
+    };
+    if (!isAuthLoading) {
+        checkAdminStatus();
+    }
+  }, [user, isAuthLoading]);
+
+  // IMPORTANT: Only admins should be able to query these global collections
   const kpiQuery = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
+    if (!firestore || !isAdmin) return null;
     return collection(firestore, 'kpi_catalog');
-  }, [firestore, user]);
+  }, [firestore, isAdmin]);
   const { data: kpiData, isLoading: isKpiDataLoading } = useCollection<Kpi>(kpiQuery);
 
   const orgQuery = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
+    if (!firestore || !isAdmin) return null;
     return collection(firestore, 'employees');
-  }, [firestore, user]);
+  }, [firestore, isAdmin]);
   const { data: orgData, isLoading: isOrgDataLoading } = useCollection<Employee>(orgQuery);
   
   const cascadedKpisQuery = useMemoFirebase(() => {
-      if (!firestore || !user) return null;
+      if (!firestore || !isAdmin) return null;
       return collection(firestore, 'cascaded_kpis');
-  }, [firestore, user]);
+  }, [firestore, isAdmin]);
   const { data: cascadedKpis, isLoading: isCascadedKpisLoading } = useCollection<CascadedKpi>(cascadedKpisQuery);
   
   const settingsDocRef = useMemoFirebase(() => {
@@ -115,11 +136,11 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
 
   const contextValue = {
     kpiData,
-    isKpiDataLoading,
+    isKpiDataLoading: isAdmin ? isKpiDataLoading : false,
     orgData,
-    isOrgDataLoading,
+    isOrgDataLoading: isAdmin ? isOrgDataLoading : false,
     cascadedKpis,
-    isCascadedKpisLoading,
+    isCascadedKpisLoading: isAdmin ? isCascadedKpisLoading : false,
     settings: localSettings,
     setSettings,
     isSettingsLoading,
@@ -141,3 +162,5 @@ export const useKpiData = () => {
   }
   return context;
 };
+
+    
