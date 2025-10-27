@@ -1185,19 +1185,10 @@ export default function CascadePage() {
         <h3 className="text-xl font-semibold text-gray-800 mb-2">KPI Cascade Structure</h3>
         <p className="text-gray-600">โครงสร้าง KPI แบบ 3 ระดับ: องค์กร → ฝ่าย → บุคคล</p>
         
-        {!isUserLoading && (
-          <div className={cn(
-            "mt-4 p-3 rounded-md text-sm flex items-center",
-            user ? "bg-green-50 border border-green-200 text-green-800" : "bg-amber-50 border border-amber-200 text-amber-800"
-          )}>
-            {user ? (
-              <p>✅ Logged in as: <strong>{user.displayName || user.email}</strong> {userRole && `(Role: ${userRole})`}</p>
-            ) : (
-              <>
-                <AlertTriangle className="h-5 w-5 mr-3 flex-shrink-0" />
-                <p><strong>You are not logged in.</strong> All management actions are disabled. Please log in to edit, assign, or delete KPIs.</p>
-              </>
-            )}
+        {!isUserLoading && !user && (
+          <div className="mt-4 p-3 rounded-md text-sm flex items-center bg-amber-50 border border-amber-200 text-amber-800">
+             <AlertTriangle className="h-5 w-5 mr-3 flex-shrink-0" />
+             <p><strong>You are not logged in.</strong> All management actions are disabled. Please log in to edit, assign, or delete KPIs.</p>
           </div>
         )}
       </div>
@@ -1268,4 +1259,5 @@ export default function CascadePage() {
     
 
     
+
 
