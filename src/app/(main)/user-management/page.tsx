@@ -131,7 +131,7 @@ export default function UserManagementPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user, isUserLoading: isAuthLoading } = useUser();
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   useEffect(() => {
     setPageTitle('User Management');
@@ -147,16 +147,18 @@ export default function UserManagementPage() {
                   console.error("Error fetching user claims:", error);
                   setIsAdmin(false);
               }
+          } else if (!isAuthLoading) {
+             // If user is not loading and there is no user, they are not an admin
+             setIsAdmin(false);
           }
       };
       checkAdminStatus();
-  }, [user]);
+  }, [user, isAuthLoading]);
 
   const usersQuery = useMemoFirebase(() => {
-    // Only fetch if firestore is ready, user is loaded, and the user is an admin.
-    if (!firestore || isAuthLoading || !isAdmin) return null;
+    if (!firestore || isAdmin === null || !isAdmin) return null;
     return collection(firestore, 'users');
-  }, [firestore, isAuthLoading, isAdmin]);
+  }, [firestore, isAdmin]);
   
   const { data: usersData, isLoading: isUsersLoading, error } = useCollection<AppUser>(usersQuery);
 
@@ -239,10 +241,10 @@ export default function UserManagementPage() {
       toast({ title: 'User Deleted', description: 'The user has been removed from Firestore.', variant: 'destructive' });
   };
 
-  const isLoading = isAuthLoading || isUsersLoading;
+  const isLoading = isAuthLoading || isAdmin === null;
 
   const renderContent = () => {
-    if (isLoading) {
+    if (isLoading || (isAdmin && isUsersLoading)) {
        return (
          <TableRow>
             <TableCell colSpan={navItems.length + 4} className="h-96">
@@ -264,6 +266,22 @@ export default function UserManagementPage() {
                  <h3 className="text-lg font-semibold">Access Denied</h3>
                  <p className="text-muted-foreground max-w-md">
                     You do not have the necessary permissions to view this page. Please contact your system administrator if you believe this is an error.
+                 </p>
+               </div>
+            </TableCell>
+         </TableRow>
+       )
+    }
+    
+    if (error) {
+       return (
+         <TableRow>
+            <TableCell colSpan={navItems.length + 4} className="h-96">
+               <div className="flex flex-col items-center justify-center space-y-3 text-center">
+                 <AlertTriangle className="h-10 w-10 text-destructive" />
+                 <h3 className="text-lg font-semibold">Error Loading Data</h3>
+                 <p className="text-muted-foreground max-w-md">
+                    Could not load user data. There might be a network issue or a problem with Firestore permissions.
                  </p>
                </div>
             </TableCell>
@@ -379,3 +397,5 @@ export default function UserManagementPage() {
     </div>
   );
 }
+
+    
