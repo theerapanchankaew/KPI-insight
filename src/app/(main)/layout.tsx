@@ -19,6 +19,7 @@ import { appConfig, navItems, headerData } from '@/lib/data/layout-data';
 import { KpiDataProvider, useKpiData } from '@/context/KpiDataContext';
 import { useUser } from '@/firebase';
 import { Skeleton } from '@/components/ui/skeleton';
+import { AuthGate } from '@/app/auth-gate';
 
 interface AppLayoutContextType {
   pageTitle: string;
@@ -38,11 +39,6 @@ export function useAppLayout() {
 const AppSidebar = () => {
   const pathname = usePathname();
   const { settings } = useKpiData();
-  const [isClient, setIsClient] = useState(false);
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
 
   return (
     <nav className="w-72 bg-card border-r border-border flex-col hidden lg:flex">
@@ -53,7 +49,7 @@ const AppSidebar = () => {
           </div>
           <div>
             <h1 className="text-lg font-bold">{appConfig.title}</h1>
-            {isClient ? <p className="text-sm opacity-90">{settings.orgName}</p> : <Skeleton className="h-4 w-32 mt-1" />}
+            <p className="text-sm opacity-90">{settings.orgName}</p>
           </div>
         </div>
       </div>
@@ -94,11 +90,6 @@ const AppHeader = () => {
   const { pageTitle } = useAppLayout();
   const { settings } = useKpiData();
   const { user, isUserLoading } = useUser();
-  const [isClient, setIsClient] = useState(false);
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
 
   return (
     <header className="bg-card shadow-sm border-b border-border px-4 sm:px-6 py-4 sticky top-0 z-10">
@@ -120,7 +111,7 @@ const AppHeader = () => {
                     </div>
                     <div>
                       <h1 className="text-lg font-bold">{appConfig.title}</h1>
-                      {isClient ? <p className="text-sm opacity-90">{settings.orgName}</p> : <Skeleton className="h-4 w-32 mt-1" />}
+                      <p className="text-sm opacity-90">{settings.orgName}</p>
                     </div>
                   </div>
                 </div>
@@ -149,7 +140,7 @@ const AppHeader = () => {
 
           <div>
             <h2 className="text-xl sm:text-2xl font-bold text-foreground">{pageTitle}</h2>
-            {isClient ? <p className="text-sm text-muted-foreground mt-1">งวดปัจจุบัน: {settings.period}</p> : <Skeleton className="h-4 w-24 mt-1" />}
+            <p className="text-sm text-muted-foreground mt-1">งวดปัจจุบัน: {settings.period}</p>
           </div>
         </div>
 
@@ -165,7 +156,7 @@ const AppHeader = () => {
             </Button>
           </div>
           <div className="flex items-center space-x-3">
-            {isUserLoading || !isClient ? (
+            {isUserLoading ? (
               <div className="hidden sm:flex items-center space-x-3">
                 <div className="flex flex-col items-end">
                   <Skeleton className="h-4 w-24 mb-1" />
@@ -176,12 +167,12 @@ const AppHeader = () => {
             ) : user ? (
               <>
                 <div className="hidden sm:block text-right">
-                  <p className="text-sm font-medium text-foreground">{user.displayName || 'Anonymous User'}</p>
-                  <p className="text-xs text-muted-foreground">{user.email || 'No email'}</p>
+                  <p className="text-sm font-medium text-foreground">{user.isAnonymous ? 'Anonymous User' : (user.displayName || user.email)}</p>
+                  <p className="text-xs text-muted-foreground">{user.isAnonymous ? 'Guest' : 'Member'}</p>
                 </div>
                 <Avatar>
                   <AvatarFallback className="bg-gradient-to-r from-primary to-secondary text-white font-semibold">
-                    {user.displayName ? user.displayName.charAt(0).toUpperCase() : 'A'}
+                    {user.isAnonymous ? 'A' : (user.displayName || user.email || 'U').charAt(0).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
               </>
@@ -210,28 +201,21 @@ const AppHeader = () => {
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [pageTitle, setPageTitle] = useState('Dashboard');
-  const [isClient, setIsClient] = useState(false);
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
-
-  if (!isClient) {
-    return null;
-  }
 
   return (
     <AppLayoutContext.Provider value={{ pageTitle, setPageTitle }}>
       <KpiDataProvider>
-        <div className="h-full flex bg-background">
-          <AppSidebar />
-          <main className="flex-1 overflow-auto">
-            <AppHeader />
-            <div className="p-6">
-              {children}
-            </div>
-          </main>
-        </div>
+        <AuthGate>
+          <div className="h-full flex bg-background">
+            <AppSidebar />
+            <main className="flex-1 overflow-auto">
+              <AppHeader />
+              <div className="p-6">
+                {children}
+              </div>
+            </main>
+          </div>
+        </AuthGate>
       </KpiDataProvider>
     </AppLayoutContext.Provider>
   );
