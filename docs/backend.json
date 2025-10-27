@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "Kpi": {
@@ -154,6 +155,36 @@
         "submissionDate",
         "status"
       ]
+    },
+    "KpiCatalog": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "KpiCatalog",
+      "type": "object",
+      "description": "Represents a KPI in the catalog.",
+      "properties": {
+        "id": { "type": "string" },
+        "perspective": { "type": "string" },
+        "strategic_objective": { "type": "string" },
+        "measure": { "type": "string" },
+        "target": { "type": "string" },
+        "unit": { "type": "string" },
+        "category": { "type": "string" }
+      },
+      "required": ["id", "measure", "target"]
+    },
+    "Employee": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Employee",
+      "type": "object",
+      "description": "Represents an employee in the organization.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "department": { "type": "string" },
+        "position": { "type": "string" },
+        "manager": { "type": "string" }
+      },
+      "required": ["id", "name", "department", "position"]
     }
   },
   "auth": {
@@ -169,15 +200,9 @@
         "definition": {
           "entityName": "User",
           "schema": {
-            "$ref": "#/backend/entities/User"
+            "$ref": "#/entities/User"
           },
-          "description": "Stores user profiles. Only the user can read/write their own profile.",
-          "params": [
-            {
-              "name": "userId",
-              "description": "The unique identifier of the user."
-            }
-          ]
+          "description": "Stores user profiles. Only the user can read/write their own profile."
         }
       },
       {
@@ -185,15 +210,9 @@
         "definition": {
           "entityName": "Department",
           "schema": {
-            "$ref": "#/backend/entities/Department"
+            "$ref": "#/entities/Department"
           },
-          "description": "Stores department information.",
-          "params": [
-            {
-              "name": "departmentId",
-              "description": "The unique identifier of the department."
-            }
-          ]
+          "description": "Stores department information."
         }
       },
       {
@@ -201,15 +220,9 @@
         "definition": {
           "entityName": "Kpi",
           "schema": {
-            "$ref": "#/backend/entities/Kpi"
+            "$ref": "#/entities/Kpi"
           },
-          "description": "Stores KPI data. Includes denormalized 'ownerId' for authorization independence.",
-          "params": [
-            {
-              "name": "kpiId",
-              "description": "The unique identifier for the KPI."
-            }
-          ]
+          "description": "Stores KPI data. Includes denormalized 'ownerId' for authorization independence."
         }
       },
       {
@@ -217,18 +230,31 @@
         "definition": {
           "entityName": "Submission",
           "schema": {
-            "$ref": "#/backend/entities/Submission"
+            "$ref": "#/entities/Submission"
           },
-          "description": "Stores KPI submission data.",
-          "params": [
-            {
-              "name": "submissionId",
-              "description": "The unique identifier for the submission."
-            }
-          ]
+          "description": "Stores KPI submission data."
+        }
+      },
+      {
+        "path": "/kpi_catalog/{kpiId}",
+        "definition": {
+          "entityName": "KpiCatalog",
+          "schema": {
+            "$ref": "#/entities/KpiCatalog"
+          },
+          "description": "Stores the catalog of all corporate KPIs available for cascading."
+        }
+      },
+      {
+        "path": "/employees/{employeeId}",
+        "definition": {
+          "entityName": "Employee",
+          "schema": {
+            "$ref": "#/entities/Employee"
+          },
+          "description": "Stores employee and organizational structure data."
         }
       }
-    ],
-    "reasoning": "The Firestore data structure is designed to support the KPI Insights application, emphasizing authorization independence, clear access modeling, and structural segregation to ensure security and scalability. Here’s a breakdown of the approach:\n\n*   **Authorization Independence**: This is achieved by adhering to the principle of denormalization. Specifically, the `ownerId` is present in the `kpis` collection, removing the need for rules to depend on `get()` calls to parent documents. This allows atomic operations and simplifies security rules.\n*   **Structural Segregation**: Data with different security requirements are stored in separate collections. User data is stored under `/users/{userId}`, ensuring that only the user can access their own data. KPIs are stored under `/kpis/{kpiId}` but contain the `ownerId` for authorization.\n*   **Access Modeling**: The structure uses path-based ownership for private user data (`/users/{userId}`). For KPI data, it relies on denormalized `ownerId` within the KPI document to link ownership back to the user.\n*   **QAPs (Rules are not Filters)**: Secure list operations are enabled by the segregation of data based on access level and the denormalization of authorization data, such as the `ownerId` on the `kpis` collection, which simplifies queries based on ownership and eliminates the need to filter based on data content in rules.\n\nThis structure ensures that security rules are straightforward, efficient, and maintainable, avoiding complex hierarchical dependencies and enabling atomic operations."
+    ]
   }
 }

@@ -1,26 +1,30 @@
+
 "use client";
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useAppLayout } from '../layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { UploadCloud, FileJson, XCircle, Send } from 'lucide-react';
+import { UploadCloud, FileJson, XCircle } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
-import { useKpiData } from '@/context/KpiDataContext';
 import { useRouter } from 'next/navigation';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useFirestore } from '@/firebase';
+import { collection }from 'firebase/firestore';
+import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { doc } from 'firebase/firestore';
 
 const KpiImportTab = () => {
-    const { setKpiData } = useKpiData();
+    const firestore = useFirestore();
     const router = useRouter();
     const { toast } = useToast();
     const [files, setFiles] = useState<File[]>([]);
     const [uploading, setUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
     const [uploadComplete, setUploadComplete] = useState(false);
-    const [fileContent, setFileContent] = useState<any | null>(null);
+    const [fileContent, setFileContent] = useState<{ kpi_catalog: any[] } | null>(null);
 
     const onDrop = useCallback((acceptedFiles: File[]) => {
         const file = acceptedFiles[0];
@@ -36,14 +40,19 @@ const KpiImportTab = () => {
                     const binaryStr = reader.result;
                     if (typeof binaryStr === 'string') {
                         const parsedJson = JSON.parse(binaryStr);
-                        setFileContent(parsedJson);
+                        if (parsedJson && Array.isArray(parsedJson.kpi_catalog)) {
+                            setFileContent(parsedJson);
+                        } else {
+                            throw new Error("Invalid JSON structure. Missing 'kpi_catalog' array.");
+                        }
                     }
-                } catch (error) {
+                } catch (error: any) {
                     toast({
                         variant: 'destructive',
                         title: 'Invalid JSON',
-                        description: 'Could not parse the JSON file.',
+                        description: error.message || 'Could not parse the JSON file.',
                     });
+                    setFileContent(null);
                 }
             };
             reader.readAsText(file);
@@ -63,38 +72,37 @@ const KpiImportTab = () => {
     });
 
     const handleUpload = () => {
+        if (!firestore) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Firestore not initialized.' });
+            return;
+        }
         if (files.length === 0 || !fileContent) {
             toast({ variant: 'destructive', title: 'No File Selected', description: 'Please select a file to import.' });
             return;
         }
         setUploading(true);
         setUploadProgress(0);
-        setUploadComplete(false);
+        
+        const kpisToUpload = fileContent.kpi_catalog;
+        const totalKpis = kpisToUpload.length;
+        let kpisUploaded = 0;
 
-        const interval = setInterval(() => {
-            setUploadProgress((prev) => {
-                if (prev >= 100) {
-                    clearInterval(interval);
-                    setUploading(false);
-                    setUploadComplete(true);
-                    setKpiData(fileContent); // Set data into context
-                    toast({ title: 'Upload Successful', description: `${files[0].name} has been imported.` });
-                    return 100;
-                }
-                return prev + 10;
-            });
-        }, 200);
+        kpisToUpload.forEach((kpi, index) => {
+            // Assuming each KPI has a unique 'id' field in the JSON
+            const docRef = doc(firestore, 'kpi_catalog', kpi.id);
+            
+            // Non-blocking write to Firestore
+            setDocumentNonBlocking(docRef, kpi, { merge: true });
+
+            kpisUploaded++;
+            setUploadProgress((kpisUploaded / totalKpis) * 100);
+        });
+
+        setUploading(false);
+        setUploadComplete(true);
+        toast({ title: 'Upload Complete', description: `${kpisUploaded} KPIs have been saved to Firestore.` });
+        router.push('/cascade');
     };
-
-    const handleSendToCascade = () => {
-        if (fileContent) {
-            // Data is already set on upload, just navigate
-            toast({ title: 'Redirecting', description: 'Navigating to the Cascade page.' });
-            router.push('/cascade');
-        } else {
-            toast({ variant: 'destructive', title: 'No Data to Send', description: 'File content is not available.' });
-        }
-    }
 
     const removeFile = () => {
         setFiles([]);
@@ -119,7 +127,7 @@ const KpiImportTab = () => {
             <Card>
                 <CardHeader>
                     <CardTitle>Upload KPI File</CardTitle>
-                    <CardDescription>Select a JSON file with your KPI data.</CardDescription>
+                    <CardDescription>Select a JSON file with your KPI data catalog.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                     <div {...getRootProps()} className={`border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors ${isDragActive ? 'border-primary bg-primary/10' : 'border-gray-300 hover:border-primary/50'}`}>
@@ -141,8 +149,9 @@ const KpiImportTab = () => {
                     {uploading && <Progress value={uploadProgress} />}
 
                     <div className="flex justify-end space-x-2">
-                        <Button onClick={handleUpload} disabled={files.length === 0 || uploading || uploadComplete}>Import KPIs</Button>
-                        {uploadComplete && <Button onClick={handleSendToCascade} variant="secondary"><Send className="w-4 h-4 mr-2" />Send to Cascade</Button>}
+                        <Button onClick={handleUpload} disabled={files.length === 0 || uploading || uploadComplete || !fileContent}>
+                            {uploading ? 'Importing...' : 'Import to Firestore'}
+                        </Button>
                     </div>
                 </CardContent>
             </Card>
@@ -159,7 +168,7 @@ const KpiImportTab = () => {
 }
 
 const OrgImportTab = () => {
-    const { setOrgData } = useKpiData();
+    const firestore = useFirestore();
     const router = useRouter();
     const { toast } = useToast();
     const [files, setFiles] = useState<File[]>([]);
@@ -175,11 +184,15 @@ const OrgImportTab = () => {
                     const text = e.target?.result;
                     if (typeof text === 'string') {
                         const parsedJson = JSON.parse(text);
-                        setFileContent(parsedJson); // Store the raw JSON array
-                        toast({ title: 'File Processed', description: `${file.name} is ready to be used.` });
+                        if(Array.isArray(parsedJson)) {
+                           setFileContent(parsedJson);
+                           toast({ title: 'File Ready', description: `${file.name} is ready to be imported.` });
+                        } else {
+                           throw new Error("JSON data is not an array.");
+                        }
                     }
-                } catch (error) {
-                    toast({ variant: 'destructive', title: 'Invalid JSON', description: 'Could not parse the JSON file.' });
+                } catch (error: any) {
+                    toast({ variant: 'destructive', title: 'Invalid JSON', description: error.message || 'Could not parse the JSON file.' });
                 }
             };
             reader.readAsText(file);
@@ -191,18 +204,27 @@ const OrgImportTab = () => {
     const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, multiple: false, accept: { 'application/json': ['.json'] } });
 
     const handleProcessAndSend = () => {
+        if (!firestore) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Firestore not initialized.' });
+            return;
+        }
         if (fileContent) {
-            const transformedData = {
-                employees: fileContent.map((item: any) => ({
-                    id: item['รหัส'] ? item['รหัส'].toString() : `user-${Math.random()}`,
+            const employeesCollectionRef = collection(firestore, 'employees');
+            
+            fileContent.forEach((item: any) => {
+                const employeeId = item['รหัส'] ? item['รหัส'].toString() : `user-${Math.random().toString(36).substr(2, 9)}`;
+                const employeeDocRef = doc(employeesCollectionRef, employeeId);
+                const employeeData = {
+                    id: employeeId,
                     name: item['ชื่อ-นามสกุล'] || 'N/A',
                     department: item['แผนก'] || 'N/A',
                     position: item['ตำแหน่ง'] || 'N/A',
                     manager: item['ผู้บังคับบัญชา'] || ''
-                }))
-            };
-            setOrgData(transformedData);
-            toast({ title: 'Redirecting', description: 'Organization data updated and navigating to Cascade page.' });
+                };
+                setDocumentNonBlocking(employeeDocRef, employeeData, { merge: true });
+            });
+
+            toast({ title: 'Import Complete', description: 'Organization data has been saved to Firestore.' });
             router.push('/cascade');
         } else {
              toast({ variant: 'destructive', title: 'No Data to Send', description: 'No file has been processed.' });
@@ -255,7 +277,7 @@ const OrgImportTab = () => {
                     )}
                     <div className="flex justify-end">
                         <Button onClick={handleProcessAndSend} disabled={!fileContent} variant="secondary">
-                            <Send className="w-4 h-4 mr-2" />Process and Send to Cascade
+                            Import to Firestore
                         </Button>
                     </div>
                 </CardContent>
@@ -275,7 +297,6 @@ const OrgImportTab = () => {
 
 export default function KpiImportPage() {
   const { setPageTitle } = useAppLayout();
-  const [currentTab, setCurrentTab] = useState("kpi");
 
   useEffect(() => {
     setPageTitle('Intake Data');
@@ -287,7 +308,7 @@ export default function KpiImportPage() {
         <h3 className="text-xl font-semibold text-gray-800">Intake Data</h3>
         <p className="text-gray-600 mt-1">นำเข้าข้อมูล KPI, โครงสร้างองค์กร และข้อมูลพนักงาน</p>
       </div>
-      <Tabs defaultValue="kpi" className="w-full" onValueChange={setCurrentTab}>
+      <Tabs defaultValue="kpi" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="kpi">KPI Data</TabsTrigger>
           <TabsTrigger value="org">Organization Data</TabsTrigger>

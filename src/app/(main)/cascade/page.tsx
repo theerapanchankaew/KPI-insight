@@ -10,43 +10,27 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
-import { useKpiData } from '@/context/KpiDataContext';
+import { useKpiData, type Kpi, type Employee } from '@/context/KpiDataContext';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronDown, ChevronsUpDown, PlusCircle, Trash2 } from 'lucide-react';
+import { WithId } from '@/firebase';
 
 
 // Type for a corporate KPI
-interface CorporateKpi {
-  id: string;
-  measure: string;
-  target: string;
-  category: string;
-  perspective: string;
-  unit?: string;
-}
+type CorporateKpi = WithId<Kpi>;
 
 // Type for a cascaded KPI in a department
 interface CascadedKpi extends CorporateKpi {
   department: string;
   weight: number;
   departmentTarget: string;
-}
-
-// Type for an Employee
-interface Employee {
-  id: string;
-  name: string;
-  department: string;
-  position: string;
-  manager: string;
 }
 
 // Base type for any individual KPI
@@ -80,9 +64,22 @@ type IndividualKpi = AssignedCascadedKpi | CommittedKpi;
 
 
 const CorporateLevel = ({ onCascadeClick }: { onCascadeClick: (kpi: CorporateKpi) => void }) => {
-    const { kpiData } = useKpiData();
+    const { kpiData, isKpiDataLoading } = useKpiData();
     
-    if (!kpiData || !kpiData.kpi_catalog || kpiData.kpi_catalog.length === 0) {
+    if (isKpiDataLoading) {
+        return (
+             <Card>
+                <CardHeader>
+                    <CardTitle>Corporate KPIs</CardTitle>
+                </CardHeader>
+                <CardContent className="p-6 text-center text-gray-500">
+                    <p>Loading KPI data from Firestore...</p>
+                </CardContent>
+            </Card>
+        )
+    }
+
+    if (!kpiData || kpiData.length === 0) {
         return (
             <Card>
                 <CardHeader>
@@ -95,10 +92,8 @@ const CorporateLevel = ({ onCascadeClick }: { onCascadeClick: (kpi: CorporateKpi
             </Card>
         );
     }
-
-    const corporateKpis = kpiData.kpi_catalog;
     
-    const groupedKpis: { [key: string]: CorporateKpi[] } = corporateKpis.reduce((acc, kpi) => {
+    const groupedKpis: { [key: string]: CorporateKpi[] } = kpiData.reduce((acc, kpi) => {
         const perspective = kpi.perspective || 'Uncategorized';
         if (!acc[perspective]) acc[perspective] = [];
         acc[perspective].push(kpi);
@@ -137,9 +132,22 @@ const CorporateLevel = ({ onCascadeClick }: { onCascadeClick: (kpi: CorporateKpi
 
 
 const DepartmentLevel = ({ cascadedKpis }: { cascadedKpis: CascadedKpi[] }) => {
-    const { orgData } = useKpiData();
+    const { orgData, isOrgDataLoading } = useKpiData();
 
-    if (!orgData || !orgData.employees || orgData.employees.length === 0) {
+     if (isOrgDataLoading) {
+        return (
+             <Card>
+                <CardHeader>
+                    <CardTitle>Department Performance</CardTitle>
+                </CardHeader>
+                <CardContent className="p-6 text-center text-gray-500">
+                    <p>Loading Organization data from Firestore...</p>
+                </CardContent>
+            </Card>
+        )
+    }
+
+    if (!orgData || orgData.length === 0) {
          return (
             <Card>
                 <CardHeader>
@@ -153,7 +161,7 @@ const DepartmentLevel = ({ cascadedKpis }: { cascadedKpis: CascadedKpi[] }) => {
         );
     }
     
-    const departments = [...new Set(orgData.employees.map(e => e.department))];
+    const departments = [...new Set(orgData.map(e => e.department))];
     const kpisByDepartment = cascadedKpis.reduce((acc, kpi) => {
         if (!acc[kpi.department]) {
             acc[kpi.department] = [];
@@ -249,13 +257,24 @@ const AssignedKpiGrid = ({ kpis }: { kpis: IndividualKpi[] }) => {
 }
 
 
-const IndividualLevel = ({ cascadedKpis, individualKpis, onAssignKpi }: { cascadedKpis: CascadedKpi[], individualKpis: IndividualKpi[], onAssignKpi: (employee: Employee) => void }) => {
-    const { orgData } = useKpiData();
+const IndividualLevel = ({ cascadedKpis, individualKpis, onAssignKpi }: { cascadedKpis: CascadedKpi[], individualKpis: IndividualKpi[], onAssignKpi: (employee: WithId<Employee>) => void }) => {
+    const { orgData, isOrgDataLoading } = useKpiData();
 
-    if (!orgData || !orgData.employees || orgData.employees.length === 0) {
+    if (isOrgDataLoading) {
+        return (
+             <Card>
+                <CardHeader><CardTitle>Individual Performance</CardTitle></CardHeader>
+                <CardContent className="p-6 text-center text-gray-500">
+                   <p>Loading Organization data from Firestore...</p>
+                </CardContent>
+            </Card>
+        )
+    }
+
+    if (!orgData || orgData.length === 0) {
          return (
             <Card>
-                <CardHeader><CardTitle>Individual Performance</CardTitle></CardHeader>
+                <CardHeader><CardTitle>Individual Performance</CardTitle></Header>
                 <CardContent className="p-6 text-center text-gray-500">
                     <p>No Organization data has been imported.</p>
                     <p className="mt-2">Please go to the "Intake Data" page to upload an organization data file.</p>
@@ -264,22 +283,13 @@ const IndividualLevel = ({ cascadedKpis, individualKpis, onAssignKpi }: { cascad
         );
     }
     
-    const managers = [...new Set(orgData.employees.map(e => e.manager))].filter(Boolean); // Filter out empty manager names
-
-    const usersToDisplay = useMemo(() => {
-        const allUsers = orgData.employees;
-        const managerIds = new Set(allUsers.map(e => e.manager));
-        // Display all users if there are no managers, or if we want a flat list.
-        // For this logic, we'll group by manager. Let's find employees who are also managers.
-        const employeesWhoAreManagers = allUsers.filter(e => allUsers.some(report => report.manager === e.name));
-        return allUsers; // Simplified to return all users for now, grouping will handle hierarchy
-    }, [orgData.employees]);
+    const managers = [...new Set(orgData.map(e => e.manager))].filter(Boolean); // Filter out empty manager names
 
     return (
         <div className="space-y-8">
             {managers.map(manager => {
-                const directReports = orgData.employees.filter(e => e.manager === manager);
-                const managerAsEmployee = orgData.employees.find(e => e.name === manager);
+                const directReports = orgData.filter(e => e.manager === manager);
+                const managerAsEmployee = orgData.find(e => e.name === manager);
                 
                 const team = managerAsEmployee ? [managerAsEmployee, ...directReports] : directReports;
 
@@ -423,7 +433,7 @@ const AssignKpiDialog = ({
 }: {
     isOpen: boolean;
     onClose: () => void;
-    employee: Employee | null;
+    employee: WithId<Employee> | null;
     departmentKpis: CascadedKpi[];
     onConfirm: (assignment: IndividualKpi[]) => void;
 }) => {
@@ -701,7 +711,7 @@ export default function CascadePage() {
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   
   const [selectedKpi, setSelectedKpi] = useState<CorporateKpi | null>(null);
-  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [selectedEmployee, setSelectedEmployee] = useState<WithId<Employee> | null>(null);
 
   const [cascadedKpis, setCascadedKpis] = useState<CascadedKpi[]>([]);
   const [individualKpis, setIndividualKpis] = useState<IndividualKpi[]>([]);
@@ -710,14 +720,14 @@ export default function CascadePage() {
     setPageTitle('Cascade KPI');
   }, [setPageTitle]);
 
-  const departments = orgData && orgData.employees ? [...new Set(orgData.employees.map(e => e.department))] : [];
+  const departments = orgData ? [...new Set(orgData.map(e => e.department))] : [];
 
   const handleCascadeClick = (kpi: CorporateKpi) => {
       setSelectedKpi(kpi);
       setIsCascadeModalOpen(true);
   };
 
-  const handleAssignKpiClick = (employee: Employee) => {
+  const handleAssignKpiClick = (employee: WithId<Employee>) => {
       setSelectedEmployee(employee);
       setIsAssignModalOpen(true);
   };

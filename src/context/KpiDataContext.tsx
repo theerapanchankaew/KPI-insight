@@ -1,10 +1,13 @@
 
 "use client";
 
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
+import { collection } from 'firebase/firestore';
+import { WithId }from '@/firebase/firestore/use-collection';
 
 // Define the shape of your KPI data based on the JSON structure
-interface Kpi {
+export interface Kpi {
   id: string;
   perspective: string;
   strategic_objective: string;
@@ -12,12 +15,6 @@ interface Kpi {
   target: string;
   unit: string;
   category: string;
-}
-
-interface KpiData {
-  version: string;
-  organization: string;
-  kpi_catalog: Kpi[];
 }
 
 // Define the shape for an Employee
@@ -31,7 +28,7 @@ export interface Employee {
 
 // Define the shape for the organization data
 export interface OrgData {
-  employees: Employee[];
+  employees: WithId<Employee>[];
 }
 
 export interface AppSettings {
@@ -41,13 +38,12 @@ export interface AppSettings {
   periodDate?: string;
 }
 
-
 // Define the context shape
 interface KpiDataContextType {
-  kpiData: KpiData | null;
-  setKpiData: (data: KpiData | null) => void;
-  orgData: OrgData | null;
-  setOrgData: (data: OrgData | null) => void;
+  kpiData: WithId<Kpi>[] | null;
+  isKpiDataLoading: boolean;
+  orgData: WithId<Employee>[] | null;
+  isOrgDataLoading: boolean;
   settings: AppSettings;
   setSettings: (settings: Partial<AppSettings>) => void;
 }
@@ -57,8 +53,14 @@ const KpiDataContext = createContext<KpiDataContextType | undefined>(undefined);
 
 // Create the provider component
 export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
-  const [kpiData, setKpiData] = useState<KpiData | null>(null);
-  const [orgData, setOrgData] = useState<OrgData | null>(null);
+  const firestore = useFirestore();
+
+  const kpiQuery = useMemoFirebase(() => firestore ? collection(firestore, 'kpi_catalog') : null, [firestore]);
+  const { data: kpiData, isLoading: isKpiDataLoading } = useCollection<Kpi>(kpiQuery);
+
+  const orgQuery = useMemoFirebase(() => firestore ? collection(firestore, 'employees') : null, [firestore]);
+  const { data: orgData, isLoading: isOrgDataLoading } = useCollection<Employee>(orgQuery);
+
   const [settings, setSettingsState] = useState<AppSettings>({
     orgName: 'บริษัท ABC จำกัด',
     period: 'รายไตรมาส (Quarterly)',
@@ -70,7 +72,7 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <KpiDataContext.Provider value={{ kpiData, setKpiData, orgData, setOrgData, settings, setSettings }}>
+    <KpiDataContext.Provider value={{ kpiData, isKpiDataLoading, orgData, isOrgDataLoading, settings, setSettings }}>
       {children}
     </KpiDataContext.Provider>
   );
