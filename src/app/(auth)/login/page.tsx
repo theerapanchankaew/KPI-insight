@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useAuth, useFirestore, useUser } from '@/firebase';
+import { useAuth, useFirestore, useUser, initiateEmailSignIn } from '@/firebase';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { ShieldCheck, LogIn, UserPlus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -28,9 +28,7 @@ const SignInForm = () => {
     }
     setError(null);
     // Non-blocking sign-in
-    signInWithEmailAndPassword(auth, email, password).catch(err => {
-      setError(err.message);
-    });
+    initiateEmailSignIn(auth, email, password);
   };
 
   return (
@@ -156,20 +154,23 @@ export default function LoginPage() {
 
   useEffect(() => {
     // If user is logged in, redirect to dashboard
-    if (user) {
+    if (!isUserLoading && user) {
       router.push('/dashboard');
     }
-  }, [user, router]);
-
+  }, [user, isUserLoading, router]);
+  
+  // While loading, or if the user exists and is about to be redirected,
+  // we can show a loader or just the blank page background.
+  // Rendering the full login form prevents hydration errors.
   if (isUserLoading || user) {
-    return (
+     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <div className="flex flex-col items-center space-y-4">
            <ShieldCheck className="h-12 w-12 text-primary animate-pulse" />
            <p className="text-muted-foreground">Loading authentication state...</p>
         </div>
       </div>
-    )
+    );
   }
 
   return (
