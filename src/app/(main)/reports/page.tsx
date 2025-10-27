@@ -1,6 +1,7 @@
+
 "use client";
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useAppLayout } from '../layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,32 +9,54 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { kpiReportData } from '@/lib/data/report-data';
 import { Download, FileWarning } from 'lucide-react';
 import ExecutiveSummary from './components/executive-summary';
+import { useKpiData } from '@/context/KpiDataContext';
+import { kpiReportData } from '@/lib/data/report-data'; // Keep for quarterly
+import { Skeleton } from '@/components/ui/skeleton';
 
 const MonthlyReport = () => {
-    const { monthly } = kpiReportData;
+    const { orgData, isOrgDataLoading, cascadedKpis, isCascadedKpisLoading } = useKpiData();
+
+    const isLoading = isOrgDataLoading || isCascadedKpisLoading;
+
+    // Memoize the data for the AI summary to prevent re-generating on every render
+    const aiInputData = useMemo(() => {
+        if (isLoading || !orgData || !cascadedKpis) return "[]";
+        
+        const dataForAI = {
+            departments: orgData.map(e => e.department),
+            cascadedKpis: cascadedKpis,
+        };
+        
+        return JSON.stringify(dataForAI, null, 2);
+    }, [orgData, cascadedKpis, isLoading]);
+
     return (
         <div className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <ExecutiveSummary kpiData={JSON.stringify(monthly, null, 2)} />
+                <ExecutiveSummary kpiData={aiInputData} />
                 <Card>
                     <CardHeader>
-                        <CardTitle>Top Performers</CardTitle>
+                        <CardTitle>Top Performers (by Department)</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                        {monthly.topPerformers.map(performer => (
-                            <div key={performer.name} className={cn("flex items-center justify-between p-3 rounded-lg", 
-                                performer.color === 'success' ? 'bg-success/10' : performer.color === 'secondary' ? 'bg-secondary/10' : 'bg-primary/10'
+                         {isLoading ? (
+                            [...Array(3)].map((_, i) => <Skeleton key={i} className="h-16 w-full" />)
+                         ) : orgData && [...new Set(orgData.map(e => e.department))].slice(0, 3).map((dept, index) => (
+                            <div key={dept} className={cn("flex items-center justify-between p-3 rounded-lg", 
+                                index === 0 ? 'bg-success/10' : index === 1 ? 'bg-secondary/10' : 'bg-primary/10'
                             )}>
                                 <div>
-                                    <p className="font-medium text-gray-800">{performer.name}</p>
-                                    <p className="text-sm text-gray-600">{performer.department}</p>
+                                    <p className="font-medium text-gray-800">{dept}</p>
+                                    <p className="text-sm text-gray-600">Department</p>
                                 </div>
                                 <span className={cn("text-lg font-bold", 
-                                    performer.color === 'success' ? 'text-success' : performer.color === 'secondary' ? 'text-secondary' : 'text-primary'
-                                )}>{performer.performance}</span>
+                                    index === 0 ? 'text-success' : index === 1 ? 'text-secondary' : 'text-primary'
+                                )}>
+                                    {/* Placeholder performance */}
+                                    {95 - index * 5}% 
+                                </span>
                             </div>
                         ))}
                     </CardContent>
@@ -41,7 +64,7 @@ const MonthlyReport = () => {
             </div>
             <Card>
                 <CardHeader>
-                    <CardTitle>Detailed KPI Performance</CardTitle>
+                    <CardTitle>Detailed KPI Performance (Cascaded)</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <Table>
@@ -49,27 +72,50 @@ const MonthlyReport = () => {
                             <TableRow>
                                 <TableHead>KPI</TableHead>
                                 <TableHead>Department</TableHead>
+                                <TableHead>Weight</TableHead>
                                 <TableHead>Target</TableHead>
-                                <TableHead>Actual</TableHead>
+                                <TableHead>Actual (Placeholder)</TableHead>
                                 <TableHead>Achievement</TableHead>
-                                <TableHead>Trend</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {monthly.detailed.map(kpi => (
-                                <TableRow key={kpi.kpi}>
-                                    <TableCell className="font-medium">{kpi.kpi}</TableCell>
-                                    <TableCell>{kpi.department}</TableCell>
-                                    <TableCell>{kpi.target}</TableCell>
-                                    <TableCell>{kpi.actual}</TableCell>
-                                    <TableCell>
-                                        <Badge variant={kpi.achievement >= 100 ? 'success' : kpi.achievement >= 80 ? 'warning' : 'destructive'}>
-                                            {kpi.achievement}%
-                                        </Badge>
+                            {isLoading ? (
+                                [...Array(4)].map((_, i) => (
+                                    <TableRow key={i}>
+                                        <TableCell><Skeleton className="h-5 w-48" /></TableCell>
+                                        <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                                        <TableCell><Skeleton className="h-5 w-16" /></TableCell>
+                                        <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                                        <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                                        <TableCell><Skeleton className="h-6 w-16" /></TableCell>
+                                    </TableRow>
+                                ))
+                            ) : cascadedKpis && cascadedKpis.length > 0 ? (
+                                cascadedKpis.map(kpi => {
+                                    // Placeholder for achievement calculation
+                                    const achievement = Math.floor(Math.random() * 40) + 70; // 70-110%
+                                    return (
+                                        <TableRow key={kpi.id}>
+                                            <TableCell className="font-medium">{kpi.measure}</TableCell>
+                                            <TableCell>{kpi.department}</TableCell>
+                                            <TableCell>{kpi.weight}%</TableCell>
+                                            <TableCell>{kpi.departmentTarget}</TableCell>
+                                            <TableCell>...</TableCell>
+                                            <TableCell>
+                                                <Badge variant={achievement >= 100 ? 'success' : achievement >= 80 ? 'warning' : 'destructive'}>
+                                                    {achievement}%
+                                                </Badge>
+                                            </TableCell>
+                                        </TableRow>
+                                    )
+                                })
+                            ) : (
+                                <TableRow>
+                                    <TableCell colSpan={6} className="h-24 text-center">
+                                        No cascaded KPIs to report.
                                     </TableCell>
-                                    <TableCell className={cn('font-medium', `text-${kpi.trendColor}`)}>{kpi.trend}</TableCell>
                                 </TableRow>
-                            ))}
+                            )}
                         </TableBody>
                     </Table>
                 </CardContent>
