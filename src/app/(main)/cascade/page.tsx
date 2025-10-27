@@ -154,9 +154,9 @@ const CorporateLevel = ({ onCascadeClick, onEditClick, onDeleteClick, userRole }
 const DepartmentLevel = () => {
     const { orgData, isOrgDataLoading, cascadedKpis, isCascadedKpisLoading } = useKpiData();
 
-     if (isOrgDataLoading || isCascadedKpisLoading) {
+    if (isOrgDataLoading || isCascadedKpisLoading) {
         return (
-             <Card>
+            <Card>
                 <CardHeader>
                     <CardTitle>Department Performance</CardTitle>
                 </CardHeader>
@@ -164,11 +164,11 @@ const DepartmentLevel = () => {
                     <p>Loading Organization and KPI data from Firestore...</p>
                 </CardContent>
             </Card>
-        )
+        );
     }
 
     if (!orgData || orgData.length === 0) {
-         return (
+        return (
             <Card>
                 <CardHeader>
                     <CardTitle>Department Performance</CardTitle>
@@ -182,13 +182,17 @@ const DepartmentLevel = () => {
     }
     
     const departments = [...new Set(orgData.map(e => e.department))];
-    const kpisByDepartment = (cascadedKpis || []).reduce((acc, kpi) => {
-        if (!acc[kpi.department]) {
-            acc[kpi.department] = [];
-        }
-        acc[kpi.department].push(kpi);
-        return acc;
-    }, {} as Record<string, WithId<CascadedKpi>[]>);
+    
+    const kpisByDepartment = useMemo(() => {
+        if (!cascadedKpis) return {};
+        return cascadedKpis.reduce((acc, kpi) => {
+            if (!acc[kpi.department]) {
+                acc[kpi.department] = [];
+            }
+            acc[kpi.department].push(kpi);
+            return acc;
+        }, {} as Record<string, WithId<CascadedKpi>[]>);
+    }, [cascadedKpis]);
 
 
     return (
@@ -1239,5 +1243,7 @@ export default function CascadePage() {
     </div>
   );
 }
+
+    
 
     
