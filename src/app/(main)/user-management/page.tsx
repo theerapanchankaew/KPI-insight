@@ -20,6 +20,7 @@ import { useCollection, useFirestore, useMemoFirebase, useUser, WithId, useDoc }
 import { collection, doc } from 'firebase/firestore';
 import { addDocumentNonBlocking, deleteDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useKpiData, type Employee } from '@/context/KpiDataContext';
 
 type Role = 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee';
 
@@ -33,6 +34,10 @@ interface AppUser {
   role: Role;
   menuAccess: { [key: string]: boolean };
 }
+
+// Represents the merged data from employees and users collections
+type ManagedUser = Employee & Partial<AppUser>;
+
 
 const defaultPermissions: { [key in Role]: { [key: string]: boolean } } = {
   Admin: navItems.reduce((acc, item) => ({ ...acc, [item.href]: true }), {}),
@@ -135,7 +140,8 @@ export default function UserManagementPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user, isUserLoading: isAuthLoading } = useUser();
-  
+  const { orgData, isOrgDataLoading } = useKpiData();
+
   const userDocRef = useMemoFirebase(() => {
     if (!firestore || !user) return null;
     return doc(firestore, 'users', user.uid);
@@ -149,25 +155,37 @@ export default function UserManagementPage() {
   }, [setPageTitle]);
 
   const usersQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
+    if (!firestore || !isAdmin) return null; // Only query if user is admin
     return collection(firestore, 'users');
-  }, [firestore]);
+  }, [firestore, isAdmin]);
   
   const { data: usersData, isLoading: isUsersLoading, error } = useCollection<AppUser>(usersQuery);
 
-  const [localUsers, setLocalUsers] = useState<WithId<AppUser>[]>([]);
+  const [managedUsers, setManagedUsers] = useState<WithId<ManagedUser>[]>([]);
   const [isAddUserModalOpen, setAddUserModalOpen] = useState(false);
 
   useEffect(() => {
-    if (usersData) {
-      setLocalUsers(usersData);
+    if (orgData && usersData) {
+        const mergedUsers = orgData.map(employee => {
+            const userProfile = usersData.find(u => u.email === employee.id || u.name === employee.name || u.id === employee.id);
+            return {
+                ...employee,
+                ...userProfile,
+                id: userProfile?.id || employee.id, // Prioritize user ID if available
+                role: userProfile?.role || 'Employee',
+                menuAccess: userProfile?.menuAccess || defaultPermissions.Employee
+            };
+        });
+        setManagedUsers(mergedUsers);
+    } else if (orgData) {
+        setManagedUsers(orgData.map(e => ({...e, role: 'Employee', menuAccess: defaultPermissions.Employee })));
     } else {
-      setLocalUsers([]);
+        setManagedUsers([]);
     }
-  }, [usersData]);
+  }, [orgData, usersData]);
   
   const handleRoleChange = (userId: string, role: Role) => {
-    setLocalUsers(prev => prev.map(user => 
+    setManagedUsers(prev => prev.map(user => 
       user.id === userId 
       ? { ...user, role, menuAccess: defaultPermissions[role] }
       : user
@@ -175,7 +193,7 @@ export default function UserManagementPage() {
   };
 
   const handlePermissionChange = (userId: string, menuHref: string, checked: boolean) => {
-    setLocalUsers(prev => prev.map(user => 
+    setManagedUsers(prev => prev.map(user => 
         user.id === userId
         ? { ...user, menuAccess: { ...user.menuAccess, [menuHref]: checked } }
         : user
@@ -187,10 +205,16 @@ export default function UserManagementPage() {
         toast({ title: 'Error', description: 'Firestore is not available.', variant: 'destructive'});
         return;
     }
-    localUsers.forEach(user => {
-      const { id, ...userData } = user;
-      const userRef = doc(firestore, 'users', id);
-      setDocumentNonBlocking(userRef, userData, { merge: true });
+    managedUsers.forEach(user => {
+      // Only save users that have a proper user profile (i.e., they exist in the 'users' collection)
+      if (usersData?.some(u => u.id === user.id)) {
+        const userRef = doc(firestore, 'users', user.id);
+        const userDataToSave = {
+            role: user.role,
+            menuAccess: user.menuAccess,
+        };
+        setDocumentNonBlocking(userRef, userDataToSave, { merge: true });
+      }
     });
     toast({
         title: "User Permissions Saved",
@@ -203,41 +227,33 @@ export default function UserManagementPage() {
         toast({ title: 'Error', description: 'Firestore is not available.', variant: 'destructive'});
         return;
     }
-    const positionLower = newUser.position.toLowerCase();
-    let role: Role = 'Employee';
-    if (positionLower.includes('vp') || positionLower.includes('vice president')) {
-        role = 'VP';
-    } else if (positionLower.includes('avp')) {
-        role = 'AVP';
-    } else if (positionLower.includes('manager') || positionLower.includes('ผู้จัดการ')) {
-        role = 'Manager';
-    }
-
-    const userToSave = {
-        ...newUser,
-        role,
-        menuAccess: defaultPermissions[role],
-    };
+    // This adds to 'employees' collection. User must still sign up to create a 'users' entry.
+    const employeesCollection = collection(firestore, 'employees');
+    addDocumentNonBlocking(employeesCollection, newUser);
     
-    // Note: This adds a document to the `users` collection but doesn't create an authentication entry.
-    const usersCollection = collection(firestore, 'users');
-    addDocumentNonBlocking(usersCollection, userToSave);
-    
-    toast({ title: 'User Document Added', description: `${newUser.name}'s document has been created.` });
+    toast({ title: 'Employee Added', description: `${newUser.name} has been added to the organization.` });
   };
 
-  const handleDeleteUser = (userId: string) => {
+  const handleDeleteUser = (employeeId: string) => {
       if (!firestore) {
         toast({ title: 'Error', description: 'Firestore is not available.', variant: 'destructive'});
         return;
       }
-      // This only deletes the Firestore document. It does NOT delete the Firebase Auth user.
-      const userRef = doc(firestore, 'users', userId);
-      deleteDocumentNonBlocking(userRef);
-      toast({ title: 'User Document Deleted', description: 'The user document has been removed from Firestore.', variant: 'destructive' });
+      // This deletes from the 'employees' collection.
+      const employeeRef = doc(firestore, 'employees', employeeId);
+      deleteDocumentNonBlocking(employeeRef);
+
+      // Also attempt to delete the corresponding user doc if it exists
+      const userProfile = usersData?.find(u => u.id === employeeId || u.name === managedUsers.find(mu => mu.id === employeeId)?.name);
+      if(userProfile) {
+        const userRef = doc(firestore, 'users', userProfile.id);
+        deleteDocumentNonBlocking(userRef);
+      }
+
+      toast({ title: 'User Removed', description: 'The user has been removed from the organization list.', variant: 'destructive' });
   };
 
-  const isLoading = isAuthLoading || isUsersLoading;
+  const isLoading = isAuthLoading || isUsersLoading || isOrgDataLoading;
 
   const renderContent = () => {
     if (isLoading) {
@@ -277,7 +293,7 @@ export default function UserManagementPage() {
                  <AlertTriangle className="h-10 w-10 text-destructive" />
                  <h3 className="text-lg font-semibold">Error Loading Data</h3>
                  <p className="text-muted-foreground max-w-md">
-                    Could not load user data. There might be a network issue or a problem with Firestore permissions.
+                    Could not load user permissions data. {error.message}
                  </p>
                </div>
             </TableCell>
@@ -285,7 +301,7 @@ export default function UserManagementPage() {
        )
     }
 
-    return localUsers.map(employee => (
+    return managedUsers.map(employee => (
       <TableRow key={employee.id}>
         <TableCell>
           <div className="flex items-center space-x-3">
@@ -337,7 +353,7 @@ export default function UserManagementPage() {
               <AlertDialogHeader>
                 <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will permanently delete the user's data document. It will not delete their login account.
+                  This will permanently delete the user's document from the employees list. It will not delete their login account.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -363,7 +379,7 @@ export default function UserManagementPage() {
             {isAdmin && (
                 <Button variant="outline" onClick={() => setAddUserModalOpen(true)}>
                   <PlusCircle className="mr-2 h-4 w-4" />
-                  Add User
+                  Add Employee
                 </Button>
             )}
           </CardHeader>
@@ -397,3 +413,5 @@ export default function UserManagementPage() {
     </div>
   );
 }
+
+    
