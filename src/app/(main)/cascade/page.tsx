@@ -133,6 +133,7 @@ const DISTRIBUTION_STRATEGIES = {
       monthName: MONTH_NAMES_TH[i],
       percentage: 100 / 12,
       target: Number(monthly.toFixed(2)),
+      weight: 1,
     }));
   },
 
@@ -288,14 +289,34 @@ const DeployAndCascadeDialog = ({
 
   useEffect(() => {
     if (kpi && isOpen) {
-      generatePreview();
+      // Initialize weights to 1 for weighted strategy
+      if(strategy === 'weighted') {
+        const equalDist = DISTRIBUTION_STRATEGIES.equal(100); // For percentage
+        setPreviewData(equalDist);
+        setCustomWeights(equalDist.map(m => m.weight || 1));
+      } else {
+         generatePreview();
+      }
     } else {
       // Reset state on close
       setCascadedDepts([]);
       setStrategy('auto');
       setSelectedYear(new Date().getFullYear());
     }
-  }, [kpi, isOpen, generatePreview]);
+  }, [kpi, isOpen, generatePreview, strategy]);
+
+  const handleCustomWeightChange = (monthIndex: number, weightValue: string) => {
+    const newWeights = [...customWeights];
+    newWeights[monthIndex] = Number(weightValue) || 0;
+    setCustomWeights(newWeights);
+    // Re-run preview generation with new weights
+    if (!kpi || !kpi.target) return;
+    const yearlyTarget = parseFloat(String(kpi.target).replace(/[^0-9.]/g, '')) || 0;
+    const preview = DISTRIBUTION_STRATEGIES.weighted(yearlyTarget, newWeights);
+    setPreviewData(preview);
+  };
+  
+  const totalWeight = useMemo(() => customWeights.reduce((sum, w) => sum + w, 0), [customWeights]);
 
   const handleAddDept = () => {
     setCascadedDepts([...cascadedDepts, { department: '', weight: 0, target: '' }]);
@@ -373,21 +394,54 @@ const DeployAndCascadeDialog = ({
                     </SelectContent>
                   </Select>
               </div>
-              <Collapsible>
-                  <CollapsibleTrigger asChild>
-                      <Button variant="link" className="p-0 h-auto text-sm">ดูตัวอย่างการกระจายรายเดือน <ChevronsUpDown className="ml-1 h-4 w-4" /></Button>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="mt-4 space-y-2">
-                      {previewData.map((month) => (
-                        <div key={month.month} className="flex items-center gap-4 p-2 hover:bg-gray-50 rounded text-sm">
-                          <span className="w-12 font-medium text-gray-700">{month.monthName}</span>
-                          <div className="flex-1"><Progress value={month.percentage} className="h-2" /></div>
-                          <span className="w-28 text-right font-semibold text-gray-800">{month.target.toFixed(2)}</span>
-                          <span className="w-16 text-right text-gray-500 bg-gray-100 px-2 py-1 rounded">{month.percentage.toFixed(1)}%</span>
-                        </div>
+               {strategy === 'weighted' ? (
+                <div className="space-y-4">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-1/4">เดือน</TableHead>
+                        <TableHead className="w-1/4">น้ำหนัก (Weight)</TableHead>
+                        <TableHead className="w-1/4">เป้าหมาย (Target)</TableHead>
+                        <TableHead className="w-1/4 text-right">สัดส่วน (%)</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {previewData.map((month, index) => (
+                        <TableRow key={month.month}>
+                          <TableCell className="font-medium">{month.monthName}</TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              value={customWeights[index]}
+                              onChange={(e) => handleCustomWeightChange(index, e.target.value)}
+                              className="h-8"
+                            />
+                          </TableCell>
+                          <TableCell>{month.target.toFixed(2)}</TableCell>
+                          <TableCell className="text-right">{month.percentage.toFixed(1)}%</TableCell>
+                        </TableRow>
                       ))}
-                  </CollapsibleContent>
-              </Collapsible>
+                    </TableBody>
+                  </Table>
+                  <div className="text-right font-semibold">Total Weight: {totalWeight}</div>
+                </div>
+              ) : (
+                <Collapsible>
+                    <CollapsibleTrigger asChild>
+                        <Button variant="link" className="p-0 h-auto text-sm">ดูตัวอย่างการกระจายรายเดือน <ChevronsUpDown className="ml-1 h-4 w-4" /></Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="mt-4 space-y-2">
+                        {previewData.map((month) => (
+                          <div key={month.month} className="flex items-center gap-4 p-2 hover:bg-gray-50 rounded text-sm">
+                            <span className="w-12 font-medium text-gray-700">{month.monthName}</span>
+                            <div className="flex-1"><Progress value={month.percentage} className="h-2" /></div>
+                            <span className="w-28 text-right font-semibold text-gray-800">{month.target.toFixed(2)}</span>
+                            <span className="w-16 text-right text-gray-500 bg-gray-100 px-2 py-1 rounded">{month.percentage.toFixed(1)}%</span>
+                          </div>
+                        ))}
+                    </CollapsibleContent>
+                </Collapsible>
+              )}
             </div>
 
             {/* --- DEPARTMENT CASCADE SECTION --- */}
