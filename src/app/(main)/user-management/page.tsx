@@ -16,8 +16,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { useAuth, useCollection, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { useCollection, useFirestore, useMemoFirebase, useUser } from '@/firebase';
+import { collection, doc } from 'firebase/firestore';
 import { addDocumentNonBlocking, deleteDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
 type Role = 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee';
@@ -129,8 +129,14 @@ export default function UserManagementPage() {
   const { setPageTitle } = useAppLayout();
   const { toast } = useToast();
   const firestore = useFirestore();
+  const { user, isUserLoading: isAuthLoading } = useUser();
 
-  const usersQuery = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore]);
+  const usersQuery = useMemoFirebase(() => {
+    // Only create the query if firestore is available and a user is logged in.
+    if (!firestore || !user) return null;
+    return collection(firestore, 'users');
+  }, [firestore, user]);
+  
   const { data: usersData, isLoading: isUsersLoading } = useCollection<AppUser>(usersQuery);
 
   const [localUsers, setLocalUsers] = useState<AppUser[]>([]);
@@ -214,6 +220,8 @@ export default function UserManagementPage() {
       toast({ title: 'User Deleted', description: 'The user has been removed from Firestore.', variant: 'destructive' });
   };
 
+  const isLoading = isAuthLoading || isUsersLoading;
+
   return (
     <div className="fade-in space-y-6">
       <h3 className="text-xl font-semibold text-gray-800">User Management</h3>
@@ -243,7 +251,7 @@ export default function UserManagementPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {isUsersLoading ? (
+                  {isLoading ? (
                     <TableRow><TableCell colSpan={navItems.length + 4} className="text-center h-24">Loading users...</TableCell></TableRow>
                   ) : (localUsers.map(employee => (
                     <TableRow key={employee.id}>
@@ -321,3 +329,5 @@ export default function UserManagementPage() {
     </div>
   );
 }
+
+    
