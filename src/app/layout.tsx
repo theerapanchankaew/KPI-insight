@@ -3,6 +3,7 @@ import { Inter, Sarabun } from 'next/font/google';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster"
 import { cn } from '@/lib/utils';
+import { FirebaseClientProvider } from '@/firebase';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 const sarabun = Sarabun({
@@ -33,7 +34,9 @@ export default function RootLayout({
         </style>
       </head>
       <body className={cn("h-full bg-gray-50 font-sans", inter.variable, sarabun.variable)}>
-        {children}
+        <FirebaseClientProvider>
+          {children}
+        </FirebaseClientProvider>
         <Toaster />
       </body>
     </html>

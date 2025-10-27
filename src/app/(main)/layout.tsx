@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, createContext, useContext } from 'react';
@@ -16,6 +17,8 @@ import {
 import { cn } from '@/lib/utils';
 import { appConfig, navItems, headerData } from '@/lib/data/layout-data';
 import { KpiDataProvider, useKpiData } from '@/context/KpiDataContext';
+import { useUser } from '@/firebase';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface AppLayoutContextType {
   pageTitle: string;
@@ -85,6 +88,7 @@ const AppSidebar = () => {
 const AppHeader = () => {
   const { pageTitle } = useAppLayout();
   const { settings } = useKpiData();
+  const { user, isUserLoading } = useUser();
 
   return (
     <header className="bg-card shadow-sm border-b border-border px-4 sm:px-6 py-4 sticky top-0 z-10">
@@ -151,13 +155,37 @@ const AppHeader = () => {
             </Button>
           </div>
           <div className="flex items-center space-x-3">
-            <div className="hidden sm:block text-right">
-              <p className="text-sm font-medium text-foreground">{appConfig.ceoName}</p>
-              <p className="text-xs text-muted-foreground">{appConfig.ceoTitle}</p>
-            </div>
-            <Avatar>
-              <AvatarFallback className="bg-gradient-to-r from-primary to-secondary text-white font-semibold">S</AvatarFallback>
-            </Avatar>
+            {isUserLoading ? (
+              <div className="hidden sm:flex items-center space-x-3">
+                <div className="flex flex-col items-end">
+                  <Skeleton className="h-4 w-24 mb-1" />
+                  <Skeleton className="h-3 w-16" />
+                </div>
+                <Skeleton className="h-10 w-10 rounded-full" />
+              </div>
+            ) : user ? (
+              <>
+                <div className="hidden sm:block text-right">
+                  <p className="text-sm font-medium text-foreground">{user.displayName || 'Anonymous User'}</p>
+                  <p className="text-xs text-muted-foreground">{user.email || 'No email'}</p>
+                </div>
+                <Avatar>
+                  <AvatarFallback className="bg-gradient-to-r from-primary to-secondary text-white font-semibold">
+                    {user.displayName ? user.displayName.charAt(0).toUpperCase() : 'A'}
+                  </AvatarFallback>
+                </Avatar>
+              </>
+            ) : (
+              <>
+                 <div className="hidden sm:block text-right">
+                  <p className="text-sm font-medium text-foreground">{appConfig.ceoName}</p>
+                  <p className="text-xs text-muted-foreground">{appConfig.ceoTitle}</p>
+                </div>
+                <Avatar>
+                  <AvatarFallback className="bg-gradient-to-r from-primary to-secondary text-white font-semibold">S</AvatarFallback>
+                </Avatar>
+              </>
+            )}
           </div>
           <div className="hidden lg:flex items-center space-x-2">
             <div className="w-3 h-3 bg-success rounded-full pulse-dot"></div>
