@@ -208,7 +208,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       setIsClient(true);
   }, []);
 
-  if (!isClient || isUserLoading) {
+  // While the authentication state is loading, we can show a global loading screen,
+  // but AuthGate will now handle the redirection without rendering a conflicting UI.
+  if (isUserLoading && isClient) {
       return (
           <div className="flex h-screen w-full items-center justify-center bg-background">
               <div className="flex flex-col items-center space-y-4">

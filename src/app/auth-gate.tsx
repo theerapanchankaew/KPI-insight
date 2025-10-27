@@ -16,12 +16,16 @@ export function AuthGate({ children }: { children: ReactNode }) {
     }
   }, [user, isUserLoading, router]);
 
+  // While loading, return null to avoid rendering anything. The parent layout will show the loading UI.
+  if (isUserLoading) {
+    return null;
+  }
+  
   // If user is logged in, render the main application
   if (user) {
     return <>{children}</>;
   }
 
-  // While loading or if there's no user (and redirect is in progress), render nothing.
-  // The loading UI will be handled by the parent layout.
+  // If there's no user and we are about to redirect, render null.
   return null;
 }
