@@ -3,7 +3,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useAppLayout } from '../layout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -12,16 +12,18 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useKpiData } from '@/context/KpiDataContext';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon, Loader2 } from 'lucide-react';
+import { CalendarIcon, Loader2, ShieldAlert } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useUser } from '@/firebase';
 
 export default function SettingsPage() {
   const { setPageTitle } = useAppLayout();
   const { toast } = useToast();
   const { settings, setSettings, isSettingsLoading } = useKpiData();
+  const { user, isUserLoading: isAuthLoading } = useUser();
 
   // State for General Settings
   const [orgName, setOrgName] = useState('');
@@ -34,9 +36,28 @@ export default function SettingsPage() {
   const [approvalNotifications, setApprovalNotifications] = useState(true);
   const [weeklyReports, setWeeklyReports] = useState(false);
 
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+
   useEffect(() => {
     setPageTitle('Settings');
   }, [setPageTitle]);
+  
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+        if (user) {
+            try {
+                const idTokenResult = await user.getIdTokenResult();
+                setIsAdmin(idTokenResult.claims.role === 'Admin');
+            } catch (error) {
+                console.error("Error fetching user claims:", error);
+                setIsAdmin(false);
+            }
+        } else if (!isAuthLoading) {
+           setIsAdmin(false);
+        }
+    };
+    checkAdminStatus();
+  }, [user, isAuthLoading]);
 
   useEffect(() => {
     if (settings && !isSettingsLoading) {
@@ -55,6 +76,10 @@ export default function SettingsPage() {
   }, [settings, isSettingsLoading]);
 
   const handleGeneralSave = () => {
+    if (!isAdmin) {
+      toast({ title: 'Permission Denied', description: 'Only admins can change general settings.', variant: 'destructive' });
+      return;
+    }
     const newSettings: any = { 
       orgName, 
       period: currentPeriod, 
@@ -76,6 +101,8 @@ export default function SettingsPage() {
       description: "Your notification preferences have been updated.",
     });
   };
+  
+  const isLoading = isSettingsLoading || isAuthLoading || isAdmin === null;
 
   return (
     <div className="fade-in space-y-6">
@@ -85,9 +112,15 @@ export default function SettingsPage() {
           <Card>
               <CardHeader>
                   <CardTitle>General Settings</CardTitle>
+                  {!isLoading && !isAdmin && (
+                    <CardDescription className="!mt-2 flex items-center gap-2 text-destructive">
+                      <ShieldAlert className="h-4 w-4" />
+                      These settings are read-only. Only an Admin can make changes.
+                    </CardDescription>
+                  )}
               </CardHeader>
               <CardContent className="space-y-6">
-                 {isSettingsLoading ? (
+                 {isLoading ? (
                     <div className="space-y-6">
                         <div className="space-y-2">
                            <Skeleton className="h-4 w-24" />
@@ -109,12 +142,12 @@ export default function SettingsPage() {
                    <>
                     <div className="space-y-2">
                         <Label htmlFor="org-name">Organization Name</Label>
-                        <Input id="org-name" value={orgName} onChange={(e) => setOrgName(e.target.value)} />
+                        <Input id="org-name" value={orgName} onChange={(e) => setOrgName(e.target.value)} disabled={!isAdmin} />
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                           <Label htmlFor="current-period">Current Period</Label>
-                          <Select value={currentPeriod} onValueChange={setCurrentPeriod}>
+                          <Select value={currentPeriod} onValueChange={setCurrentPeriod} disabled={!isAdmin}>
                               <SelectTrigger id="current-period">
                                   <SelectValue />
                               </SelectTrigger>
@@ -136,6 +169,7 @@ export default function SettingsPage() {
                                   "w-full justify-start text-left font-normal",
                                   !periodDate && "text-muted-foreground"
                                 )}
+                                disabled={!isAdmin}
                               >
                                 <CalendarIcon className="mr-2 h-4 w-4" />
                                 {periodDate ? format(periodDate, "MMMM yyyy") : <span>Pick a date</span>}
@@ -147,6 +181,7 @@ export default function SettingsPage() {
                                 selected={periodDate}
                                 onSelect={setPeriodDate}
                                 initialFocus
+                                disabled={!isAdmin}
                               />
                             </PopoverContent>
                           </Popover>
@@ -155,7 +190,7 @@ export default function SettingsPage() {
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="default-currency">Default Currency</Label>
-                        <Select value={defaultCurrency} onValueChange={setDefaultCurrency}>
+                        <Select value={defaultCurrency} onValueChange={setDefaultCurrency} disabled={!isAdmin}>
                             <SelectTrigger id="default-currency" className="w-[180px]">
                                 <SelectValue />
                             </SelectTrigger>
@@ -166,9 +201,11 @@ export default function SettingsPage() {
                             </SelectContent>
                         </Select>
                     </div>
-                    <div className="pt-4">
-                        <Button onClick={handleGeneralSave}>Save Changes</Button>
-                    </div>
+                    {isAdmin && (
+                      <div className="pt-4">
+                          <Button onClick={handleGeneralSave}>Save Changes</Button>
+                      </div>
+                    )}
                    </>
                  )}
               </CardContent>
@@ -209,3 +246,5 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+    
