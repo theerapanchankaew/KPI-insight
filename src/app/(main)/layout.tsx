@@ -333,6 +333,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
+    setPageTitle(pageTitle);
+  }, [pageTitle]);
+
+  useEffect(() => {
       setIsClient(true);
   }, []);
 

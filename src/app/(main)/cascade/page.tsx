@@ -214,8 +214,7 @@ const DeleteConfirmDialog = ({
           <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
           <AlertDialogAction 
             onClick={onConfirm}
-            className="bg-red-600 hover:bg-red-700"
-          >
+            className={buttonVariants({ variant: "destructive" })}>
             ลบ
           </AlertDialogAction>
         </AlertDialogFooter>
@@ -845,7 +844,8 @@ const AssignKpiDialog = (props: any) => <div />;
 // ==================== MAIN COMPONENT ====================
 
 export default function KPICascadeManagement() {
-  useAppLayout();
+  const { setPageTitle } = useAppLayout();
+  setPageTitle("KPI Cascade");
 
   const { toast } = useToast();
   const firestore = useFirestore();
@@ -1200,7 +1200,3 @@ export default function KPICascadeManagement() {
     </div>
   );
 }
-
-    
-
-    
