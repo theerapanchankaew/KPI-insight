@@ -292,7 +292,7 @@
           "schema": {
             "$ref": "#/entities/UserProfile"
           },
-          "description": "Stores user profile information. Write access is restricted to the user themselves. Read access for admins.",
+          "description": "Stores user profile information. Users can read their own profile. Admins can read all profiles. Writes are restricted to the user themselves.",
           "params": [
             {
               "name": "userId",
@@ -479,3 +479,5 @@
   }
 }
       
+
+    
