@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useAppLayout } from '../layout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -9,7 +9,6 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { useKpiData } from '@/context/KpiDataContext';
 import { PlusCircle, Trash2 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { navItems } from '@/lib/data/layout-data';
@@ -17,17 +16,20 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-
+import { useAuth, useCollection, useFirestore, useMemoFirebase } from '@/firebase';
+import { collection, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { addDocumentNonBlocking, deleteDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
 type Role = 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee';
 
-interface UserPermissions {
+interface AppUser {
+  id: string;
+  name: string;
+  department: string;
+  position: string;
+  manager: string;
   role: Role;
   menuAccess: { [key: string]: boolean };
-}
-
-interface AllUserPermissions {
-  [key: string]: UserPermissions;
 }
 
 const defaultPermissions: { [key in Role]: { [key: string]: boolean } } = {
@@ -78,18 +80,12 @@ const defaultPermissions: { [key in Role]: { [key: string]: boolean } } = {
   },
 };
 
-const AddUserDialog = ({ isOpen, onOpenChange, onAddUser }: { isOpen: boolean; onOpenChange: (isOpen: boolean) => void; onAddUser: (user: any) => void }) => {
+const AddUserDialog = ({ isOpen, onOpenChange, onAddUser }: { isOpen: boolean; onOpenChange: (isOpen: boolean) => void; onAddUser: (user: Omit<AppUser, 'id' | 'role' | 'menuAccess'>) => void }) => {
     const [newUser, setNewUser] = useState({ name: '', department: '', position: '', manager: '' });
 
     const handleAdd = () => {
         if (newUser.name && newUser.department && newUser.position) {
-            onAddUser({
-                id: `user-${Date.now()}`,
-                name: newUser.name,
-                department: newUser.department,
-                position: newUser.position,
-                manager: newUser.manager,
-            });
+            onAddUser(newUser);
             onOpenChange(false);
             setNewUser({ name: '', department: '', position: '', manager: '' });
         }
@@ -112,7 +108,7 @@ const AddUserDialog = ({ isOpen, onOpenChange, onAddUser }: { isOpen: boolean; o
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="new-user-position">Position</Label>
-                        <Input id="new-user-position" value={newUser.position} onChange={e => setNew-User({ ...newUser, position: e.target.value })} placeholder="e.g., Sales Manager" />
+                        <Input id="new-user-position" value={newUser.position} onChange={e => setNewUser({ ...newUser, position: e.target.value })} placeholder="e.g., Sales Manager" />
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="new-user-manager">Manager</Label>
@@ -132,10 +128,12 @@ const AddUserDialog = ({ isOpen, onOpenChange, onAddUser }: { isOpen: boolean; o
 export default function UserManagementPage() {
   const { setPageTitle } = useAppLayout();
   const { toast } = useToast();
-  const { orgData, setOrgData } = useKpiData();
+  const firestore = useFirestore();
 
-  // State for User Roles and Permissions
-  const [userPermissions, setUserPermissions] = useState<AllUserPermissions>({});
+  const usersQuery = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore]);
+  const { data: usersData, isLoading: isUsersLoading } = useCollection<AppUser>(usersQuery);
+
+  const [localUsers, setLocalUsers] = useState<AppUser[]>([]);
   const [isAddUserModalOpen, setAddUserModalOpen] = useState(false);
 
   useEffect(() => {
@@ -143,87 +141,77 @@ export default function UserManagementPage() {
   }, [setPageTitle]);
 
   useEffect(() => {
-    if (orgData?.employees) {
-      const initialPermissions: AllUserPermissions = {};
-      orgData.employees.forEach(employee => {
-        // A simple heuristic to assign a default role. This can be improved.
-        const positionLower = employee.position.toLowerCase();
-        let role: Role = 'Employee';
-        if (positionLower.includes('vp') || positionLower.includes('vice president')) {
-            role = 'VP';
-        } else if (positionLower.includes('avp')) {
-            role = 'AVP';
-        } else if (positionLower.includes('manager') || positionLower.includes('ผู้จัดการ')) {
-            role = 'Manager';
-        }
-        
-        // Check if permissions for this user already exist to avoid overwriting them
-        if (!userPermissions[employee.id]) {
-            initialPermissions[employee.id] = {
-                role,
-                menuAccess: defaultPermissions[role],
-            };
-        }
-      });
-      // Merge new permissions without overwriting existing ones unless necessary
-      setUserPermissions(prev => ({...prev, ...initialPermissions}));
+    if (usersData) {
+      setLocalUsers(usersData);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgData]);
+  }, [usersData]);
   
   const handleRoleChange = (userId: string, role: Role) => {
-    setUserPermissions(prev => ({
-      ...prev,
-      [userId]: {
-        ...prev[userId],
-        role,
-        menuAccess: defaultPermissions[role], // Apply default permissions for the new role
-      },
-    }));
+    setLocalUsers(prev => prev.map(user => 
+      user.id === userId 
+      ? { ...user, role, menuAccess: defaultPermissions[role] }
+      : user
+    ));
   };
 
   const handlePermissionChange = (userId: string, menuHref: string, checked: boolean) => {
-    setUserPermissions(prev => ({
-      ...prev,
-      [userId]: {
-        ...prev[userId],
-        menuAccess: {
-          ...prev[userId].menuAccess,
-          [menuHref]: checked,
-        },
-      },
-    }));
+    setLocalUsers(prev => prev.map(user => 
+        user.id === userId
+        ? { ...user, menuAccess: { ...user.menuAccess, [menuHref]: checked } }
+        : user
+    ));
   };
 
   const handleSavePermissions = () => {
-    console.log("Saving user permissions:", userPermissions);
+    if (!firestore) {
+        toast({ title: 'Error', description: 'Firestore is not available.', variant: 'destructive'});
+        return;
+    }
+    localUsers.forEach(user => {
+      const userRef = doc(firestore, 'users', user.id);
+      setDocumentNonBlocking(userRef, user, { merge: true });
+    });
     toast({
         title: "User Permissions Saved",
-        description: "User roles and menu access have been successfully updated.",
+        description: "User roles and menu access have been successfully updated in Firestore.",
     });
   };
 
-  const handleAddUser = (newUser: any) => {
-    if (orgData) {
-        const updatedEmployees = [...orgData.employees, newUser];
-        setOrgData({ employees: updatedEmployees });
-        toast({ title: 'User Added', description: `${newUser.name} has been added.` });
+  const handleAddUser = (newUser: Omit<AppUser, 'id' | 'role' | 'menuAccess'>) => {
+    if (!firestore) {
+        toast({ title: 'Error', description: 'Firestore is not available.', variant: 'destructive'});
+        return;
     }
+    const positionLower = newUser.position.toLowerCase();
+    let role: Role = 'Employee';
+    if (positionLower.includes('vp') || positionLower.includes('vice president')) {
+        role = 'VP';
+    } else if (positionLower.includes('avp')) {
+        role = 'AVP';
+    } else if (positionLower.includes('manager') || positionLower.includes('ผู้จัดการ')) {
+        role = 'Manager';
+    }
+
+    const userToSave = {
+        ...newUser,
+        role,
+        menuAccess: defaultPermissions[role],
+    };
+    
+    const usersCollection = collection(firestore, 'users');
+    addDocumentNonBlocking(usersCollection, userToSave);
+    
+    toast({ title: 'User Added', description: `${newUser.name} has been added.` });
   };
 
   const handleDeleteUser = (userId: string) => {
-      if (orgData) {
-          const updatedEmployees = orgData.employees.filter(emp => emp.id !== userId);
-          setOrgData({ employees: updatedEmployees });
-
-          setUserPermissions(prev => {
-              const newPerms = { ...prev };
-              delete newPerms[userId];
-              return newPerms;
-          });
-
-          toast({ title: 'User Deleted', description: 'The user has been removed.', variant: 'destructive' });
+      if (!firestore) {
+        toast({ title: 'Error', description: 'Firestore is not available.', variant: 'destructive'});
+        return;
       }
+      const userRef = doc(firestore, 'users', userId);
+      deleteDocumentNonBlocking(userRef);
+      toast({ title: 'User Deleted', description: 'The user has been removed from Firestore.', variant: 'destructive' });
   };
 
   return (
@@ -255,12 +243,14 @@ export default function UserManagementPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(orgData?.employees || []).map(employee => (
+                  {isUsersLoading ? (
+                    <TableRow><TableCell colSpan={navItems.length + 4} className="text-center h-24">Loading users...</TableCell></TableRow>
+                  ) : (localUsers.map(employee => (
                     <TableRow key={employee.id}>
                       <TableCell>
                         <div className="flex items-center space-x-3">
                           <Avatar className="w-8 h-8">
-                            <AvatarFallback>{employee.name.charAt(0)}</AvatarFallback>
+                            <AvatarFallback>{employee.name ? employee.name.charAt(0) : '?'}</AvatarFallback>
                           </Avatar>
                           <div>
                             <p className="font-medium text-sm">{employee.name}</p>
@@ -273,7 +263,7 @@ export default function UserManagementPage() {
                       </TableCell>
                       <TableCell>
                         <Select
-                          value={userPermissions[employee.id]?.role || 'Employee'}
+                          value={employee.role || 'Employee'}
                           onValueChange={(role: Role) => handleRoleChange(employee.id, role)}
                         >
                           <SelectTrigger className="w-full">
@@ -291,7 +281,7 @@ export default function UserManagementPage() {
                       {navItems.map(item => (
                         <TableCell key={item.href} className="text-center">
                           <Checkbox
-                            checked={userPermissions[employee.id]?.menuAccess[item.href] || false}
+                            checked={employee.menuAccess ? (employee.menuAccess[item.href] || false) : false}
                             onCheckedChange={(checked) => handlePermissionChange(employee.id, item.href, !!checked)}
                           />
                         </TableCell>
@@ -318,7 +308,7 @@ export default function UserManagementPage() {
                         </AlertDialog>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )))}
                 </TableBody>
               </Table>
             </div>
@@ -331,5 +321,3 @@ export default function UserManagementPage() {
     </div>
   );
 }
-
-    

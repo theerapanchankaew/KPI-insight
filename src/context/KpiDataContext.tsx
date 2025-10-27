@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode } from 'react';
@@ -57,7 +58,7 @@ const KpiDataContext = createContext<KpiDataContextType | undefined>(undefined);
 // Create the provider component
 export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   const [kpiData, setKpiData] = useState<KpiData | null>(null);
-  const [orgData, setOrgData] = useState<OrgData | null>({ employees: [] });
+  const [orgData, setOrgData] = useState<OrgData | null>(null);
   const [settings, setSettingsState] = useState<AppSettings>({
     orgName: 'บริษัท ABC จำกัด',
     period: 'รายไตรมาส (Quarterly)',
