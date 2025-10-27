@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, createContext, useContext, useEffect } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,14 +12,21 @@ import {
   Bell,
   Menu,
   Search,
-  ShieldCheck
+  ShieldCheck,
+  LogOut,
+  User as UserIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { appConfig, navItems, headerData } from '@/lib/data/layout-data';
 import { KpiDataProvider, useKpiData } from '@/context/KpiDataContext';
-import { useUser } from '@/firebase';
+import { useUser, useAuth } from '@/firebase';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AuthGate } from '@/app/auth-gate';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger, DialogClose } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { updateProfile } from 'firebase/auth';
+import { useToast } from '@/hooks/use-toast';
 
 interface AppLayoutContextType {
   pageTitle: string;
@@ -86,10 +93,71 @@ const AppSidebar = () => {
   );
 };
 
+
+const EditProfileDialog = ({ children }: { children: React.ReactNode }) => {
+    const auth = useAuth();
+    const { user } = useUser();
+    const { toast } = useToast();
+    const [displayName, setDisplayName] = useState(user?.displayName || '');
+
+    const handleSave = async () => {
+        if (user) {
+            try {
+                await updateProfile(user, { displayName });
+                toast({ title: 'Profile Updated', description: 'Your display name has been changed.' });
+            } catch (error) {
+                toast({ title: 'Error', description: 'Failed to update profile.', variant: 'destructive' });
+            }
+        }
+    };
+
+    return (
+        <Dialog>
+            <DialogTrigger asChild>{children}</DialogTrigger>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Edit Profile</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="displayName">Display Name</Label>
+                        <Input
+                            id="displayName"
+                            value={displayName}
+                            onChange={(e) => setDisplayName(e.target.value)}
+                            placeholder="Your name"
+                        />
+                    </div>
+                     <div className="space-y-2">
+                        <Label htmlFor="email">Email</Label>
+                        <Input id="email" value={user?.email || ''} disabled />
+                    </div>
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild>
+                        <Button variant="outline">Cancel</Button>
+                    </DialogClose>
+                    <DialogClose asChild>
+                        <Button onClick={handleSave}>Save Changes</Button>
+                    </DialogClose>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
+
 const AppHeader = () => {
   const { pageTitle } = useAppLayout();
   const { settings } = useKpiData();
   const { user, isUserLoading } = useUser();
+  const auth = useAuth();
+  const router = useRouter();
+
+  const handleLogout = () => {
+    auth.signOut();
+    router.push('/login');
+  };
 
   return (
     <header className="bg-card shadow-sm border-b border-border px-4 sm:px-6 py-4 sticky top-0 z-10">
@@ -165,17 +233,35 @@ const AppHeader = () => {
                 <Skeleton className="h-10 w-10 rounded-full" />
               </div>
             ) : user ? (
-              <>
-                <div className="hidden sm:block text-right">
-                  <p className="text-sm font-medium text-foreground">{user.isAnonymous ? 'Anonymous User' : (user.displayName || user.email)}</p>
-                  <p className="text-xs text-muted-foreground">{user.isAnonymous ? 'Guest' : 'Member'}</p>
-                </div>
-                <Avatar>
-                  <AvatarFallback className="bg-gradient-to-r from-primary to-secondary text-white font-semibold">
-                    {user.isAnonymous ? 'A' : (user.displayName || user.email || 'U').charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-              </>
+              <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                      <div className="flex items-center space-x-3 cursor-pointer">
+                          <div className="hidden sm:block text-right">
+                            <p className="text-sm font-medium text-foreground">{user.isAnonymous ? 'Anonymous User' : (user.displayName || user.email)}</p>
+                            <p className="text-xs text-muted-foreground">{user.isAnonymous ? 'Guest' : 'Member'}</p>
+                          </div>
+                          <Avatar>
+                            <AvatarFallback className="bg-gradient-to-r from-primary to-secondary text-white font-semibold">
+                              {user.isAnonymous ? 'A' : (user.displayName || user.email || 'U').charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                      </div>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                      <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <EditProfileDialog>
+                         <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                            <UserIcon className="mr-2 h-4 w-4" />
+                            <span>Profile</span>
+                         </DropdownMenuItem>
+                      </EditProfileDialog>
+                      <DropdownMenuItem onClick={handleLogout}>
+                          <LogOut className="mr-2 h-4 w-4" />
+                          <span>Log out</span>
+                      </DropdownMenuItem>
+                  </DropdownMenuContent>
+              </DropdownMenu>
             ) : (
               <>
                  <div className="hidden sm:block text-right">
@@ -208,8 +294,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       setIsClient(true);
   }, []);
 
-  // While the authentication state is loading, we can show a global loading screen,
-  // but AuthGate will now handle the redirection without rendering a conflicting UI.
   if (isUserLoading && isClient) {
       return (
           <div className="flex h-screen w-full items-center justify-center bg-background">
