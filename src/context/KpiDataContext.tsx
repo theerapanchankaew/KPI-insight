@@ -2,7 +2,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
+import { useCollection, useFirestore, useMemoFirebase, useUser } from '@/firebase';
 import { collection } from 'firebase/firestore';
 import { WithId }from '@/firebase/firestore/use-collection';
 
@@ -54,11 +54,18 @@ const KpiDataContext = createContext<KpiDataContextType | undefined>(undefined);
 // Create the provider component
 export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   const firestore = useFirestore();
+  const { user } = useUser();
 
-  const kpiQuery = useMemoFirebase(() => firestore ? collection(firestore, 'kpi_catalog') : null, [firestore]);
+  const kpiQuery = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return collection(firestore, 'kpi_catalog');
+  }, [firestore, user]);
   const { data: kpiData, isLoading: isKpiDataLoading } = useCollection<Kpi>(kpiQuery);
 
-  const orgQuery = useMemoFirebase(() => firestore ? collection(firestore, 'employees') : null, [firestore]);
+  const orgQuery = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return collection(firestore, 'employees');
+  }, [firestore, user]);
   const { data: orgData, isLoading: isOrgDataLoading } = useCollection<Employee>(orgQuery);
 
   const [settings, setSettingsState] = useState<AppSettings>({
