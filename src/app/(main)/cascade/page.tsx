@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { useKpiData, type Employee, type Kpi } from '@/context/KpiDataContext';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -26,7 +26,6 @@ import { useToast } from '@/hooks/use-toast';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { buttonVariants } from '@/components/ui/button';
 
 // ==================== TYPE DEFINITIONS ====================
 
@@ -565,9 +564,8 @@ const CorporateLevel = ({
                       
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button size="sm" variant="outline">
-                            Action
-                            <MoreVertical className="ml-2 h-4 w-4" />
+                          <Button size="icon" variant="ghost" className="h-8 w-8">
+                            <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
@@ -580,7 +578,7 @@ const CorporateLevel = ({
                           {canDelete && (
                             <DropdownMenuItem 
                               onSelect={() => setDeleteKpi(kpi)} 
-                              className="text-destructive"
+                              className="text-destructive focus:bg-destructive/10 focus:text-destructive"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
                               <span>Delete</span>
@@ -993,7 +991,7 @@ export default function KPICascadeManagement() {
       const monthlyKpisCollection = collection(firestore, 'monthly_kpis');
       
       for (const m of distributions) {
-        const monthlyKpi: Omit<MonthlyKpi, 'id' | 'createdAt'> = {
+        const monthlyKpi: Omit<MonthlyKpi, 'id' | 'createdAt' | 'updatedAt'> = {
           parentKpiId: selectedKpi.id,
           measure: selectedKpi.measure,
           perspective: selectedKpi.perspective || '',
@@ -1010,13 +1008,13 @@ export default function KPICascadeManagement() {
           createdBy: user.uid,
         };
         
-        await addDocumentNonBlocking(monthlyKpisCollection, monthlyKpi);
+        addDocumentNonBlocking(monthlyKpisCollection, { ...monthlyKpi, createdAt: new Date() });
       }
 
       toast({ 
         title: "KPI Deployed Successfully! 🎉", 
-        description: `"${selectedKpi.measure}" has been deployed to 12 monthly targets for ${year}.`,
-        duration: 5000
+        description: `"${selectedKpi.measure}" for ${year} is deployed. Next, cascade this KPI to the relevant departments.`,
+        duration: 7000
       });
 
       setIsMonthlyDeployOpen(false);
@@ -1050,10 +1048,10 @@ export default function KPICascadeManagement() {
   };
 
   const handleConfirmEdit = (editedKpi: Kpi) => {
-    if (!user || !firestore) {
+    if (!user || !firestore || !('id' in editedKpi)) {
       toast({ 
-        title: "Authentication Required", 
-        description: "Please log in to edit KPIs.", 
+        title: "Authentication or Data Error", 
+        description: "Cannot update KPI.", 
         variant: 'destructive' 
       });
       return;
@@ -1202,3 +1200,5 @@ export default function KPICascadeManagement() {
     </div>
   );
 }
+
+    
