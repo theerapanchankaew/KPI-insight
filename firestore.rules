@@ -1,62 +1,55 @@
 /**
- * @fileoverview Firestore Security Rules for the KPI Management Application.
+ * @fileoverview Firestore Security Rules.
  *
  * Core Philosophy:
- * This ruleset employs a hybrid security model. User profiles are strictly controlled
- * with owner-only access. KPI data includes denormalized ownerId fields, enabling
- * fast and secure authorization checks. The KPI Catalog and Employee data are
- * publicly readable but write-protected, requiring an admin role (not yet implemented
- * in this initial prototyping phase, so writes are temporarily disabled).
+ * This ruleset prioritizes strict authorization based on ownership and role-based access control.
+ * It avoids complex data validation in favor of rapid prototyping.
  *
  * Data Structure:
- * - /users/{userId}: Stores user profiles.
+ * - /users/{userId}: Stores individual user profiles.
  * - /departments/{departmentId}: Stores department information.
- * - /kpis/{kpiId}: Stores KPI data.
+ * - /kpis/{kpiId}: Stores Key Performance Indicators, each with an 'ownerId' field.
  * - /submissions/{submissionId}: Stores KPI submission data.
- * - /kpi_catalog/{kpiId}: Stores the catalog of all corporate KPIs.
- * - /employees/{employeeId}: Stores employee and organizational structure data.
+ * - /kpi_catalog/{kpiId}: Stores KPI catalog data.
+ * - /employees/{employeeId}: Stores employee data.
  *
  * Key Security Decisions:
  * - User profiles are private and only accessible to the owning user.
- * - The kpi_catalog and employee collections are publicly readable. Writes are
- *   currently disabled for prototyping but will later require admin authentication.
- * - The rules prioritize authorization based on the 'ownerId' field in KPI documents.
+ * - KPIs are secured via owner-based access control using the `ownerId` field.
+ * - Data validation is minimized to focus on authorization.
  *
  * Denormalization for Authorization:
- * - The 'Kpi' entity includes the 'ownerId' field to enable direct authorization
- *   checks without requiring additional reads to other documents. This denormalization
- *   is crucial for efficient and scalable security rules.
+ * - The 'Kpi' entity MUST include an 'ownerId' field that references the User who owns the KPI.
+ *   This enables efficient owner-based security rules without requiring extra reads.
  *
  * Structural Segregation:
- * - No structural segregation is currently employed. All collections are top-level.
+ * - No public vs. private data segregation is implemented in this initial ruleset.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Secures user profiles. Only the user can read or write their own profile.
+     * @description Manages user profiles. Only the user can read/write their own profile.
      * @path /users/{userId}
-     * @allow (create) User 'ggyIfmNNzMVOjxvaLSKVf3GV7C02' can create their own profile at /users/ggyIfmNNzMVOjxvaLSKVf3GV7C02.
-     * @allow (get, update, delete) User 'ggyIfmNNzMVOjxvaLSKVf3GV7C02' can get, update, and delete their profile at /users/ggyIfmNNzMVOjxvaLSKVf3GV7C02.
-     * @deny (create) User 'attackerId' cannot create a profile at /users/ggyIfmNNzMVOjxvaLSKVf3GV7C02.
-     * @deny (get, update, delete) User 'attackerId' cannot read or modify the profile at /users/ggyIfmNNzMVOjxvaLSKVf3GV7C02.
-     * @principle Enforces document ownership for all operations on user profiles.
+     * @allow (create, update, delete): If the authenticated user's ID matches the userId in the path.
+     * @deny (create, update, delete): If the authenticated user's ID does not match the userId in the path.
+     * @principle Enforces user-ownership.
      */
     match /users/{userId} {
-      allow get: if isOwner(userId);
+      allow get: if isSignedIn() && isOwner(userId);
       allow list: if false;
-      allow create: if isOwner(userId);
-      allow update: if isExistingOwner(userId);
-      allow delete: if isExistingOwner(userId);
+      allow create: if isSignedIn() && isOwner(userId);
+      allow update: if isSignedIn() && isExistingOwner(userId);
+      allow delete: if isSignedIn() && isExistingOwner(userId);
     }
 
     /**
-     * @description Defines access rules for department data.  Currently, no specific restrictions
+     * @description Manages department information.
      * @path /departments/{departmentId}
-     * @allow (get, list) Anyone can read department data.
-     * @deny (create, update, delete) No one can create, update, or delete department data. Writes are disabled for this prototype.
-     * @principle Restricts write access to department data during the prototyping phase.
+     * @allow (get, list): Public read access.
+     * @allow (create, update, delete): Not allowed.
+     * @principle Restricts write access to departments.
      */
     match /departments/{departmentId} {
       allow get, list: if true;
@@ -64,28 +57,27 @@ service cloud.firestore {
     }
 
     /**
-     * @description Secures KPI data.  Allows reads, but enforces ownership on writes
+     * @description Manages KPI data.  Requires 'ownerId' field.
      * @path /kpis/{kpiId}
-     * @allow (get, list) Anyone can read KPI data.
-     *  @allow (create) User 'ggyIfmNNzMVOjxvaLSKVf3GV7C02' can create a KPI where request.resource.data.ownerId == 'ggyIfmNNzMVOjxvaLSKVf3GV7C02'
-     * @allow (update, delete) User 'ggyIfmNNzMVOjxvaLSKVf3GV7C02' can update/delete a KPI where resource.data.ownerId == 'ggyIfmNNzMVOjxvaLSKVf3GV7C02'
-     * @deny (create) User 'attackerId' cannot create a KPI with ownerId 'ggyIfmNNzMVOjxvaLSKVf3GV7C02'.
-     * @deny (update, delete) User 'attackerId' cannot modify or delete a KPI owned by 'ggyIfmNNzMVOjxvaLSKVf3GV7C02'.
-     * @principle Enforces ownership for KPI writes and allows public reads.
+     * @allow (get, list): Public read access.
+     * @allow (create): Only if the 'ownerId' in the data matches the authenticated user's ID.
+     * @allow (update, delete): Only if the authenticated user is the owner of the KPI.
+     * @deny (create, update, delete): If the 'ownerId' field is missing, or if the user is not the owner.
+     * @principle Enforces ownership for KPI writes.
      */
     match /kpis/{kpiId} {
       allow get, list: if true;
-      allow create: if request.resource.data.ownerId == request.auth.uid;
-      allow update: if isExistingOwner(resource.data.ownerId);
-      allow delete: if isExistingOwner(resource.data.ownerId);
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isSignedIn() && isExistingOwner(resource.data.ownerId);
+      allow delete: if isSignedIn() && isExistingOwner(resource.data.ownerId);
     }
 
     /**
-     * @description Defines access rules for KPI submission data.
+     * @description Manages KPI submission data.
      * @path /submissions/{submissionId}
-     * @allow (get, list) Anyone can read submission data.
-     * @deny (create, update, delete) No one can create, update, or delete submission data. Writes are disabled for this prototype.
-     * @principle Restricts write access to KPI submission data during the prototyping phase.
+     * @allow (get, list): Public read access.
+     * @allow (create, update, delete): Not allowed.
+     * @principle Restricts write access to submissions.
      */
     match /submissions/{submissionId} {
       allow get, list: if true;
@@ -93,11 +85,10 @@ service cloud.firestore {
     }
 
     /**
-     * @description Defines access rules for KPI catalog data.
+     * @description Manages KPI catalog data.
      * @path /kpi_catalog/{kpiId}
-     * @allow (get, list) Anyone can read KPI catalog data.
-     * @deny (create, update, delete) No one can create, update, or delete KPI catalog data. Writes are disabled for this prototype.
-     * @principle Restricts write access to the KPI catalog data during the prototyping phase.
+     * @allow (get, list): Public read access.
+     * @allow (create, update, delete): Not allowed.
      */
     match /kpi_catalog/{kpiId} {
       allow get, list: if true;
@@ -105,27 +96,27 @@ service cloud.firestore {
     }
 
     /**
-     * @description Defines access rules for employee data.
+     * @description Manages employee data.
      * @path /employees/{employeeId}
-     * @allow (get, list) Anyone can read employee data.
-     * @deny (create, update, delete) No one can create, update, or delete employee data. Writes are disabled for this prototype.
-     * @principle Restricts write access to employee data during the prototyping phase.
+     * @allow (get, list): Public read access.
+     * @allow (create, update, delete): Not allowed.
      */
     match /employees/{employeeId} {
       allow get, list: if true;
       allow create, update, delete: if false;
     }
 
+    // Helper functions
     function isSignedIn() {
       return request.auth != null;
     }
 
     function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+      return request.auth.uid == userId;
     }
 
     function isExistingOwner(userId) {
-        return isOwner(userId) && resource != null;
+        return isSignedIn() && isOwner(userId) && resource != null;
     }
   }
 }
