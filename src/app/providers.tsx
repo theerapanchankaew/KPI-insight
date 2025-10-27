@@ -1,18 +1,17 @@
-
 'use client';
 
 import { Toaster } from "@/components/ui/toaster";
 import { FirebaseClientProvider } from "@/firebase";
-import { useEffect, useState } from "react";
+import * as React from "react";
 
 export function AppProviders({
     children,
 }: {
     children: React.ReactNode;
 }) {
-    const [isClient, setIsClient] = useState(false);
+    const [isClient, setIsClient] = React.useState(false);
 
-    useEffect(() => {
+    React.useEffect(() => {
         setIsClient(true);
     }, []);
 
