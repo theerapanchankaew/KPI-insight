@@ -19,7 +19,9 @@ import {
 import { cn } from '@/lib/utils';
 import { appConfig, navItems, headerData } from '@/lib/data/layout-data';
 import { KpiDataProvider, useKpiData } from '@/context/KpiDataContext';
-import { useUser, useAuth } from '@/firebase';
+import { useUser, useAuth, useDoc, useFirestore, useMemoFirebase } from '@/firebase';
+import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { doc } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AuthGate } from '@/app/auth-gate';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -96,25 +98,41 @@ const AppSidebar = () => {
 
 const EditProfileDialog = ({ children }: { children: React.ReactNode }) => {
     const { user } = useUser();
+    const firestore = useFirestore();
     const { toast } = useToast();
-    const [displayName, setDisplayName] = useState(user?.displayName || '');
-    const [role, setRole] = useState<string | null>(null);
+    
+    const userDocRef = useMemoFirebase(() => {
+        if (!firestore || !user) return null;
+        return doc(firestore, 'users', user.uid);
+    }, [firestore, user]);
+    
+    const { data: userProfile, isLoading: isProfileLoading } = useDoc(userDocRef);
 
+    const [displayName, setDisplayName] = useState('');
+    
     useEffect(() => {
-        if (user) {
+        if (userProfile) {
+            setDisplayName(userProfile.name || user?.displayName || '');
+        } else if (user) {
             setDisplayName(user.displayName || '');
-            user.getIdTokenResult().then(idTokenResult => {
-                setRole(idTokenResult.claims.role as string || 'Employee');
-            });
         }
-    }, [user]);
+    }, [user, userProfile]);
 
     const handleSave = async () => {
-        if (user) {
+        if (user && userDocRef) {
             try {
-                await updateProfile(user, { displayName });
+                // Update Firebase Auth profile
+                if(user.displayName !== displayName) {
+                    await updateProfile(user, { displayName });
+                }
+                
+                // Update Firestore document
+                const updatedData = { ...userProfile, name: displayName };
+                setDocumentNonBlocking(userDocRef, updatedData, { merge: true });
+
                 toast({ title: 'Profile Updated', description: 'Your display name has been changed.' });
             } catch (error) {
+                console.error("Profile update error:", error);
                 toast({ title: 'Error', description: 'Failed to update profile.', variant: 'destructive' });
             }
         }
@@ -127,31 +145,42 @@ const EditProfileDialog = ({ children }: { children: React.ReactNode }) => {
                 <DialogHeader>
                     <DialogTitle>Edit Profile</DialogTitle>
                 </DialogHeader>
-                <div className="space-y-4 py-4">
-                    <div className="space-y-2">
-                        <Label htmlFor="displayName">Display Name</Label>
-                        <Input
-                            id="displayName"
-                            value={displayName}
-                            onChange={(e) => setDisplayName(e.target.value)}
-                            placeholder="Your name"
-                        />
+                 {isProfileLoading ? (
+                    <div className="space-y-4 py-4">
+                        <Skeleton className="h-4 w-1/4" />
+                        <Skeleton className="h-10 w-full" />
+                        <Skeleton className="h-4 w-1/4" />
+                        <Skeleton className="h-10 w-full" />
+                        <Skeleton className="h-4 w-1/4" />
+                        <Skeleton className="h-10 w-full" />
                     </div>
-                     <div className="space-y-2">
-                        <Label htmlFor="email">Email</Label>
-                        <Input id="email" value={user?.email || ''} disabled />
+                 ) : (
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="displayName">Display Name</Label>
+                            <Input
+                                id="displayName"
+                                value={displayName}
+                                onChange={(e) => setDisplayName(e.target.value)}
+                                placeholder="Your name"
+                            />
+                        </div>
+                         <div className="space-y-2">
+                            <Label htmlFor="email">Email</Label>
+                            <Input id="email" value={user?.email || ''} disabled />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="role">Role</Label>
+                            <Input id="role" value={userProfile?.role || 'Loading...'} disabled />
+                        </div>
                     </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="role">Role</Label>
-                        <Input id="role" value={role || 'Loading...'} disabled />
-                    </div>
-                </div>
+                 )}
                 <DialogFooter>
                     <DialogClose asChild>
                         <Button variant="outline">Cancel</Button>
                     </DialogClose>
                     <DialogClose asChild>
-                        <Button onClick={handleSave}>Save Changes</Button>
+                        <Button onClick={handleSave} disabled={isProfileLoading}>Save Changes</Button>
                     </DialogClose>
                 </DialogFooter>
             </DialogContent>
