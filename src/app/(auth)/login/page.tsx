@@ -13,7 +13,6 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc } from 'firebase/firestore';
-import { setUserClaims } from '@/ai/flows/set-user-claims';
 import { useToast } from '@/hooks/use-toast';
 
 const SignInForm = () => {
@@ -119,12 +118,6 @@ const SignUpForm = () => {
       
       setDocumentNonBlocking(userRef, newUser, { merge: true });
       
-      // Set custom claims
-      await setUserClaims({ uid: userCredential.user.uid, claims: { role: userRole }});
-      
-      // Force refresh the token to get the new claims
-      await userCredential.user.getIdToken(true);
-
       toast({
           title: "Account Created",
           description: "Your account has been successfully created."
