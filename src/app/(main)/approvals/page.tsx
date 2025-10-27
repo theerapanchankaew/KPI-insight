@@ -5,17 +5,21 @@ import React, { useEffect, useState } from 'react';
 import { useAppLayout } from '../layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Check, X, Mail, UserCheck } from 'lucide-react';
+import { Check, X, Mail, UserCheck, AlertCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useCollection, useFirestore, useMemoFirebase, WithId, setDocumentNonBlocking } from '@/firebase';
 import { collection, query, where, doc } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 
 // Type for a KPI Submission document
 interface KpiSubmission {
     id: string;
+    kpiId: string;
     kpiMeasure: string;
     submittedBy: string;
     submitterName: string;
@@ -34,63 +38,101 @@ interface IndividualKpiBase {
     weight: number;
     status: 'Draft' | 'Agreed' | 'In-Progress' | 'Manager Review' | 'Upper Manager Approval' | 'Employee Acknowledged' | 'Closed' | 'Rejected';
     notes?: string;
+    rejectionReason?: string;
 }
 interface AssignedCascadedKpi extends IndividualKpiBase { type: 'cascaded'; target: string; }
 interface CommittedKpi extends IndividualKpiBase { type: 'committed'; task: string; targets: { [key: string]: string }; }
 type IndividualKpi = AssignedCascadedKpi | CommittedKpi;
 
 
+const RejectDialog = ({ isOpen, onClose, onConfirm, kpiName }: { isOpen: boolean, onClose: () => void, onConfirm: (reason: string) => void, kpiName: string }) => {
+    const [reason, setReason] = useState('');
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Reject KPI: {kpiName}</DialogTitle>
+                    <DialogDescription>
+                        Please provide a reason for the rejection. This will be sent back to the employee.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="py-4">
+                    <Label htmlFor="rejection-reason">Rejection Reason</Label>
+                    <Textarea 
+                        id="rejection-reason"
+                        value={reason}
+                        onChange={(e) => setReason(e.target.value)}
+                        placeholder="e.g., Target is not aligned with department goals..."
+                    />
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                    <Button onClick={() => onConfirm(reason)} variant="destructive" disabled={!reason.trim()}>Confirm Rejection</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    )
+}
+
 const KpiApprovalsTab = () => {
   const { toast } = useToast();
   const firestore = useFirestore();
 
+  // TODO: Add logic to get user's role and filter by correct status
+  // For now, fetching Manager Review and Upper Manager Approval for demo
   const submissionsQuery = useMemoFirebase(() => {
     if (!firestore) return null;
-    return query(collection(firestore, 'submissions'), where('status', '==', 'Manager Review'));
+    return query(collection(firestore, 'submissions'), where('status', 'in', ['Manager Review', 'Upper Manager Approval']));
   }, [firestore]);
 
   const { data: submissionsData, isLoading } = useCollection<KpiSubmission>(submissionsQuery);
 
-  const handleUpdateStatus = (item: WithId<KpiSubmission>, status: 'Upper Manager Approval' | 'Rejected') => {
+  const handleUpdateStatus = (item: WithId<KpiSubmission>, newStatus: 'Closed' | 'Rejected') => {
     if (!firestore) return;
     const submissionRef = doc(firestore, 'submissions', item.id);
-    // The status for KpiSubmission is different from IndividualKpi
-    const finalStatus = status === 'Rejected' ? 'Manager Review' : 'Upper Manager Approval';
+    
+    // In a real app, 'Rejected' might go back to the user instead of being a final state on the submission
+    const finalStatus = newStatus === 'Rejected' ? 'Manager Review' : 'Closed';
     const updatedData = { ...item, status: finalStatus };
     setDocumentNonBlocking(submissionRef, updatedData, { merge: true });
 
     toast({
-      title: `KPI ${status}`,
+      title: `KPI ${newStatus}`,
       description: `Submission for "${item.kpiMeasure}" has been updated.`,
-      variant: status === 'Rejected' ? 'destructive' : undefined,
+      variant: newStatus === 'Rejected' ? 'destructive' : undefined,
     });
   };
 
-  const handleBulkAction = (status: 'Upper Manager Approval' | 'Rejected') => {
-      if (!firestore || !submissionsData) return;
-      
-      submissionsData.forEach(item => {
-          const submissionRef = doc(firestore, 'submissions', item.id);
-          const finalStatus = status === 'Rejected' ? 'Manager Review' : 'Upper Manager Approval';
-          const updatedData = { ...item, status: finalStatus };
-          setDocumentNonBlocking(submissionRef, updatedData, { merge: true });
-      });
+  const handleApprove = (item: WithId<KpiSubmission>) => {
+    if(!firestore) return;
+    const submissionRef = doc(firestore, 'submissions', item.id);
+    const individualKpiRef = doc(firestore, 'individual_kpis', item.kpiId);
+    
+    let nextStatus: KpiSubmission['status'];
+    let individualKpiNextStatus: IndividualKpi['status'] | null = null;
+    
+    if (item.status === 'Manager Review') {
+        nextStatus = 'Upper Manager Approval';
+        toast({ title: 'Approved by Manager', description: 'KPI sent for upper management approval.'});
+    } else { // Upper Manager Approval
+        nextStatus = 'Closed';
+        individualKpiNextStatus = 'Employee Acknowledged'; // Notify employee
+        toast({ title: 'Final Approval Complete', description: 'KPI submission has been closed.'});
+    }
 
-      toast({
-          title: "Bulk Action Complete",
-          description: `All pending KPIs have been updated.`,
-          variant: status === 'Rejected' ? 'destructive' : undefined
-      });
-  };
+    setDocumentNonBlocking(submissionRef, { status: nextStatus }, { merge: true });
+
+    if(individualKpiNextStatus) {
+        setDocumentNonBlocking(individualKpiRef, { status: individualKpiNextStatus }, { merge: true });
+    }
+  }
+
 
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Pending KPI Submissions for Review</CardTitle>
-        <div className="flex space-x-2">
-          <Button onClick={() => handleBulkAction('Upper Manager Approval')} size="sm" variant="outline" className="bg-success/10 text-success hover:bg-success/20 hover:text-success" disabled={isLoading || !submissionsData || submissionsData.length === 0}>Approve All</Button>
-          <Button onClick={() => handleBulkAction('Rejected')} size="sm" variant="destructive" className="bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive" disabled={isLoading || !submissionsData || submissionsData.length === 0}>Reject All</Button>
-        </div>
       </CardHeader>
       <CardContent className="p-0">
         <div className="divide-y divide-gray-200">
@@ -118,6 +160,7 @@ const KpiApprovalsTab = () => {
                 <div className="flex-1">
                   <div className="flex items-center space-x-3 mb-2">
                     <h5 className="font-semibold text-gray-800">{item.kpiMeasure}</h5>
+                     <Badge variant={item.status === 'Manager Review' ? 'default' : 'secondary'}>{item.status}</Badge>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600 mb-3">
                     <div><span className="font-medium">Submitted by:</span><p>{item.submitterName}</p></div>
@@ -132,7 +175,7 @@ const KpiApprovalsTab = () => {
                   )}
                 </div>
                 <div className="flex space-x-2 ml-0 sm:ml-4 mt-4 sm:mt-0">
-                  <Button onClick={() => handleUpdateStatus(item, 'Upper Manager Approval')} className="bg-success/90 hover:bg-success/100 text-white">
+                  <Button onClick={() => handleApprove(item)} className="bg-success/90 hover:bg-success/100 text-white">
                     <Check className="w-4 h-4 mr-1" /> Approve
                   </Button>
                   <Button onClick={() => handleUpdateStatus(item, 'Rejected')} variant="destructive">
@@ -154,10 +197,13 @@ const KpiApprovalsTab = () => {
 const CommitmentRequestsTab = () => {
   const { toast } = useToast();
   const firestore = useFirestore();
+  const [isRejectModalOpen, setRejectModalOpen] = useState(false);
+  const [selectedKpi, setSelectedKpi] = useState<WithId<IndividualKpi> | null>(null);
 
   const commitmentsQuery = useMemoFirebase(() => {
       if (!firestore) return null;
-      return query(collection(firestore, 'individual_kpis'), where('status', '==', 'Draft'));
+      // Manager reviews KPIs that the employee has agreed to
+      return query(collection(firestore, 'individual_kpis'), where('status', '==', 'Agreed'));
   }, [firestore]);
 
   const { data: pendingCommitments, isLoading } = useCollection<IndividualKpi>(commitmentsQuery);
@@ -165,13 +211,32 @@ const CommitmentRequestsTab = () => {
   const handleAgreement = (kpi: WithId<IndividualKpi>) => {
     if (!firestore) return;
     const kpiRef = doc(firestore, 'individual_kpis', kpi.id);
-    const updatedData = { ...kpi, status: 'Agreed' as const };
+    // Manager agreement moves it to Upper Manager for final approval
+    const updatedData = { ...kpi, status: 'Upper Manager Approval' as const };
     setDocumentNonBlocking(kpiRef, updatedData, { merge: true });
 
-    toast({ title: 'Agreement Confirmed', description: `You have finalized the commitment for KPI: ${kpi.kpiMeasure}.`});
+    toast({ title: 'Agreement Confirmed', description: `You have agreed to the commitment for KPI: ${kpi.kpiMeasure}. Sent for final approval.`});
+  };
+  
+  const handleOpenRejectDialog = (kpi: WithId<IndividualKpi>) => {
+    setSelectedKpi(kpi);
+    setRejectModalOpen(true);
+  };
+  
+  const handleConfirmRejection = (reason: string) => {
+    if (!firestore || !selectedKpi) return;
+    const kpiRef = doc(firestore, 'individual_kpis', selectedKpi.id);
+    const updatedData: Partial<IndividualKpi> = {
+        status: 'Rejected',
+        rejectionReason: reason,
+    };
+    setDocumentNonBlocking(kpiRef, updatedData, { merge: true });
+    toast({ title: 'KPI Rejected', description: `The commitment has been sent back to the employee with your feedback.`, variant: 'destructive'});
+    setRejectModalOpen(false);
   };
 
   return (
+    <>
     <Card>
        <CardHeader>
         <CardTitle>Pending KPI Commitments</CardTitle>
@@ -215,8 +280,8 @@ const CommitmentRequestsTab = () => {
                     <Button onClick={() => handleAgreement(item)} variant="secondary">
                         <UserCheck className="w-4 h-4 mr-1" /> Final Agreement
                     </Button>
-                    <Button variant="outline">
-                        <Mail className="w-4 h-4 mr-1" /> Message
+                    <Button onClick={() => handleOpenRejectDialog(item)} variant="destructive" variant="outline">
+                        <X className="w-4 h-4 mr-1" /> Reject
                     </Button>
                     </div>
                 </div>
@@ -227,6 +292,13 @@ const CommitmentRequestsTab = () => {
         </div>
       </CardContent>
     </Card>
+    <RejectDialog 
+        isOpen={isRejectModalOpen}
+        onClose={() => setRejectModalOpen(false)}
+        onConfirm={handleConfirmRejection}
+        kpiName={selectedKpi?.kpiMeasure || ''}
+    />
+    </>
   )
 }
 
@@ -239,10 +311,12 @@ export default function ApprovalsPage() {
   
   // These hooks are used to get the count for the tabs.
   const firestore = useFirestore();
-  const submissionsQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'submissions'), where('status', '==', 'Manager Review')) : null, [firestore]);
-  const commitmentsQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'individual_kpis'), where('status', '==', 'Draft')) : null, [firestore]);
-  const { data: submissionsData } = useCollection(submissionsQuery);
-  const { data: commitmentsData } = useCollection(commitmentsQuery);
+  const submissionsQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'submissions'), where('status', 'in', ['Manager Review', 'Upper Manager Approval'])) : null, [firestore]);
+  const commitmentsQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'individual_kpis'), where('status', '==', 'Agreed')) : null, [firestore]);
+  const { data: submissionsData, isLoading: isSubmissionsLoading } = useCollection(submissionsQuery);
+  const { data: commitmentsData, isLoading: isCommitmentsLoading } = useCollection(commitmentsQuery);
+
+  const isLoading = isSubmissionsLoading || isCommitmentsLoading;
 
   return (
     <div className="fade-in space-y-6">
@@ -253,8 +327,8 @@ export default function ApprovalsPage() {
 
        <Tabs defaultValue="submissions" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="submissions">KPI Submissions ({submissionsData?.length ?? 0})</TabsTrigger>
-          <TabsTrigger value="commitments">Commitment Requests ({commitmentsData?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="submissions">KPI Submissions ({isLoading ? '...' : submissionsData?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="commitments">Commitment Requests ({isLoading ? '...' : commitmentsData?.length ?? 0})</TabsTrigger>
         </TabsList>
         <TabsContent value="submissions" className="mt-6">
           <KpiApprovalsTab />
@@ -266,3 +340,5 @@ export default function ApprovalsPage() {
     </div>
   );
 }
+
+    

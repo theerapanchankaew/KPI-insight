@@ -982,12 +982,15 @@ const EditKpiDialog = ({
 
 export default function CascadePage() {
   const { setPageTitle } = useAppLayout();
-  const { orgData, cascadedKpis } = useKpiData();
+  const { orgData } = useKpiData();
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
   const { toast } = useToast();
   const [userRole, setUserRole] = useState<Role>(null);
-
+  
+  const cascadedKpisQuery = useMemoFirebase(() => firestore ? collection(firestore, 'cascaded_kpis') : null, [firestore]);
+  const { data: cascadedKpis } = useCollection<CascadedKpi>(cascadedKpisQuery);
+  
   useEffect(() => {
     const checkUserRole = async () => {
         if(user) {
@@ -1236,3 +1239,5 @@ export default function CascadePage() {
     </div>
   );
 }
+
+    

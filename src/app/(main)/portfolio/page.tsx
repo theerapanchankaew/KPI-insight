@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { CheckCircle, Clock, AlertCircle, Check, X, ShieldCheck, Edit, Send } from 'lucide-react';
+import { CheckCircle, Clock, AlertCircle, Check, X, Send, Edit, UserCheck, ShieldCheck } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useUser, useFirestore, useCollection, useMemoFirebase, WithId } from '@/firebase';
@@ -42,7 +42,7 @@ interface CommittedKpi extends IndividualKpiBase {
 type IndividualKpi = AssignedCascadedKpi | CommittedKpi;
 
 
-const statusConfig = {
+const statusConfig: { [key in IndividualKpi['status']]: { icon: React.ElementType, color: string, label: string } } = {
     Draft: { icon: Edit, color: 'text-gray-500', label: 'Draft' },
     Agreed: { icon: UserCheck, color: 'text-blue-500', label: 'Agreed' },
     'In-Progress': { icon: Clock, color: 'text-accent', label: 'In Progress' },
@@ -52,6 +52,7 @@ const statusConfig = {
     Closed: { icon: CheckCircle, color: 'text-success', label: 'Closed' },
     Rejected: { icon: AlertCircle, color: 'text-destructive', label: 'Rejected' },
 };
+
 
 const KpiActionDialog = ({ isOpen, onClose, kpi, onConfirm }: { 
     isOpen: boolean, 
@@ -69,7 +70,7 @@ const KpiActionDialog = ({ isOpen, onClose, kpi, onConfirm }: {
 
     if (!kpi) return null;
 
-    const isRejectAction = kpi.status === 'Agreed';
+    const isRejectAction = kpi.status === 'Draft' || kpi.status === 'Rejected';
     const nextStatus: IndividualKpi['status'] = 'Agreed';
 
     return (
@@ -87,27 +88,26 @@ const KpiActionDialog = ({ isOpen, onClose, kpi, onConfirm }: {
                         <p><strong>Measure:</strong> {kpi.kpiMeasure}</p>
                         <p><strong>Weight:</strong> {kpi.weight}%</p>
                         <p><strong>Target:</strong> {kpi.type === 'cascaded' ? kpi.target : '5-level scale'}</p>
+                        {kpi.status === 'Rejected' && kpi.rejectionReason && (
+                             <div className="bg-destructive/10 p-3 rounded-md">
+                                <p className="text-sm text-destructive"><strong>Manager Feedback:</strong> {kpi.rejectionReason}</p>
+                            </div>
+                        )}
                     </div>
                     
                     <div className="space-y-2">
                         <Label htmlFor="notes">Notes for Manager</Label>
                         <Textarea
                             id="notes"
-                            placeholder="Add any comments or questions for your manager here. A reason is required if you are rejecting."
+                            placeholder="Add any comments or questions for your manager here. A reason is required if you are requesting a change."
                             value={notes}
                             onChange={(e) => setNotes(e.target.value)}
                         />
                     </div>
-                     <p className="text-xs text-gray-600">By clicking "Agree & Submit," you agree to the terms of this KPI.</p>
+                     <p className="text-xs text-gray-600">By clicking "Agree & Submit," you agree to the terms of this KPI and send it for manager approval.</p>
                 </div>
                 <DialogFooter>
                     <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                    {isRejectAction && (
-                        <Button onClick={() => onConfirm(kpi.id, notes, 'Rejected')} variant="destructive">
-                            <X className="w-4 h-4 mr-2" />
-                            Request Change
-                        </Button>
-                    )}
                     <Button onClick={() => onConfirm(kpi.id, notes, nextStatus)} className="bg-primary hover:bg-primary/90">
                         <Send className="w-4 h-4 mr-2" />
                         Agree & Submit
@@ -143,16 +143,27 @@ export default function PortfolioPage() {
         setSelectedKpi(kpi);
         setIsActionModalOpen(true);
     };
+    
+    const handleAcknowledge = (kpiId: string) => {
+        if (!firestore) return;
+        const kpiRef = doc(firestore, 'individual_kpis', kpiId);
+        setDocumentNonBlocking(kpiRef, { status: 'In-Progress' }, { merge: true });
+        toast({
+            title: `KPI In Progress`,
+            description: `You have acknowledged the approved KPI. It is now active.`,
+        });
+    }
 
     const handleConfirmAction = (kpiId: string, notes: string, newStatus: IndividualKpi['status']) => {
         if (!firestore) return;
         const kpiRef = doc(firestore, 'individual_kpis', kpiId);
         const kpiToUpdate = portfolioData?.find(k => k.id === kpiId);
         if (kpiToUpdate) {
-            const updatedData: Partial<IndividualKpi> = { status: newStatus, notes };
-            if(newStatus === 'Rejected') {
-                updatedData.rejectionReason = notes;
+            const updatedData: Partial<IndividualKpi> = { status: newStatus, notes, rejectionReason: '' };
+            if(newStatus === 'Agreed' && (kpiToUpdate.status === 'Draft' || kpiToUpdate.status === 'Rejected')){
+                 // Employee agrees, sends to manager
             }
+            
             setDocumentNonBlocking(kpiRef, updatedData, { merge: true });
             
             toast({
@@ -175,7 +186,7 @@ export default function PortfolioPage() {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>My Assigned KPIs - FY2026</CardTitle>
+                    <CardTitle>My Assigned KPIs</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <Table>
@@ -205,7 +216,8 @@ export default function PortfolioPage() {
                                 portfolioData.map(kpi => {
                                     const config = statusConfig[kpi.status] || statusConfig.Draft;
                                     const { icon: Icon, color, label } = config;
-                                    const canTakeAction = kpi.status === 'Draft' || kpi.status === 'Rejected';
+                                    const canReview = kpi.status === 'Draft' || kpi.status === 'Rejected';
+                                    const canAcknowledge = kpi.status === 'Upper Manager Approval';
 
                                     return (
                                         <TableRow key={kpi.id}>
@@ -222,9 +234,13 @@ export default function PortfolioPage() {
                                                 </div>
                                             </TableCell>
                                             <TableCell className="text-right">
-                                                {canTakeAction ? (
+                                                {canReview ? (
                                                     <Button size="sm" onClick={() => handleReviewClick(kpi)}>
                                                         Review & Agree
+                                                    </Button>
+                                                ) : canAcknowledge ? (
+                                                     <Button size="sm" variant="secondary" onClick={() => handleAcknowledge(kpi.id)}>
+                                                        <Check className="w-4 h-4 mr-1"/> Acknowledge
                                                     </Button>
                                                 ) : (
                                                     <Button size="sm" variant="outline" disabled>
@@ -256,3 +272,5 @@ export default function PortfolioPage() {
         </div>
     );
 }
+
+    
