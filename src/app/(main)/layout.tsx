@@ -23,7 +23,7 @@ import { useUser, useAuth } from '@/firebase';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AuthGate } from '@/app/auth-gate';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger, DialogClose } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { updateProfile } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
@@ -95,10 +95,19 @@ const AppSidebar = () => {
 
 
 const EditProfileDialog = ({ children }: { children: React.ReactNode }) => {
-    const auth = useAuth();
     const { user } = useUser();
     const { toast } = useToast();
     const [displayName, setDisplayName] = useState(user?.displayName || '');
+    const [role, setRole] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (user) {
+            setDisplayName(user.displayName || '');
+            user.getIdTokenResult().then(idTokenResult => {
+                setRole(idTokenResult.claims.role as string || 'Employee');
+            });
+        }
+    }, [user]);
 
     const handleSave = async () => {
         if (user) {
@@ -131,6 +140,10 @@ const EditProfileDialog = ({ children }: { children: React.ReactNode }) => {
                      <div className="space-y-2">
                         <Label htmlFor="email">Email</Label>
                         <Input id="email" value={user?.email || ''} disabled />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="role">Role</Label>
+                        <Input id="role" value={role || 'Loading...'} disabled />
                     </div>
                 </div>
                 <DialogFooter>
