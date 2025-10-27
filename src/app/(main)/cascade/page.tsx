@@ -26,6 +26,7 @@ import { useToast } from '@/hooks/use-toast';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
 
 // ==================== TYPE DEFINITIONS ====================
 
@@ -105,6 +106,20 @@ interface CommittedKpi extends IndividualKpiBase {
 }
 
 type IndividualKpi = AssignedCascadedKpi | CommittedKpi;
+
+
+// Types for the Assign Dialog
+interface SelectedCascadedKpi {
+  kpiId: string;
+  weight: number;
+}
+
+interface CommittedKpiInput {
+  task: string;
+  weight: number;
+  targets: { level1: string; level2: string; level3: string; level4: string; level5: string; };
+}
+
 
 // ==================== CONSTANTS & UTILITIES ====================
 
@@ -794,7 +809,213 @@ const IndividualLevel = ({
 // ==================== PLACEHOLDER DIALOGS ====================
 
 const EditKpiDialog = (props: any) => <div />;
-const AssignKpiDialog = (props: any) => <div />;
+
+
+const AssignKpiDialog = ({ 
+    isOpen, 
+    onClose, 
+    employee, 
+    departmentKpis, 
+    onConfirm,
+    user 
+} : {
+    isOpen: boolean;
+    onClose: () => void;
+    employee: WithId<Employee> | null;
+    departmentKpis: WithId<CascadedKpi>[];
+    onConfirm: (assignments: any[]) => void;
+    user: any;
+}) => {
+    const [selectedCascaded, setSelectedCascaded] = useState<SelectedCascadedKpi[]>([]);
+    const [committedKpis, setCommittedKpis] = useState<CommittedKpiInput[]>([]);
+
+    const employeeDeptKpis = useMemo(() => {
+        return departmentKpis.filter(kpi => kpi.department === employee?.department);
+    }, [departmentKpis, employee]);
+
+    useEffect(() => {
+      if (!isOpen) {
+        setSelectedCascaded([]);
+        setCommittedKpis([]);
+      }
+    }, [isOpen]);
+
+    const handleCascadedSelect = (kpiId: string, checked: boolean) => {
+        if (checked) {
+            setSelectedCascaded([...selectedCascaded, { kpiId, weight: 0 }]);
+        } else {
+            setSelectedCascaded(selectedCascaded.filter(k => k.kpiId !== kpiId));
+        }
+    };
+    
+    const handleCascadedWeightChange = (kpiId: string, weight: string) => {
+        setSelectedCascaded(selectedCascaded.map(k => k.kpiId === kpiId ? { ...k, weight: parseInt(weight) || 0 } : k));
+    };
+    
+    const handleAddCommitted = () => {
+        setCommittedKpis([...committedKpis, { task: '', weight: 0, targets: { level1: '', level2: '', level3: '', level4: '', level5: ''} }]);
+    };
+    
+    const handleRemoveCommitted = (index: number) => {
+        setCommittedKpis(committedKpis.filter((_, i) => i !== index));
+    };
+
+    const handleCommittedChange = (index: number, field: keyof CommittedKpiInput, value: any) => {
+        const newCommitted = [...committedKpis];
+        (newCommitted[index] as any)[field] = value;
+        setCommittedKpis(newCommitted);
+    };
+
+    const handleCommittedTargetChange = (index: number, level: string, value: string) => {
+        const newCommitted = [...committedKpis];
+        (newCommitted[index].targets as any)[level] = value;
+        setCommittedKpis(newCommitted);
+    }
+    
+    const handleConfirmClick = () => {
+        if (!employee) return;
+        
+        const cascadedAssignments = selectedCascaded.map(selected => {
+            const kpi = employeeDeptKpis.find(dk => dk.id === selected.kpiId);
+            return {
+                type: 'cascaded',
+                employeeId: employee.id,
+                kpiId: selected.kpiId,
+                kpiMeasure: kpi?.measure || 'Unknown KPI',
+                target: kpi?.target || 'N/A',
+                weight: selected.weight
+            };
+        });
+
+        const committedAssignments = committedKpis.map(committed => ({
+            type: 'committed',
+            employeeId: employee.id,
+            kpiId: `committed-${Date.now()}`, // temp ID
+            kpiMeasure: committed.task,
+            task: committed.task,
+            weight: committed.weight,
+            targets: committed.targets,
+        }));
+        
+        onConfirm([...cascadedAssignments, ...committedAssignments]);
+        onClose();
+    };
+    
+    const totalWeight = useMemo(() => {
+        const cascadedWeight = selectedCascaded.reduce((sum, kpi) => sum + kpi.weight, 0);
+        const committedWeight = committedKpis.reduce((sum, kpi) => sum + kpi.weight, 0);
+        return cascadedWeight + committedWeight;
+    }, [selectedCascaded, committedKpis]);
+
+    if (!employee) return null;
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="max-w-4xl max-h-[90vh]">
+                <DialogHeader>
+                    <DialogTitle>Assign KPIs for: {employee.name}</DialogTitle>
+                    <DialogDescription>
+                        Assign KPIs from the department or create new individual commitments. The total weight should be 100%.
+                    </DialogDescription>
+                </DialogHeader>
+
+                 <div className="flex justify-end items-center gap-2 border-t border-b py-2 px-4 -mx-6 bg-gray-50/50">
+                    <Label>Total Weight:</Label>
+                    <span className={cn("font-bold text-lg", totalWeight === 100 ? "text-success" : "text-destructive")}>{totalWeight}%</span>
+                </div>
+
+                <ScrollArea className="max-h-[calc(80vh-15rem)]">
+                    <div className="pr-6">
+                        <Tabs defaultValue="cascaded" className="w-full">
+                            <TabsList className="grid w-full grid-cols-2">
+                                <TabsTrigger value="cascaded">Cascaded KPIs</TabsTrigger>
+                                <TabsTrigger value="committed">Committed KPIs</TabsTrigger>
+                            </TabsList>
+                            <TabsContent value="cascaded" className="mt-4">
+                                <div className="space-y-4">
+                                    <h4 className="font-semibold">Assign from Department: {employee.department}</h4>
+                                    {employeeDeptKpis.length > 0 ? employeeDeptKpis.map(kpi => {
+                                      const isSelected = selectedCascaded.some(s => s.kpiId === kpi.id);
+                                      return (
+                                        <div key={kpi.id} className={cn("p-4 rounded-lg flex items-start gap-4", isSelected ? "bg-blue-50 border border-blue-200" : "bg-gray-50 border")}>
+                                            <Checkbox 
+                                              id={`cascaded-${kpi.id}`}
+                                              checked={isSelected}
+                                              onCheckedChange={(checked) => handleCascadedSelect(kpi.id, !!checked)}
+                                              className="mt-1"
+                                            />
+                                            <div className="grid gap-1.5 flex-1">
+                                                <label htmlFor={`cascaded-${kpi.id}`} className="font-medium cursor-pointer">{kpi.measure}</label>
+                                                <p className="text-sm text-muted-foreground">Department Target: {kpi.target} {kpi.unit}</p>
+                                                {isSelected && (
+                                                    <div className="grid grid-cols-2 gap-4 mt-2">
+                                                        <div className="space-y-1">
+                                                            <Label htmlFor={`weight-${kpi.id}`}>Individual Weight (%)</Label>
+                                                            <Input 
+                                                              id={`weight-${kpi.id}`} 
+                                                              type="number"
+                                                              placeholder="e.g., 20"
+                                                              value={selectedCascaded.find(s => s.kpiId === kpi.id)?.weight || ''}
+                                                              onChange={(e) => handleCascadedWeightChange(kpi.id, e.target.value)}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                      )
+                                    }) : <p className="text-sm text-muted-foreground text-center py-4">No KPIs have been cascaded to the {employee.department} department yet.</p>}
+                                </div>
+                            </TabsContent>
+                            <TabsContent value="committed" className="mt-4">
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center">
+                                       <h4 className="font-semibold">Create Individual Commitments</h4>
+                                       <Button size="sm" variant="outline" onClick={handleAddCommitted}><PlusCircle className="mr-2 h-4 w-4"/>Add Commitment</Button>
+                                    </div>
+
+                                    {committedKpis.map((kpi, index) => (
+                                        <div key={index} className="p-4 border rounded-lg space-y-4 relative bg-gray-50">
+                                            <Button size="icon" variant="ghost" className="absolute top-2 right-2 h-7 w-7" onClick={() => handleRemoveCommitted(index)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-1">
+                                                    <Label>Task / Objective</Label>
+                                                    <Textarea placeholder="e.g., Complete project management certification" value={kpi.task} onChange={e => handleCommittedChange(index, 'task', e.target.value)} />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label>Weight (%)</Label>
+                                                    <Input type="number" placeholder="e.g., 15" value={kpi.weight || ''} onChange={e => handleCommittedChange(index, 'weight', parseInt(e.target.value) || 0)} />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <Label className="mb-2 block">5-Level Targets</Label>
+                                                <div className="grid grid-cols-5 gap-2">
+                                                    {['level1', 'level2', 'level3', 'level4', 'level5'].map((level, i) => (
+                                                        <div key={level} className="space-y-1">
+                                                            <Label className="text-xs text-muted-foreground">Level {i+1}</Label>
+                                                            <Input placeholder={`Target for level ${i+1}`} value={(kpi.targets as any)[level]} onChange={e => handleCommittedTargetChange(index, level, e.target.value)} />
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {committedKpis.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">No individual commitments added.</p>}
+                                </div>
+                            </TabsContent>
+                        </Tabs>
+                    </div>
+                </ScrollArea>
+                
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                    <Button onClick={handleConfirmClick} disabled={!user}>Confirm Assignments</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 
 // ==================== MAIN COMPONENT ====================
 
@@ -814,9 +1035,7 @@ export default function KPICascadeManagement() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeployAndCascadeOpen, setIsDeployAndCascadeOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
-  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
-  const [selectedKpis, setSelectedKpis] = useState<any>({});
-  const [committedKpis, setCommittedKpis] = useState<any[]>([]);
+  const [selectedEmployee, setSelectedEmployee] = useState<WithId<Employee> | null>(null);
 
   // Firestore collections
   const cascadedKpisQuery = useMemoFirebase(
@@ -923,7 +1142,7 @@ export default function KPICascadeManagement() {
     toast({ title: "KPI Deleted", description: `"${kpi.measure}" has been removed.`, variant: 'destructive' });
   };
 
-  const handleAssignKpiClick = (employee: Employee) => {
+  const handleAssignKpiClick = (employee: WithId<Employee>) => {
     setSelectedEmployee(employee);
     setIsAssignModalOpen(true);
   };
@@ -965,18 +1184,15 @@ export default function KPICascadeManagement() {
     }
 
     const colRef = collection(firestore, 'individual_kpis');
-    const existing = (individualKpis || []).filter(ik => ik.employeeId === selectedEmployee.id);
     
-    existing.forEach(a => {
-      const docRef = doc(firestore, 'individual_kpis', a.id);
-      deleteDocumentNonBlocking(docRef);
-    });
-
-    assignments.forEach(a => {
-      addDocumentNonBlocking(colRef, { ...a, status: 'Draft' as const });
-    });
+    // We don't delete old ones, we just add new ones. The portfolio page will show all.
+    // Management of old/duplicate KPIs can be a future feature.
     
-    toast({ title: "KPIs Assigned", description: `${assignments.length} KPI(s) have been assigned to ${selectedEmployee.name}.` });
+    for (const assignment of assignments) {
+      addDocumentNonBlocking(colRef, { ...assignment, status: 'Draft' as const });
+    }
+    
+    toast({ title: "KPIs Assigned", description: `${assignments.length} KPI(s) have been assigned to ${selectedEmployee.name} as 'Draft'.` });
   };
 
   // ==================== RENDER ====================
@@ -1062,16 +1278,10 @@ export default function KPICascadeManagement() {
         onClose={() => {
           setIsAssignModalOpen(false);
           setSelectedEmployee(null);
-          setSelectedKpis({});
-          setCommittedKpis([]);
         }}
         employee={selectedEmployee}
         departmentKpis={cascadedKpis || []}
         onConfirm={handleConfirmAssignment}
-        selectedKpis={selectedKpis}
-        setSelectedKpis={setSelectedKpis}
-        committedKpis={committedKpis}
-        setCommittedKpis={setCommittedKpis}
         user={user}
       />
     </div>
