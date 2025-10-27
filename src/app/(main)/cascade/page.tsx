@@ -120,6 +120,8 @@ const CorporateLevel = ({ onCascadeClick, onEditClick, onDeleteClick, userRole }
                                     </div>
                                     <Progress value={75} className="h-2 mt-2" />
                                     <div className="flex justify-end mt-4 space-x-2">
+                                        <Button size="sm" variant="outline">Action</Button>
+                                        <Button size="sm" variant="outline" onClick={() => onCascadeClick(kpi)}>Cascading to ระดับฝ่าย</Button>
                                         {canCascade && <Button size="sm" variant="outline" onClick={() => onCascadeClick(kpi)}>Cascade</Button>}
                                         {canEdit && <Button size="sm" variant="secondary" onClick={() => onEditClick(kpi)}><Edit className="h-4 w-4 mr-1"/> Edit</Button>}
                                         {canDelete && 
