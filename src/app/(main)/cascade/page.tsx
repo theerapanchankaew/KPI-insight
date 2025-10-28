@@ -276,12 +276,12 @@ const DeployAndCascadeDialog = ({
   const [cascadedDepts, setCascadedDepts] = useState<DepartmentCascadeInput[]>([]);
 
   const generatePreview = useCallback(() => {
-    if (!kpi || !kpi.target) return;
+    if (!kpi || !kpi.target || !dateRange?.from || !dateRange.to) return;
 
     const yearlyTarget = parseFloat(String(kpi.target).replace(/[^0-9.]/g, '')) || 0;
     let actualStrategy = strategy === 'auto' ? detectBestStrategy(kpi) : strategy;
 
-    const intervalMonths = dateRange?.from && dateRange.to ? eachMonthOfInterval({ start: dateRange.from, end: dateRange.to }) : [];
+    const intervalMonths = eachMonthOfInterval({ start: dateRange.from, end: dateRange.to });
     const numMonths = intervalMonths.length;
 
     let basePreview: MonthlyDistribution[];
@@ -320,8 +320,15 @@ const DeployAndCascadeDialog = ({
     // Recalculate percentages to sum to 100 for the selected period
     const totalTargetInPeriod = finalPreview.reduce((sum, p) => sum + p.target, 0);
     if(totalTargetInPeriod > 0) {
-        finalPreview.forEach(p => {
-            p.percentage = (p.target / totalTargetInPeriod) * 100;
+        let totalPercentage = 0;
+        finalPreview.forEach((p, index) => {
+            if(index === finalPreview.length - 1) {
+                p.percentage = 100 - totalPercentage;
+            } else {
+                const perc = (p.target / totalTargetInPeriod) * 100;
+                p.percentage = perc;
+                totalPercentage += perc;
+            }
         });
     }
 
@@ -332,12 +339,11 @@ const DeployAndCascadeDialog = ({
     if (kpi && isOpen) {
       const today = new Date();
       setDateRange({ from: startOfMonth(today), to: endOfMonth(new Date(today.getFullYear(), 11, 31)) });
-      generatePreview();
     } else {
       setCascadedDepts([]);
       setStrategy('auto');
     }
-  }, [kpi, isOpen, generatePreview]);
+  }, [kpi, isOpen]);
 
   useEffect(() => {
     if (isOpen) {
