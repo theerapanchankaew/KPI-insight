@@ -349,7 +349,8 @@ const DeployAndCascadeDialog = ({
     if (isOpen) {
       generatePreview();
     }
-  }, [isOpen, strategy, seasonalPattern, progressiveCurve, customWeights, dateRange, generatePreview]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, strategy, seasonalPattern, progressiveCurve, customWeights, dateRange]);
 
 
   const handleCustomWeightChange = (monthIndex: number, weightValue: string) => {
