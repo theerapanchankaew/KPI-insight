@@ -237,19 +237,24 @@ export default function UserManagementPage() {
 
     let usersUpdated = 0;
     managedUsers.forEach(user => {
-      if (usersData?.some(u => u.id === user.id)) {
-        const userRef = doc(firestore, 'users', user.id);
-        const userDataToSave = {
-            role: user.role,
-            menuAccess: user.menuAccess,
-        };
-        setDocumentNonBlocking(userRef, userDataToSave, { merge: true });
-        usersUpdated++;
-      }
+      // Always save permissions. This will create a document in 'users' if it doesn't exist.
+      const userRef = doc(firestore, 'users', user.id);
+      const userDataToSave = {
+          id: user.id,
+          name: user.name,
+          email: user.email || '',
+          role: user.role,
+          menuAccess: user.menuAccess,
+          department: user.department,
+          position: user.position
+      };
+      setDocumentNonBlocking(userRef, userDataToSave, { merge: true });
+      usersUpdated++;
     });
+    
     toast({
         title: "User Permissions Saved",
-        description: `Permissions for ${usersUpdated} user(s) have been updated.`,
+        description: `Permissions for ${usersUpdated} user(s) have been updated/created.`,
     });
   };
 
@@ -453,5 +458,3 @@ export default function UserManagementPage() {
     </div>
   );
 }
-
-  
