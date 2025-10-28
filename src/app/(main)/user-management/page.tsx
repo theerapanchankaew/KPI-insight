@@ -16,7 +16,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { useCollection, useFirestore, useMemoFirebase, useUser, WithId } from '@/firebase';
+import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, WithId } from '@/firebase';
 import { collection, doc } from 'firebase/firestore';
 import { addDocumentNonBlocking, deleteDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -88,7 +88,7 @@ const defaultPermissions: { [key in Role]: { [key: string]: boolean } } = {
     '/portfolio': true,
     '/submit': true,
     '/approvals': false,
-    '/reports': false,
+    '/reports': true, // Changed from false
     '/kpi-import': false,
     '/user-management': false,
     '/settings': false,
@@ -148,37 +148,26 @@ export default function UserManagementPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user, isUserLoading: isAuthLoading } = useUser();
+  
+  const userProfileRef = useMemoFirebase(() => {
+      if(!user || !firestore) return null;
+      return doc(firestore, 'users', user.uid);
+  }, [user, firestore]);
+  const { data: userProfile, isLoading: isProfileLoading } = useDoc<AppUser>(userProfileRef);
 
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    const checkAdminStatus = async () => {
-        if (user) {
-            try {
-                const idTokenResult = await user.getIdTokenResult();
-                setIsAdmin(idTokenResult.claims.role === 'Admin');
-            } catch (error) {
-                console.error("Error fetching user claims:", error);
-                setIsAdmin(false);
-            }
-        } else if (!isAuthLoading) {
-           setIsAdmin(false);
-        }
-    };
-    checkAdminStatus();
-  }, [user, isAuthLoading]);
+  const isAdmin = useMemo(() => userProfile?.role === 'Admin', [userProfile]);
 
   useEffect(() => {
     setPageTitle('User Management');
   }, [setPageTitle]);
 
   const usersQuery = useMemoFirebase(() => {
-    if (!firestore || !isAdmin) return null;
+    if (!firestore || !isAdmin) return null; // Only query if user is admin
     return collection(firestore, 'users');
   }, [firestore, isAdmin]);
   
   const employeesQuery = useMemoFirebase(() => {
-    if (!firestore || !isAdmin) return null;
+    if (!firestore || !isAdmin) return null; // Only query if user is admin
     return collection(firestore, 'employees');
   }, [firestore, isAdmin]);
 
@@ -189,42 +178,40 @@ export default function UserManagementPage() {
   const [isAddUserModalOpen, setAddUserModalOpen] = useState(false);
 
   useEffect(() => {
+    if (!isAdmin) return; // Don't process if not admin
+
     const allKnownUsers = new Map<string, ManagedUser>();
 
-    // First, process employees from employeesData
     if (employeesData) {
         employeesData.forEach(employee => {
             allKnownUsers.set(employee.id, {
                 ...employee,
-                role: 'Employee', // Default role
+                role: 'Employee',
                 menuAccess: defaultPermissions.Employee
             });
         });
     }
 
-    // Then, merge or add users from usersData (authentication records)
     if (usersData) {
-        usersData.forEach(userProfile => {
-            const existing = allKnownUsers.get(userProfile.id);
+        usersData.forEach(userAuthProfile => {
+            const existing = allKnownUsers.get(userAuthProfile.id);
             if (existing) {
-                // Merge if user exists in both collections
-                allKnownUsers.set(userProfile.id, { ...existing, ...userProfile });
+                allKnownUsers.set(userAuthProfile.id, { ...existing, ...userAuthProfile });
             } else {
-                // Add if user exists in auth but not as an employee record
-                allKnownUsers.set(userProfile.id, {
-                    id: userProfile.id,
-                    name: userProfile.name || 'N/A',
-                    department: userProfile.department || 'Unassigned',
-                    position: userProfile.position || 'N/A',
-                    manager: userProfile.manager || '',
-                    ...userProfile
+                allKnownUsers.set(userAuthProfile.id, {
+                    id: userAuthProfile.id,
+                    name: userAuthProfile.name || 'N/A',
+                    department: userAuthProfile.department || 'Unassigned',
+                    position: userAuthProfile.position || 'N/A',
+                    manager: userAuthProfile.manager || '',
+                    ...userAuthProfile
                 });
             }
         });
     }
 
     setManagedUsers(Array.from(allKnownUsers.values()));
-  }, [employeesData, usersData]);
+  }, [employeesData, usersData, isAdmin]);
   
   const handleRoleChange = (userId: string, role: Role) => {
     setManagedUsers(prev => prev.map(user => 
@@ -243,18 +230,13 @@ export default function UserManagementPage() {
   };
 
   const handleSavePermissions = () => {
-    if (!firestore) {
-        toast({ title: 'Error', description: 'Firestore is not available.', variant: 'destructive'});
-        return;
-    }
-    if (!isAdmin) {
+    if (!firestore || !isAdmin) {
         toast({ title: 'Permission Denied', description: 'Only admins can save permissions.', variant: 'destructive'});
         return;
     }
 
     let usersUpdated = 0;
     managedUsers.forEach(user => {
-      // Only save users that have a proper user profile (i.e., they exist in the 'users' collection)
       if (usersData?.some(u => u.id === user.id)) {
         const userRef = doc(firestore, 'users', user.id);
         const userDataToSave = {
@@ -267,16 +249,12 @@ export default function UserManagementPage() {
     });
     toast({
         title: "User Permissions Saved",
-        description: `Permissions for ${usersUpdated} user(s) have been updated in Firestore.`,
+        description: `Permissions for ${usersUpdated} user(s) have been updated.`,
     });
   };
 
   const handleAddUser = (newUser: Omit<Employee, 'id'>) => {
-    if (!firestore) {
-        toast({ title: 'Error', description: 'Firestore is not available.', variant: 'destructive'});
-        return;
-    }
-    if (!isAdmin) {
+    if (!firestore || !isAdmin) {
         toast({ title: 'Permission Denied', description: 'Only admins can add employees.', variant: 'destructive'});
         return;
     }
@@ -284,32 +262,27 @@ export default function UserManagementPage() {
     const newId = newUser.name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now().toString().slice(-5);
     addDocumentNonBlocking(doc(employeesCollection, newId), {id: newId, ...newUser});
     
-    toast({ title: 'Employee Added', description: `${newUser.name} has been added to the organization.` });
+    toast({ title: 'Employee Added', description: `${newUser.name} has been added.` });
   };
 
   const handleDeleteUser = (employeeId: string) => {
-      if (!firestore) {
-        toast({ title: 'Error', description: 'Firestore is not available.', variant: 'destructive'});
-        return;
-      }
-      if (!isAdmin) {
+      if (!firestore || !isAdmin) {
         toast({ title: 'Permission Denied', description: 'Only admins can delete users.', variant: 'destructive'});
         return;
       }
       const employeeRef = doc(firestore, 'employees', employeeId);
       deleteDocumentNonBlocking(employeeRef);
 
-      // Also attempt to delete the corresponding user doc if it exists
-      const userProfile = usersData?.find(u => u.id === employeeId);
-      if(userProfile) {
-        const userRef = doc(firestore, 'users', userProfile.id);
+      const userProfileToDelete = usersData?.find(u => u.id === employeeId);
+      if(userProfileToDelete) {
+        const userRef = doc(firestore, 'users', userProfileToDelete.id);
         deleteDocumentNonBlocking(userRef);
       }
 
-      toast({ title: 'User Removed', description: 'The user has been removed from the organization list.', variant: 'destructive' });
+      toast({ title: 'User Removed', description: 'The user has been removed.', variant: 'destructive' });
   };
 
-  const isLoading = isAuthLoading || isUsersLoading || isEmployeesLoading || isAdmin === null;
+  const isLoading = isAuthLoading || isProfileLoading || (isAdmin && (isUsersLoading || isEmployeesLoading));
   const error = usersError || employeesError;
 
   const renderContent = () => {
@@ -334,7 +307,7 @@ export default function UserManagementPage() {
                  <AlertTriangle className="h-10 w-10 text-destructive" />
                  <h3 className="text-lg font-semibold">Access Denied</h3>
                  <p className="text-muted-foreground max-w-md">
-                    You do not have the necessary permissions to view this page. Please contact your system administrator if you believe this is an error.
+                    You do not have the necessary permissions to view this page. Please contact an administrator.
                  </p>
                </div>
             </TableCell>
@@ -350,7 +323,7 @@ export default function UserManagementPage() {
                  <AlertTriangle className="h-10 w-10 text-destructive" />
                  <h3 className="text-lg font-semibold">Error Loading Data</h3>
                  <p className="text-muted-foreground max-w-md">
-                    Could not load user permissions data. {error.message}
+                    Could not load user data. {error.message}
                  </p>
                </div>
             </TableCell>
@@ -362,7 +335,7 @@ export default function UserManagementPage() {
         return (
             <TableRow>
                 <TableCell colSpan={navItems.length + 4} className="h-96 text-center text-muted-foreground">
-                    No users found. Add an employee or have users sign up.
+                    No users found. Add an employee or have a user sign up.
                 </TableCell>
             </TableRow>
         );
@@ -412,7 +385,7 @@ export default function UserManagementPage() {
         <TableCell className="text-center">
           <AlertDialog>
             <AlertDialogTrigger asChild>
-               <Button variant="ghost" size="icon">
+               <Button variant="ghost" size="icon" disabled={employee.id === user?.uid}>
                   <Trash2 className="h-4 w-4 text-destructive" />
                </Button>
             </AlertDialogTrigger>
@@ -469,7 +442,7 @@ export default function UserManagementPage() {
                 </TableBody>
               </Table>
             </div>
-            {isAdmin && (
+            {isAdmin && !isLoading && (
                 <div className="pt-4 flex justify-end">
                   <Button onClick={handleSavePermissions}>Save Permissions</Button>
                 </div>
@@ -481,4 +454,4 @@ export default function UserManagementPage() {
   );
 }
 
-    
+  

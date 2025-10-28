@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
+import { navItems } from '@/lib/data/layout-data';
 
 const SignInForm = () => {
   const auth = useAuth();
@@ -23,12 +24,15 @@ const SignInForm = () => {
   
   const handleEmailSignIn = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!auth) {
+        setError('Authentication service not available.');
+        return;
+    }
     if (!email || !password) {
       setError('Please enter both email and password.');
       return;
     }
     setError(null);
-    // Non-blocking sign-in
     initiateEmailSignIn(auth, email, password);
   };
 
@@ -81,6 +85,10 @@ const SignUpForm = () => {
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!auth || !firestore) {
+        setError('Authentication service not available.');
+        return;
+    }
     if (password !== confirmPassword) {
       setError("Passwords do not match.");
       return;
@@ -94,31 +102,36 @@ const SignUpForm = () => {
       await updateProfile(user, { displayName });
       
       const userRef = doc(firestore, 'users', user.uid);
-      const userRole = email.includes('admin') ? 'Admin' : 'Employee';
+      const userRole = email.includes('admin') || email.includes('theerapan@masci') ? 'Admin' : 'Employee';
       
-      const newUser = {
+      // Default permissions for the new user's role
+      const defaultPermissions: { [key: string]: boolean } = navItems.reduce((acc, item) => {
+        let hasAccess = false;
+        if (userRole === 'Admin') {
+            hasAccess = true;
+        } else if (userRole === 'Employee') {
+            hasAccess = ['/dashboard', '/portfolio', '/submit', '/reports'].includes(item.href);
+        } else { // Managerial roles
+            hasAccess = !['/kpi-import', '/user-management'].includes(item.href);
+        }
+        acc[item.href] = hasAccess;
+        return acc;
+      }, {} as { [key: string]: boolean });
+
+
+      const newUserProfile = {
         id: user.uid,
         name: displayName,
         email: email,
-        department: 'Unassigned',
-        position: 'New User',
-        manager: '',
         role: userRole,
-        menuAccess: {
-            '/dashboard': true,
-            '/cascade': userRole === 'Admin',
-            '/portfolio': true,
-            '/submit': userRole === 'Employee',
-            '/approvals': userRole !== 'Employee',
-            '/reports': true,
-            '/kpi-import': userRole === 'Admin',
-            '/user-management': userRole === 'Admin',
-            '/settings': userRole === 'Admin',
-        }
+        department: 'Unassigned',
+        position: 'New Member',
+        manager: '',
+        menuAccess: defaultPermissions,
       };
       
-      // Save user document to Firestore
-      setDocumentNonBlocking(userRef, newUser, { merge: true });
+      // Save user profile to Firestore
+      setDocumentNonBlocking(userRef, newUserProfile, { merge: true });
       
       toast({
           title: "Account Created",
@@ -223,3 +236,5 @@ export default function LoginPage() {
     </div>
   );
 }
+
+  
