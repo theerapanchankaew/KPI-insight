@@ -82,10 +82,12 @@ const SignUpForm = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [position, setPosition] = useState('');
+  const [department, setDepartment] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSigningUp, setIsSigningUp] = useState(false);
   
   const positions = ["เจ้าหน้าที่บริหารงานคุณภาพ", "ผู้จัดการแผนกอาวุโส", "ผู้จัดการฝ่าย", "ผู้ช่วยผู้จัดการฝ่าย", "พนักงาน"];
+  const departments = ["HQMS", "QMS", "Sales", "Operations", "Corporate Affairs"];
 
 
   const handleSignUp = async (e: React.FormEvent) => {
@@ -100,6 +102,10 @@ const SignUpForm = () => {
     }
     if (!position) {
         setError("Please select a position.");
+        return;
+    }
+    if (!department) {
+        setError("Please select a department.");
         return;
     }
     setError(null);
@@ -133,7 +139,7 @@ const SignUpForm = () => {
         name: displayName,
         email: email,
         role: userRole,
-        department: 'Unassigned',
+        department: department,
         position: position,
         manager: '',
         menuAccess: defaultPermissions,
@@ -165,6 +171,19 @@ const SignUpForm = () => {
         <div className="space-y-2">
           <Label htmlFor="signup-email">Email</Label>
           <Input id="signup-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={isSigningUp}/>
+        </div>
+        <div className="space-y-2">
+            <Label htmlFor="department">Department</Label>
+            <Select value={department} onValueChange={setDepartment} required disabled={isSigningUp}>
+                <SelectTrigger id="department">
+                    <SelectValue placeholder="Select your department" />
+                </SelectTrigger>
+                <SelectContent>
+                    {departments.map((dept) => (
+                        <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
         </div>
         <div className="space-y-2">
             <Label htmlFor="position">Position</Label>
