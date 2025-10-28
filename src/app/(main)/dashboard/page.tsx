@@ -67,6 +67,13 @@ const KpiCard = ({ kpi, monthlyData }: { kpi: WithId<any>, monthlyData: WithId<M
     const totalActual = useMemo(() => chartData.reduce((sum, item) => sum + item.Actual, 0), [chartData]);
     const totalTarget = useMemo(() => chartData.reduce((sum, item) => sum + item.Target, 0), [chartData]);
     const achievement = totalTarget > 0 ? (totalActual / totalTarget) * 100 : 0;
+    
+    // Find the max value from both Actual and Target to set the Y-axis domain
+    const yAxisMax = useMemo(() => {
+        const maxActual = Math.max(...chartData.map(d => d.Actual));
+        const maxTarget = Math.max(...chartData.map(d => d.Target));
+        return Math.max(maxActual, maxTarget);
+    }, [chartData]);
 
     return (
         <Card className="shadow-sm border-gray-200 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 group w-full">
@@ -87,7 +94,15 @@ const KpiCard = ({ kpi, monthlyData }: { kpi: WithId<any>, monthlyData: WithId<M
                         <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                             <CartesianGrid vertical={false} strokeDasharray="3 3" />
                             <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} fontSize={10} />
-                            <YAxis tickLine={false} axisLine={false} tickMargin={8} fontSize={10} width={40} tickFormatter={formatYAxis} />
+                            <YAxis 
+                                tickLine={false} 
+                                axisLine={false} 
+                                tickMargin={8} 
+                                fontSize={10} 
+                                width={40} 
+                                tickFormatter={formatYAxis}
+                                domain={[0, dataMax => Math.max(yAxisMax, dataMax) * 1.1]}
+                            />
                             <Tooltip content={<ChartTooltipContent indicator="dot" />} />
                             <Line type="monotone" dataKey="Actual" stroke="var(--color-Actual)" strokeWidth={2} dot={false} />
                             <Line type="monotone" dataKey="Target" stroke="var(--color-Target)" strokeWidth={2} strokeDasharray="3 3" dot={false} />
