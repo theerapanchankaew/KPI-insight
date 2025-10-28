@@ -29,6 +29,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { DateRange } from 'react-day-picker';
 import { DatePickerWithRange } from '@/components/ui/date-range-picker';
+import { getMonth, getYear, isWithinInterval, eachMonthOfInterval, startOfMonth, endOfMonth } from 'date-fns';
+
 
 // ==================== TYPE DEFINITIONS ====================
 
@@ -128,12 +130,13 @@ interface CommittedKpiInput {
 const MONTH_NAMES_TH = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
 
 const DISTRIBUTION_STRATEGIES = {
-  equal: (yearlyTarget: number): MonthlyDistribution[] => {
-    const monthly = yearlyTarget / 12;
+  equal: (yearlyTarget: number, numMonths: number): MonthlyDistribution[] => {
+    if (numMonths <= 0) return [];
+    const monthly = yearlyTarget / numMonths;
     return Array.from({ length: 12 }, (_, i) => ({
       month: i + 1,
       monthName: MONTH_NAMES_TH[i],
-      percentage: 100 / 12,
+      percentage: 100 / numMonths,
       target: Number(monthly.toFixed(2)),
       weight: 1,
     }));
@@ -141,12 +144,12 @@ const DISTRIBUTION_STRATEGIES = {
 
   weighted: (yearlyTarget: number, weights: number[]): MonthlyDistribution[] => {
     const total = weights.reduce((a, b) => a + b, 0) || 1;
-    return weights.map((w, i) => ({
+    return Array.from({ length: 12 }, (_, i) => ({
       month: i + 1,
       monthName: MONTH_NAMES_TH[i],
-      percentage: Number(((w / total) * 100).toFixed(2)),
-      target: Number(((yearlyTarget * w) / total).toFixed(2)),
-      weight: w,
+      percentage: Number(((weights[i] / total) * 100).toFixed(2)),
+      target: Number(((yearlyTarget * weights[i]) / total).toFixed(2)),
+      weight: weights[i],
     }));
   },
 
@@ -168,17 +171,11 @@ const DISTRIBUTION_STRATEGIES = {
   },
 
   historical: (yearlyTarget: number, historicalData: number[][]): MonthlyDistribution[] => {
-    if (!historicalData?.length) return DISTRIBUTION_STRATEGIES.equal(yearlyTarget);
+    if (!historicalData?.length) return DISTRIBUTION_STRATEGIES.equal(yearlyTarget, 12);
     const sums = Array(12).fill(0);
     historicalData.forEach(y => y.forEach((v, m) => { if (m < 12) sums[m] += v; }));
     const avg = sums.map(s => s / historicalData.length);
-    const total = avg.reduce((a, b) => a + b, 0) || 1;
-    return avg.map((v, i) => ({
-      month: i + 1,
-      monthName: MONTH_NAMES_TH[i],
-      percentage: Number(((v / total) * 100).toFixed(2)),
-      target: Number(((yearlyTarget * v) / total).toFixed(2)),
-    }));
+    return DISTRIBUTION_STRATEGIES.weighted(yearlyTarget, avg);
   },
 };
 
@@ -266,51 +263,66 @@ const DeployAndCascadeDialog = ({
   const [progressiveCurve, setProgressiveCurve] = useState<ProgressiveCurve>('linear');
   const [previewData, setPreviewData] = useState<MonthlyDistribution[]>([]);
   const [customWeights, setCustomWeights] = useState<number[]>(Array(12).fill(1));
-  const [dateRange, setDateRange] = useState<DateRange | undefined>();
-  const selectedYear = dateRange?.from?.getFullYear() || new Date().getFullYear();
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
+    const today = new Date();
+    return { from: startOfMonth(today), to: endOfMonth(today) };
+  });
 
+  const selectedYear = dateRange?.from?.getFullYear() || new Date().getFullYear();
   
   // Department Cascade State
   const [cascadedDepts, setCascadedDepts] = useState<DepartmentCascadeInput[]>([]);
 
   const generatePreview = useCallback(() => {
-    if (!kpi || !kpi.target) return;
-    const yearlyTarget = parseFloat(String(kpi.target).replace(/[^0-9.]/g, '')) || 0;
-    
-    let actualStrategy = strategy === 'auto' ? detectBestStrategy(kpi) : strategy;
-    let preview: MonthlyDistribution[];
+      if (!kpi || !kpi.target) return;
+      
+      const yearlyTarget = parseFloat(String(kpi.target).replace(/[^0-9.]/g, '')) || 0;
+      let actualStrategy = strategy === 'auto' ? detectBestStrategy(kpi) : strategy;
+      
+      const intervalMonths = dateRange?.from && dateRange.to ? eachMonthOfInterval({ start: dateRange.from, end: dateRange.to }) : [];
+      const numMonths = intervalMonths.length;
 
-    switch (actualStrategy) {
-      case 'equal': preview = DISTRIBUTION_STRATEGIES.equal(yearlyTarget); break;
-      case 'weighted': preview = DISTRIBUTION_STRATEGIES.weighted(yearlyTarget, customWeights); break;
-      case 'seasonal': preview = DISTRIBUTION_STRATEGIES.seasonal(yearlyTarget, seasonalPattern); break;
-      case 'progressive': preview = DISTRIBUTION_STRATEGIES.progressive(yearlyTarget, progressiveCurve); break;
-      case 'historical': preview = DISTRIBUTION_STRATEGIES.equal(yearlyTarget); break; // Placeholder
-      default: preview = DISTRIBUTION_STRATEGIES.equal(yearlyTarget);
-    }
-    setPreviewData(preview);
-  }, [strategy, seasonalPattern, progressiveCurve, customWeights, kpi]);
+      let basePreview: MonthlyDistribution[];
+      switch (actualStrategy) {
+          case 'equal': basePreview = DISTRIBUTION_STRATEGIES.equal(yearlyTarget, numMonths); break;
+          case 'weighted':
+              const activeWeights = intervalMonths.map(date => customWeights[getMonth(date)]);
+              basePreview = DISTRIBUTION_STRATEGIES.weighted(yearlyTarget, activeWeights);
+              break;
+          case 'seasonal': basePreview = DISTRIBUTION_STRATEGIES.seasonal(yearlyTarget, seasonalPattern); break;
+          case 'progressive': basePreview = DISTRIBUTION_STRATEGIES.progressive(yearlyTarget, progressiveCurve); break;
+          case 'historical': basePreview = DISTRIBUTION_STRATEGIES.equal(yearlyTarget, numMonths); break; // Placeholder
+          default: basePreview = DISTRIBUTION_STRATEGIES.equal(yearlyTarget, numMonths);
+      }
+      
+      const finalPreview = intervalMonths.map((date, index) => {
+          const monthIndex = getMonth(date);
+          if (actualStrategy === 'weighted') {
+            return basePreview[index] ? { ...basePreview[index], month: monthIndex + 1, monthName: MONTH_NAMES_TH[monthIndex] } : basePreview[0];
+          }
+          return basePreview[monthIndex];
+      });
+
+      setPreviewData(finalPreview);
+  }, [kpi, strategy, seasonalPattern, progressiveCurve, customWeights, dateRange]);
+
 
   useEffect(() => {
     if (kpi && isOpen) {
+      const today = new Date();
+      setDateRange({ from: startOfMonth(today), to: endOfMonth(new Date(today.getFullYear(), 11, 31)) });
       generatePreview();
     } else {
-      // Reset state on close
       setCascadedDepts([]);
       setStrategy('auto');
-      const currentYear = new Date().getFullYear();
-      setDateRange({
-        from: new Date(currentYear, 0, 1),
-        to: new Date(currentYear, 11, 31)
-      })
     }
-  }, [kpi, isOpen, generatePreview]);
+  }, [kpi, isOpen]);
   
    useEffect(() => {
     if (kpi && isOpen) {
         generatePreview();
     }
-   }, [kpi, isOpen, strategy, seasonalPattern, progressiveCurve, customWeights, generatePreview]);
+   }, [kpi, isOpen, strategy, seasonalPattern, progressiveCurve, customWeights, generatePreview, dateRange]);
 
 
   const handleCustomWeightChange = (monthIndex: number, weightValue: string) => {
@@ -323,19 +335,30 @@ const DeployAndCascadeDialog = ({
     const newPreviewData = [...previewData];
     const yearlyTarget = parseFloat(String(kpi?.target).replace(/[^0-9.]/g, '')) || 0;
     
-    newPreviewData[monthIndex].target = Number(targetValue) || 0;
+    const previewIndex = newPreviewData.findIndex(p => p.month === monthIndex + 1);
+    if(previewIndex === -1) return;
+
+    newPreviewData[previewIndex].target = Number(targetValue) || 0;
     
     // When a target changes, we can recalculate percentage. Weight becomes irrelevant.
     if (yearlyTarget > 0) {
-      newPreviewData[monthIndex].percentage = (newPreviewData[monthIndex].target / yearlyTarget) * 100;
+      const totalTarget = newPreviewData.reduce((sum, p) => sum + p.target, 0);
+      newPreviewData.forEach(p => {
+          p.percentage = totalTarget > 0 ? (p.target / totalTarget) * 100 : 0;
+      });
     } else {
-       newPreviewData[monthIndex].percentage = 0;
+       newPreviewData[previewIndex].percentage = 0;
     }
 
     setPreviewData(newPreviewData);
   };
   
-  const totalWeight = useMemo(() => customWeights.reduce((sum, w) => sum + w, 0), [customWeights]);
+  const totalWeight = useMemo(() => {
+    if (!dateRange?.from || !dateRange.to) return 0;
+    const intervalMonths = eachMonthOfInterval({ start: dateRange.from, end: dateRange.to });
+    return intervalMonths.reduce((sum, date) => sum + (customWeights[getMonth(date)] || 0), 0);
+  }, [customWeights, dateRange]);
+
 
   const handleAddDept = () => {
     setCascadedDepts([...cascadedDepts, { department: '', weight: 0, target: '' }]);
@@ -418,14 +441,14 @@ const DeployAndCascadeDialog = ({
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {previewData.map((month, index) => (
+                      {previewData.map((month) => (
                         <TableRow key={month.month}>
                           <TableCell className="font-medium">{month.monthName}</TableCell>
                           <TableCell>
                             <Input
                               type="number"
-                              value={customWeights[index]}
-                              onChange={(e) => handleCustomWeightChange(index, e.target.value)}
+                              value={customWeights[month.month - 1]}
+                              onChange={(e) => handleCustomWeightChange(month.month - 1, e.target.value)}
                               className="h-8"
                             />
                           </TableCell>
@@ -433,7 +456,7 @@ const DeployAndCascadeDialog = ({
                              <Input
                               type="number"
                               value={month.target.toFixed(2)}
-                              onChange={(e) => handleCustomTargetChange(index, e.target.value)}
+                              onChange={(e) => handleCustomTargetChange(month.month - 1, e.target.value)}
                               className="h-8"
                             />
                           </TableCell>
