@@ -27,6 +27,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
+import { DateRange } from 'react-day-picker';
+import { DatePickerWithRange } from '@/components/ui/date-range-picker';
 
 // ==================== TYPE DEFINITIONS ====================
 
@@ -264,7 +266,9 @@ const DeployAndCascadeDialog = ({
   const [progressiveCurve, setProgressiveCurve] = useState<ProgressiveCurve>('linear');
   const [previewData, setPreviewData] = useState<MonthlyDistribution[]>([]);
   const [customWeights, setCustomWeights] = useState<number[]>(Array(12).fill(1));
-  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [dateRange, setDateRange] = useState<DateRange | undefined>();
+  const selectedYear = dateRange?.from?.getFullYear() || new Date().getFullYear();
+
   
   // Department Cascade State
   const [cascadedDepts, setCascadedDepts] = useState<DepartmentCascadeInput[]>([]);
@@ -294,9 +298,20 @@ const DeployAndCascadeDialog = ({
       // Reset state on close
       setCascadedDepts([]);
       setStrategy('auto');
-      setSelectedYear(new Date().getFullYear());
+      const currentYear = new Date().getFullYear();
+      setDateRange({
+        from: new Date(currentYear, 0, 1),
+        to: new Date(currentYear, 11, 31)
+      })
     }
-  }, [kpi, isOpen, strategy, seasonalPattern, progressiveCurve, customWeights, generatePreview]);
+  }, [kpi, isOpen, generatePreview]);
+  
+   useEffect(() => {
+    if (kpi && isOpen) {
+        generatePreview();
+    }
+   }, [kpi, isOpen, strategy, seasonalPattern, progressiveCurve, customWeights, generatePreview]);
+
 
   const handleCustomWeightChange = (monthIndex: number, weightValue: string) => {
     const newWeights = [...customWeights];
@@ -350,7 +365,7 @@ const DeployAndCascadeDialog = ({
   };
 
   const handleDeploy = () => {
-    if (!user || !kpi) return;
+    if (!user || !kpi || !selectedYear) return;
     const validCascades = cascadedDepts.filter(d => d.department && d.target);
     let actualStrategy = strategy === 'auto' ? detectBestStrategy(kpi) : strategy;
     onConfirm(previewData, validCascades, actualStrategy, selectedYear);
@@ -381,14 +396,7 @@ const DeployAndCascadeDialog = ({
             <div className="space-y-4 p-4 border rounded-lg">
               <h4 className="font-semibold flex items-center gap-2"><Calendar className="h-5 w-5" />ขั้นตอนที่ 1: Deploy รายเดือน</h4>
               <div className="grid grid-cols-2 gap-4">
-                  <Select value={String(selectedYear)} onValueChange={(val) => setSelectedYear(Number(val))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() + i).map(year => (
-                        <SelectItem key={year} value={String(year)}>{year}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                 <DatePickerWithRange date={dateRange} setDate={setDateRange} />
                   <Select value={strategy} onValueChange={(val) => setStrategy(val as DistributionStrategy)}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
