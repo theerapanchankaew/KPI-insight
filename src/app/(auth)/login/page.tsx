@@ -87,7 +87,7 @@ const SignUpForm = () => {
   const [isSigningUp, setIsSigningUp] = useState(false);
   
   const positions = ["เจ้าหน้าที่บริหารงานคุณภาพ", "ผู้จัดการแผนกอาวุโส", "ผู้จัดการฝ่าย", "ผู้ช่วยผู้จัดการฝ่าย", "พนักงาน"];
-  const departments = ["HQMS", "QMS", "Sales", "Operations", "Corporate Affairs"];
+  const departments = ["QMS", "APS", "SPS", "IBS1", "IBS2", "IBS3", "IBS4", "IBS5"];
 
 
   const handleSignUp = async (e: React.FormEvent) => {
