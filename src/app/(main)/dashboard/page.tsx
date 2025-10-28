@@ -4,15 +4,28 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { performanceChartData } from '@/lib/data/dashboard-data';
 import { useAppLayout } from '../layout';
 import { Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { ChartContainer } from '@/components/ui/chart';
+import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
 import { Button } from '@/components/ui/button';
 import KpiInsights from './components/kpi-insights';
 import { TrendingUp, TrendingDown, Briefcase, Building2, CheckCircle, Target } from 'lucide-react';
 import { useKpiData } from '@/context/KpiDataContext';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useCollection, useFirestore, useMemoFirebase, WithId } from '@/firebase';
+import { collection, query } from 'firebase/firestore';
+
+interface MonthlyKpi {
+  parentKpiId: string;
+  measure: string;
+  year: number;
+  month: number;
+  target: number;
+  actual: number;
+}
+
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
 
 const SummaryCards = () => {
   const { kpiData, isKpiDataLoading } = useKpiData();
@@ -63,9 +76,48 @@ const SummaryCards = () => {
 
 const PerformanceOverview = () => {
   const [isClient, setIsClient] = useState(false);
+  const firestore = useFirestore();
+
+  const monthlyKpisQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return query(collection(firestore, 'monthly_kpis'));
+  }, [firestore]);
+
+  const { data: monthlyKpisData, isLoading: isMonthlyKpisLoading } = useCollection<MonthlyKpi>(monthlyKpisQuery);
+
+  const { chartData, chartConfig } = useMemo(() => {
+    const dataByMonth: { month: string; Actual: number; Target: number }[] = MONTH_NAMES.map(name => ({
+      month: name,
+      Actual: 0,
+      Target: 0,
+    }));
+
+    if (monthlyKpisData) {
+      monthlyKpisData.forEach(kpi => {
+        // Assuming kpi.month is 1-12
+        if (kpi.month >= 1 && kpi.month <= 12) {
+          const monthIndex = kpi.month - 1;
+          // Sum up values if multiple KPIs exist for the same month
+          dataByMonth[monthIndex].Actual += kpi.actual || 0;
+          dataByMonth[monthIndex].Target += kpi.target || 0;
+        }
+      });
+    }
+
+    const config = {
+      Actual: { label: 'Actual', color: 'hsl(var(--chart-1))' },
+      Target: { label: 'Target', color: 'hsl(var(--chart-2))' },
+    };
+
+    return { chartData: dataByMonth, chartConfig: config };
+  }, [monthlyKpisData]);
+
+
   useEffect(() => {
     setIsClient(true);
   }, []);
+  
+  const isLoading = isMonthlyKpisLoading || !isClient;
 
   return (
     <Card className="shadow-sm border-gray-200 lg:col-span-2">
@@ -80,33 +132,32 @@ const PerformanceOverview = () => {
         </div>
       </CardHeader>
       <CardContent className="pl-2">
-        {isClient && (
-          <ChartContainer config={performanceChartData.config} className="h-64 w-full">
-              <LineChart data={performanceChartData.data} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+        {isLoading ? (
+          <div className="h-64 flex items-center justify-center">
+            <Skeleton className="h-full w-full" />
+          </div>
+        ) : (
+          <>
+          <ChartContainer config={chartConfig} className="h-64 w-full">
+              <LineChart data={chartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                   <CartesianGrid vertical={false} strokeDasharray="3 3" />
                   <XAxis dataKey="month" tickLine={false} axisLine={{ stroke: '#e5e7eb' }} tickMargin={10} fontSize={12} />
                   <YAxis tickLine={false} axisLine={{ stroke: '#e5e7eb' }} tickMargin={10} fontSize={12} />
-                  <Tooltip 
-                      contentStyle={{
-                          backgroundColor: 'white',
-                          border: '1px solid #e5e7eb',
-                          borderRadius: '0.75rem',
-                          boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)'
-                      }}
-                  />
-                  <Line type="monotone" dataKey="Revenue" stroke="var(--color-Revenue)" strokeWidth={2.5} dot={{ r: 4, fill: 'var(--color-Revenue)', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6 }} />
-                  <Line type="monotone" dataKey="EBITDA" stroke="var(--color-EBITDA)" strokeWidth={2.5} dot={{ r: 4, fill: 'var(--color-EBITDA)', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6 }} />
+                  <Tooltip content={<ChartTooltipContent />} />
+                  <Line type="monotone" dataKey="Actual" stroke="var(--color-Actual)" strokeWidth={2.5} dot={{ r: 4, fill: 'var(--color-Actual)', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6 }} />
+                  <Line type="monotone" dataKey="Target" stroke="var(--color-Target)" strokeWidth={2.5} strokeDasharray="5 5" dot={{ r: 4, fill: 'var(--color-Target)', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6 }} />
               </LineChart>
           </ChartContainer>
+          <div className="flex items-center justify-center space-x-6 mt-4">
+            {Object.entries(chartConfig).map(([key, value]) => (
+              <div key={key} className="flex items-center space-x-2">
+                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: value.color }}></div>
+                <span className="text-xs text-gray-500">{value.label}</span>
+              </div>
+            ))}
+          </div>
+          </>
         )}
-         <div className="flex items-center justify-center space-x-6 mt-4">
-          {Object.entries(performanceChartData.config).map(([key, value]) => (
-             <div key={key} className="flex items-center space-x-2">
-              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: value.color }}></div>
-              <span className="text-xs text-gray-500">{value.label}</span>
-            </div>
-          ))}
-        </div>
       </CardContent>
     </Card>
   );
