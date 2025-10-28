@@ -15,6 +15,7 @@ import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { navItems } from '@/lib/data/layout-data';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const SignInForm = () => {
   const auth = useAuth();
@@ -80,8 +81,12 @@ const SignUpForm = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [position, setPosition] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSigningUp, setIsSigningUp] = useState(false);
+  
+  const positions = ["เจ้าหน้าที่บริหารงานคุณภาพ", "ผู้จัดการแผนกอาวุโส", "ผู้จัดการฝ่าย", "ผู้ช่วยผู้จัดการฝ่าย", "พนักงาน"];
+
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,6 +97,10 @@ const SignUpForm = () => {
     if (password !== confirmPassword) {
       setError("Passwords do not match.");
       return;
+    }
+    if (!position) {
+        setError("Please select a position.");
+        return;
     }
     setError(null);
     setIsSigningUp(true);
@@ -125,7 +134,7 @@ const SignUpForm = () => {
         email: email,
         role: userRole,
         department: 'Unassigned',
-        position: 'New Member',
+        position: position,
         manager: '',
         menuAccess: defaultPermissions,
       };
@@ -156,6 +165,19 @@ const SignUpForm = () => {
         <div className="space-y-2">
           <Label htmlFor="signup-email">Email</Label>
           <Input id="signup-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={isSigningUp}/>
+        </div>
+        <div className="space-y-2">
+            <Label htmlFor="position">Position</Label>
+            <Select value={position} onValueChange={setPosition} required disabled={isSigningUp}>
+                <SelectTrigger id="position">
+                    <SelectValue placeholder="Select your position" />
+                </SelectTrigger>
+                <SelectContent>
+                    {positions.map((pos) => (
+                        <SelectItem key={pos} value={pos}>{pos}</SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
         </div>
         <div className="space-y-2">
           <Label htmlFor="signup-password">Password</Label>
@@ -236,5 +258,3 @@ export default function LoginPage() {
     </div>
   );
 }
-
-  
