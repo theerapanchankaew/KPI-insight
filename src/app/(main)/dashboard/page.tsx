@@ -7,161 +7,82 @@ import { cn } from "@/lib/utils";
 import { useAppLayout } from '../layout';
 import { Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
-import { Button } from '@/components/ui/button';
 import KpiInsights from './components/kpi-insights';
-import { TrendingUp, TrendingDown, Briefcase, Building2, CheckCircle, Target } from 'lucide-react';
+import { Building2, Target } from 'lucide-react';
 import { useKpiData } from '@/context/KpiDataContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCollection, useFirestore, useMemoFirebase, WithId } from '@/firebase';
-import { collection, query } from 'firebase/firestore';
+import { collection, query, where } from 'firebase/firestore';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ChevronsUpDown } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 interface MonthlyKpi {
+  id: string;
   parentKpiId: string;
   measure: string;
   year: number;
-  month: number;
+  month: number; // 1-12
   target: number;
   actual: number;
 }
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-
-const SummaryCards = () => {
-  const { kpiData, isKpiDataLoading } = useKpiData();
-
-  if (isKpiDataLoading) {
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-40" />)}
-      </div>
-    );
-  }
-
-  const displayedKpis = kpiData?.slice(0, 4) || [];
-
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-      {displayedKpis.map((kpi) => (
-        <Card key={kpi.id} className="shadow-sm border-gray-200 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 group">
-          <CardHeader className="p-5">
-            <div className="flex items-start justify-between">
-              <div className={cn("w-11 h-11 rounded-lg flex items-center justify-center transition-colors bg-primary/10")}>
-                <Target className={cn("w-6 h-6 text-primary")} />
-              </div>
-              <span className={cn("text-xs font-semibold flex items-center text-muted-foreground")}>
-                (Live)
-              </span>
-            </div>
-            <div className="mt-2">
-              <p className="text-sm font-medium text-gray-500 truncate">{kpi.measure}</p>
-              <p className="text-2xl font-bold text-gray-800">{kpi.target}</p>
-            </div>
-          </CardHeader>
-          <CardContent className="p-5 pt-0">
-             <p className="text-xs text-gray-500">Target Value</p>
-          </CardContent>
-        </Card>
-      ))}
-       {displayedKpis.length < 4 && [...Array(4 - displayedKpis.length)].map((_, i) => (
-         <Card key={`placeholder-${i}`} className="shadow-sm border-gray-200 flex flex-col items-center justify-center h-40">
-           <Briefcase className="w-8 h-8 text-gray-300" />
-           <p className="text-sm text-gray-400 mt-2">No KPI Data</p>
-           <p className="text-xs text-gray-400">Import in Intake Data</p>
-         </Card>
-       ))}
-    </div>
-  )
-};
-
-const PerformanceOverview = () => {
-  const [isClient, setIsClient] = useState(false);
-  const firestore = useFirestore();
-
-  const monthlyKpisQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
-    return query(collection(firestore, 'monthly_kpis'));
-  }, [firestore]);
-
-  const { data: monthlyKpisData, isLoading: isMonthlyKpisLoading } = useCollection<MonthlyKpi>(monthlyKpisQuery);
-
-  const { chartData, chartConfig } = useMemo(() => {
-    const dataByMonth: { month: string; Actual: number; Target: number }[] = MONTH_NAMES.map(name => ({
-      month: name,
-      Actual: 0,
-      Target: 0,
-    }));
-
-    if (monthlyKpisData) {
-      monthlyKpisData.forEach(kpi => {
-        // Assuming kpi.month is 1-12
-        if (kpi.month >= 1 && kpi.month <= 12) {
-          const monthIndex = kpi.month - 1;
-          // Sum up values if multiple KPIs exist for the same month
-          dataByMonth[monthIndex].Actual += kpi.actual || 0;
-          dataByMonth[monthIndex].Target += kpi.target || 0;
-        }
-      });
-    }
-
-    const config = {
+const KpiCard = ({ kpi, monthlyData }: { kpi: WithId<any>, monthlyData: WithId<MonthlyKpi>[] }) => {
+    const chartData = useMemo(() => {
+        const dataForKpi = monthlyData.filter(m => m.parentKpiId === kpi.id);
+        const dataByMonth = MONTH_NAMES.map((name, index) => {
+            const monthData = dataForKpi.find(d => d.month === index + 1);
+            return {
+                month: name,
+                Actual: monthData?.actual || 0,
+                Target: monthData?.target || 0,
+            };
+        });
+        return dataByMonth;
+    }, [kpi.id, monthlyData]);
+    
+    const chartConfig = {
       Actual: { label: 'Actual', color: 'hsl(var(--chart-1))' },
       Target: { label: 'Target', color: 'hsl(var(--chart-2))' },
     };
 
-    return { chartData: dataByMonth, chartConfig: config };
-  }, [monthlyKpisData]);
+    const totalActual = useMemo(() => chartData.reduce((sum, item) => sum + item.Actual, 0), [chartData]);
+    const totalTarget = useMemo(() => chartData.reduce((sum, item) => sum + item.Target, 0), [chartData]);
+    const achievement = totalTarget > 0 ? (totalActual / totalTarget) * 100 : 0;
 
+    return (
+        <Card className="shadow-sm border-gray-200 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 group w-full">
+            <CardHeader className="pb-2">
+                <div className="flex items-start justify-between">
+                    <CardTitle className="text-base font-semibold">{kpi.measure}</CardTitle>
+                    <Badge variant={achievement >= 100 ? "success" : achievement >= 80 ? "warning" : "destructive"}>
+                        {achievement.toFixed(0)}%
+                    </Badge>
+                </div>
+                <CardDescription>
+                    Target: {kpi.target} {kpi.unit && `(${kpi.unit})`}
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div className="h-40 w-full">
+                     <ChartContainer config={chartConfig} className="h-full w-full">
+                        <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                            <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                            <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} fontSize={10} />
+                            <YAxis tickLine={false} axisLine={false} tickMargin={8} fontSize={10} width={40} />
+                            <Tooltip content={<ChartTooltipContent indicator="dot" />} />
+                            <Line type="monotone" dataKey="Actual" stroke="var(--color-Actual)" strokeWidth={2} dot={false} />
+                            <Line type="monotone" dataKey="Target" stroke="var(--color-Target)" strokeWidth={2} strokeDasharray="3 3" dot={false} />
+                        </LineChart>
+                    </ChartContainer>
+                </div>
+            </CardContent>
+        </Card>
+    )
+}
 
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
-  
-  const isLoading = isMonthlyKpisLoading || !isClient;
-
-  return (
-    <Card className="shadow-sm border-gray-200 lg:col-span-2">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>Performance Overview</CardTitle>
-          <div className="flex space-x-1">
-            <Button size="sm" variant="outline" className="text-xs h-8">Month</Button>
-            <Button size="sm" variant="ghost" className="text-xs h-8">Quarter</Button>
-            <Button size="sm" variant="ghost" className="text-xs h-8">Year</Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="pl-2">
-        {isLoading ? (
-          <div className="h-64 flex items-center justify-center">
-            <Skeleton className="h-full w-full" />
-          </div>
-        ) : (
-          <>
-          <ChartContainer config={chartConfig} className="h-64 w-full">
-              <LineChart data={chartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                  <XAxis dataKey="month" tickLine={false} axisLine={{ stroke: '#e5e7eb' }} tickMargin={10} fontSize={12} />
-                  <YAxis tickLine={false} axisLine={{ stroke: '#e5e7eb' }} tickMargin={10} fontSize={12} />
-                  <Tooltip content={<ChartTooltipContent />} />
-                  <Line type="monotone" dataKey="Actual" stroke="var(--color-Actual)" strokeWidth={2.5} dot={{ r: 4, fill: 'var(--color-Actual)', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6 }} />
-                  <Line type="monotone" dataKey="Target" stroke="var(--color-Target)" strokeWidth={2.5} strokeDasharray="5 5" dot={{ r: 4, fill: 'var(--color-Target)', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6 }} />
-              </LineChart>
-          </ChartContainer>
-          <div className="flex items-center justify-center space-x-6 mt-4">
-            {Object.entries(chartConfig).map(([key, value]) => (
-              <div key={key} className="flex items-center space-x-2">
-                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: value.color }}></div>
-                <span className="text-xs text-gray-500">{value.label}</span>
-              </div>
-            ))}
-          </div>
-          </>
-        )}
-      </CardContent>
-    </Card>
-  );
-};
 
 const DepartmentPerformance = () => {
   const { orgData, isOrgDataLoading, cascadedKpis, isCascadedKpisLoading } = useKpiData();
@@ -231,21 +152,88 @@ const DepartmentPerformance = () => {
 
 export default function DashboardPage() {
   const { setPageTitle } = useAppLayout();
+  const { kpiData, isKpiDataLoading } = useKpiData();
+  const firestore = useFirestore();
+
+  const monthlyKpisQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    // Assuming the current year for simplicity. Could be made dynamic.
+    const currentYear = new Date().getFullYear();
+    return query(collection(firestore, 'monthly_kpis'), where('year', '==', currentYear));
+  }, [firestore]);
+
+  const { data: monthlyKpisData, isLoading: isMonthlyKpisLoading } = useCollection<MonthlyKpi>(monthlyKpisQuery);
+  
+  const groupedKpis = useMemo(() => {
+    if (!kpiData) return {};
+    return kpiData.reduce((acc, kpi) => {
+        const perspective = kpi.perspective || 'Uncategorized';
+        if (!acc[perspective]) acc[perspective] = [];
+        acc[perspective].push(kpi);
+        return acc;
+    }, {} as { [key: string]: WithId<any>[] });
+  }, [kpiData]);
+
 
   useEffect(() => {
     setPageTitle('Dashboard');
   }, [setPageTitle]);
+  
+  const isLoading = isKpiDataLoading || isMonthlyKpisLoading;
 
   return (
     <div className="fade-in space-y-6">
-      <SummaryCards />
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <PerformanceOverview />
+       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-6">
+            {isLoading ? (
+                [...Array(2)].map((_, i) => (
+                    <Card key={i}>
+                        <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
+                        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <Skeleton className="h-56 w-full" />
+                            <Skeleton className="h-56 w-full" />
+                        </CardContent>
+                    </Card>
+                ))
+            ) : Object.keys(groupedKpis).length > 0 ? (
+                Object.entries(groupedKpis).map(([perspective, kpis]) => (
+                    <Collapsible key={perspective} defaultOpen>
+                        <CollapsibleTrigger asChild>
+                             <div className="flex items-center justify-between p-4 border-b cursor-pointer">
+                                <h3 className="text-lg font-semibold text-gray-800">{perspective}</h3>
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <span>{kpis.length} KPIs</span>
+                                    <ChevronsUpDown className="h-4 w-4" />
+                                </div>
+                            </div>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="p-4 bg-gray-50/50">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {kpis.map(kpi => (
+                                    <KpiCard key={kpi.id} kpi={kpi} monthlyData={monthlyKpisData || []} />
+                                ))}
+                            </div>
+                        </CollapsibleContent>
+                    </Collapsible>
+                ))
+            ) : (
+                <Card>
+                    <CardHeader><CardTitle>No KPI Data</CardTitle></CardHeader>
+                    <CardContent className="text-center py-12">
+                         <Target className="w-12 h-12 text-gray-300 mx-auto" />
+                        <h4 className="mt-4 font-semibold text-gray-600">No Corporate KPIs Found</h4>
+                        <p className="text-sm text-gray-500">Please import your KPI catalog on the "Intake Data" page.</p>
+                    </CardContent>
+                </Card>
+            )}
+        </div>
         <KpiInsights />
       </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <DepartmentPerformance />
       </div>
     </div>
   );
 }
+
