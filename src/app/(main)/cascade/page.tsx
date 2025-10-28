@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useAppLayout } from '../layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -17,7 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronsUpDown, PlusCircle, Trash2, Edit, AlertTriangle, MoreVertical, Calendar, TrendingUp, BarChart3, Building, Share2 } from 'lucide-react';
+import { ChevronsUpDown, PlusCircle, Trash2, Edit, AlertTriangle, MoreVertical, Calendar, TrendingUp, BarChart3, Building, Share2, Upload, Download } from 'lucide-react';
 import { WithId, useCollection, useFirestore, useUser, useMemoFirebase } from '@/firebase';
 import { addDocumentNonBlocking, deleteDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { collection, doc } from 'firebase/firestore';
@@ -269,6 +269,8 @@ const DeployAndCascadeDialog = ({
   });
 
   const selectedYear = dateRange?.from?.getFullYear() || new Date().getFullYear();
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Department Cascade State
   const [cascadedDepts, setCascadedDepts] = useState<DepartmentCascadeInput[]>([]);
@@ -300,7 +302,12 @@ const DeployAndCascadeDialog = ({
           if (actualStrategy === 'weighted') {
             return basePreview[index] ? { ...basePreview[index], month: monthIndex + 1, monthName: MONTH_NAMES_TH[monthIndex] } : basePreview[0];
           }
-          return basePreview[monthIndex];
+          const dataForMonth = basePreview[monthIndex];
+          if(!dataForMonth) {
+              // This can happen if numMonths is less than 12 and the month is outside the range
+              return { month: monthIndex + 1, monthName: MONTH_NAMES_TH[monthIndex], percentage: 0, target: 0, weight: 0 };
+          }
+          return dataForMonth;
       });
 
       setPreviewData(finalPreview);
@@ -316,7 +323,7 @@ const DeployAndCascadeDialog = ({
       setCascadedDepts([]);
       setStrategy('auto');
     }
-  }, [kpi, isOpen]);
+  }, [kpi, isOpen, generatePreview]);
   
    useEffect(() => {
     if (kpi && isOpen) {
@@ -397,20 +404,85 @@ const DeployAndCascadeDialog = ({
   
   const yearlyTargetDisplay = (typeof kpi?.target === 'string' ? kpi.target : (kpi?.target || 0));
 
+  const handleExport = () => {
+    if (!kpi) return;
+    const exportData = {
+      kpiId: kpi.id,
+      kpiMeasure: kpi.measure,
+      dateRange,
+      strategy,
+      customWeights,
+      cascadedDepts,
+    };
+    const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(exportData, null, 2))}`;
+    const link = document.createElement("a");
+    link.href = jsonString;
+    link.download = `cascade_config_${kpi.id}.json`;
+    link.click();
+    toast({ title: "Configuration Exported", description: "Your cascade settings have been downloaded." });
+  };
+
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result;
+        if (typeof text === 'string') {
+          const importedData = JSON.parse(text);
+          
+          if(importedData.dateRange?.from && importedData.dateRange?.to) {
+              setDateRange({
+                  from: new Date(importedData.dateRange.from),
+                  to: new Date(importedData.dateRange.to),
+              });
+          }
+          if(importedData.strategy) setStrategy(importedData.strategy);
+          if(importedData.customWeights) setCustomWeights(importedData.customWeights);
+          if(Array.isArray(importedData.cascadedDepts)) setCascadedDepts(importedData.cascadedDepts);
+
+          toast({ title: "Import Successful", description: "Cascade configuration has been loaded." });
+        }
+      } catch (err) {
+        console.error(err);
+        toast({ title: "Import Failed", description: "Invalid JSON file format.", variant: 'destructive' });
+      }
+    };
+    reader.readAsText(file);
+    // Reset file input to allow re-importing the same file
+    if(event.target) event.target.value = '';
+  };
+
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-5xl max-h-[90vh]">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Share2 className="h-5 w-5" />
-            Deploy & Cascade KPI
-          </DialogTitle>
-           <DialogDescription>
-            <span className="block font-semibold text-gray-700">{kpi?.measure}</span>
-            <span className="block text-sm">
-              เป้าหมายรายปี: <span className="font-bold text-blue-600">{yearlyTargetDisplay}</span> {kpi?.unit}
-            </span>
-          </DialogDescription>
+          <div className="flex justify-between items-start">
+            <div>
+              <DialogTitle className="flex items-center gap-2">
+                <Share2 className="h-5 w-5" />
+                Deploy & Cascade KPI
+              </DialogTitle>
+              <DialogDescription>
+                <span className="block font-semibold text-gray-700">{kpi?.measure}</span>
+                <span className="block text-sm">
+                  เป้าหมายรายปี: <span className="font-bold text-blue-600">{yearlyTargetDisplay}</span> {kpi?.unit}
+                </span>
+              </DialogDescription>
+            </div>
+            <div className="flex gap-2">
+                <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".json" className="hidden" />
+                <Button variant="outline" size="sm" onClick={handleImportClick}><Upload className="mr-2 h-4 w-4" /> Import JSON</Button>
+                <Button variant="outline" size="sm" onClick={handleExport}><Download className="mr-2 h-4 w-4" /> Export JSON</Button>
+            </div>
+          </div>
         </DialogHeader>
 
         <ScrollArea className="max-h-[calc(80vh-10rem)] pr-6">
@@ -1217,6 +1289,7 @@ export default function KPICascadeManagement() {
       // 1. Deploy Monthly KPIs
       const monthlyKpisCollection = collection(firestore, 'monthly_kpis');
       for (const m of distributions) {
+        if(!m) continue; // Skip if month data is missing
         const monthlyKpi: Omit<MonthlyKpi, 'id' | 'createdAt' | 'updatedAt'> = {
           parentKpiId: selectedKpi.id, measure: selectedKpi.measure, perspective: selectedKpi.perspective || '',
           category: selectedKpi.category || '', year, month: m.month, target: m.target, actual: 0,
@@ -1410,3 +1483,4 @@ export default function KPICascadeManagement() {
 }
 
     
+
