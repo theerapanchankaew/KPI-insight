@@ -17,13 +17,19 @@ import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useUser } from '@/firebase';
+import { useDoc, useFirestore, useUser, useMemoFirebase } from '@/firebase';
+import { doc } from 'firebase/firestore';
+
+interface UserProfile {
+  role?: 'Admin' | 'Employee' | 'Manager';
+}
 
 export default function SettingsPage() {
   const { setPageTitle } = useAppLayout();
   const { toast } = useToast();
   const { settings, setSettings, isSettingsLoading } = useKpiData();
   const { user, isUserLoading: isAuthLoading } = useUser();
+  const firestore = useFirestore();
 
   // State for General Settings
   const [orgName, setOrgName] = useState('');
@@ -35,30 +41,20 @@ export default function SettingsPage() {
   const [kpiAlerts, setKpiAlerts] = useState(true);
   const [approvalNotifications, setApprovalNotifications] = useState(true);
   const [weeklyReports, setWeeklyReports] = useState(false);
+  
+  const userProfileRef = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return doc(firestore, 'users', user.uid);
+  }, [firestore, user]);
 
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const { data: userProfile, isLoading: isProfileLoading } = useDoc<UserProfile>(userProfileRef);
+  const isAdmin = userProfile?.role === 'Admin';
+
 
   useEffect(() => {
     setPageTitle('Settings');
   }, [setPageTitle]);
   
-  useEffect(() => {
-    const checkAdminStatus = async () => {
-        if (user) {
-            try {
-                const idTokenResult = await user.getIdTokenResult();
-                setIsAdmin(idTokenResult.claims.role === 'Admin');
-            } catch (error) {
-                console.error("Error fetching user claims:", error);
-                setIsAdmin(false);
-            }
-        } else if (!isAuthLoading) {
-           setIsAdmin(false);
-        }
-    };
-    checkAdminStatus();
-  }, [user, isAuthLoading]);
-
   useEffect(() => {
     if (settings && !isSettingsLoading) {
       setOrgName(settings.orgName);
@@ -102,7 +98,7 @@ export default function SettingsPage() {
     });
   };
   
-  const isLoading = isSettingsLoading || isAuthLoading || isAdmin === null;
+  const isLoading = isSettingsLoading || isAuthLoading || isProfileLoading;
 
   return (
     <div className="fade-in space-y-6">
