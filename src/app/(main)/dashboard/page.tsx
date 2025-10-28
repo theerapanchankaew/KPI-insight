@@ -29,6 +29,22 @@ interface MonthlyKpi {
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+const formatYAxis = (tick: number | string) => {
+    const num = Number(tick);
+    if (isNaN(num)) return tick;
+
+    if (num >= 1000000000) {
+        return `${(num / 1000000000).toFixed(0)}B`;
+    }
+    if (num >= 1000000) {
+        return `${(num / 1000000).toFixed(0)}M`;
+    }
+    if (num >= 1000) {
+        return `${(num / 1000).toFixed(0)}K`;
+    }
+    return num.toString();
+};
+
 const KpiCard = ({ kpi, monthlyData }: { kpi: WithId<any>, monthlyData: WithId<MonthlyKpi>[] }) => {
     const chartData = useMemo(() => {
         const dataForKpi = monthlyData.filter(m => m.parentKpiId === kpi.id);
@@ -71,7 +87,7 @@ const KpiCard = ({ kpi, monthlyData }: { kpi: WithId<any>, monthlyData: WithId<M
                         <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                             <CartesianGrid vertical={false} strokeDasharray="3 3" />
                             <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} fontSize={10} />
-                            <YAxis tickLine={false} axisLine={false} tickMargin={8} fontSize={10} width={40} />
+                            <YAxis tickLine={false} axisLine={false} tickMargin={8} fontSize={10} width={40} tickFormatter={formatYAxis} />
                             <Tooltip content={<ChartTooltipContent indicator="dot" />} />
                             <Line type="monotone" dataKey="Actual" stroke="var(--color-Actual)" strokeWidth={2} dot={false} />
                             <Line type="monotone" dataKey="Target" stroke="var(--color-Target)" strokeWidth={2} strokeDasharray="3 3" dot={false} />
@@ -236,4 +252,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
