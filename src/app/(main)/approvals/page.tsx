@@ -78,15 +78,15 @@ const RejectDialog = ({ isOpen, onClose, onConfirm, kpiName }: { isOpen: boolean
     );
 };
 
-const KpiApprovalsTab = () => {
+const KpiApprovalsTab = ({ isAdmin }: { isAdmin: boolean }) => {
   const { toast } = useToast();
   const firestore = useFirestore();
 
   // As per SRS, we have Manager Review and Upper Manager Approval stages
   const submissionsQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
+    if (!firestore || !isAdmin) return null; // Only Admins can list all submissions
     return query(collection(firestore, 'submissions'), where('status', 'in', ['Manager Review', 'Upper Manager Approval']));
-  }, [firestore]);
+  }, [firestore, isAdmin]);
 
   const { data: submissionsData, isLoading } = useCollection<KpiSubmission>(submissionsQuery);
 
@@ -143,7 +143,7 @@ const KpiApprovalsTab = () => {
       </CardHeader>
       <CardContent className="p-0">
         <div className="divide-y divide-gray-200">
-           {isLoading ? (
+           {isLoading && isAdmin ? (
              [...Array(2)].map((_, i) => (
                 <div key={i} className="p-6 space-y-4">
                    <div className="flex justify-between items-start">
@@ -201,7 +201,7 @@ const KpiApprovalsTab = () => {
   );
 };
 
-const CommitmentRequestsTab = () => {
+const CommitmentRequestsTab = ({ isAdmin }: { isAdmin: boolean }) => {
   const { toast } = useToast();
   const firestore = useFirestore();
   const [isRejectModalOpen, setRejectModalOpen] = useState(false);
@@ -209,9 +209,9 @@ const CommitmentRequestsTab = () => {
 
   // Per SRS: Manager reviews what the employee has 'Agreed' to
   const commitmentsQuery = useMemoFirebase(() => {
-      if (!firestore) return null;
+      if (!firestore || !isAdmin) return null; // Only admins can list all commitments
       return query(collection(firestore, 'individual_kpis'), where('status', '==', 'Agreed'));
-  }, [firestore]);
+  }, [firestore, isAdmin]);
 
   const { data: pendingCommitments, isLoading } = useCollection<IndividualKpi>(commitmentsQuery);
 
@@ -252,7 +252,7 @@ const CommitmentRequestsTab = () => {
       </CardHeader>
        <CardContent className="p-0">
         <div className="divide-y divide-gray-200">
-           {isLoading ? (
+           {isLoading && isAdmin ? (
                 [...Array(2)].map((_, i) => (
                     <div key={i} className="p-6 space-y-4">
                         <div className="flex justify-between items-start">
@@ -313,20 +313,19 @@ const CommitmentRequestsTab = () => {
 
 export default function ApprovalsPage() {
   const { setPageTitle } = useAppLayout();
+  const { user } = useUser();
+  const firestore = useFirestore();
 
   useEffect(() => {
     setPageTitle('Action Center');
   }, [setPageTitle]);
   
-  const { user } = useUser();
-  const firestore = useFirestore();
-
   const userProfileRef = useMemoFirebase(() => {
     if (!firestore || !user) return null;
     return doc(firestore, 'users', user.uid);
   }, [firestore, user]);
   const { data: userProfile, isLoading: isUserProfileLoading } = useDoc<AppUser>(userProfileRef);
-  const isAdmin = userProfile?.role === 'Admin';
+  const isAdmin = useMemo(() => userProfile?.role === 'Admin', [userProfile]);
   
   // These hooks are used to get the count for the tabs.
   const submissionsQuery = useMemoFirebase(() => {
@@ -357,12 +356,14 @@ export default function ApprovalsPage() {
           <TabsTrigger value="commitments">Commitment Requests ({isLoading ? '...' : commitmentsData?.length ?? 0})</TabsTrigger>
         </TabsList>
         <TabsContent value="submissions" className="mt-6">
-          <KpiApprovalsTab />
+          <KpiApprovalsTab isAdmin={isAdmin} />
         </TabsContent>
         <TabsContent value="commitments" className="mt-6">
-          <CommitmentRequestsTab />
+          <CommitmentRequestsTab isAdmin={isAdmin} />
         </TabsContent>
       </Tabs>
     </div>
   );
 }
+
+    
