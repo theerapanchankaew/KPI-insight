@@ -349,7 +349,8 @@ const DeployAndCascadeDialog = ({
     if (isOpen) {
       generatePreview();
     }
-  }, [isOpen, strategy, seasonalPattern, progressiveCurve, customWeights, dateRange, generatePreview]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, strategy, seasonalPattern, progressiveCurve, customWeights, dateRange]);
 
 
   const handleCustomWeightChange = (monthIndex: number, weightValue: string) => {
@@ -431,8 +432,8 @@ const DeployAndCascadeDialog = ({
       kpiMeasure: kpi.measure,
       dateRange,
       strategy,
-      customWeights,
       cascadedDepts,
+      previewData: previewData, // Export the detailed preview data
     };
     const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(exportData, null, 2))}`;
     const link = document.createElement("a");
@@ -464,8 +465,25 @@ const DeployAndCascadeDialog = ({
               });
           }
           if(importedData.strategy) setStrategy(importedData.strategy);
-          if(importedData.customWeights) setCustomWeights(importedData.customWeights);
+          
           if(Array.isArray(importedData.cascadedDepts)) setCascadedDepts(importedData.cascadedDepts);
+
+          // If the detailed preview data exists, use it to populate the table
+          if (Array.isArray(importedData.previewData)) {
+            setPreviewData(importedData.previewData);
+            // Also update customWeights from the imported previewData
+            const newWeights = [...customWeights];
+            importedData.previewData.forEach((monthData: MonthlyDistribution) => {
+              if (monthData.month >= 1 && monthData.month <= 12) {
+                newWeights[monthData.month - 1] = monthData.weight ?? 1;
+              }
+            });
+            setCustomWeights(newWeights);
+          } else if (importedData.customWeights) {
+            // Fallback for older format
+            setCustomWeights(importedData.customWeights);
+          }
+
 
           toast({ title: "Import Successful", description: "Cascade configuration has been loaded." });
         }
