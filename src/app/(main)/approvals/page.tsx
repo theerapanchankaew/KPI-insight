@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useAppLayout } from '../layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -78,17 +78,18 @@ const RejectDialog = ({ isOpen, onClose, onConfirm, kpiName }: { isOpen: boolean
     );
 };
 
-const KpiApprovalsTab = ({ isAdmin }: { isAdmin: boolean }) => {
+const KpiApprovalsTab = ({ isAdmin, isProfileLoading }: { isAdmin: boolean, isProfileLoading: boolean }) => {
   const { toast } = useToast();
   const firestore = useFirestore();
 
   // As per SRS, we have Manager Review and Upper Manager Approval stages
+  // IMPORTANT: The query is now gated by isProfileLoading AND isAdmin status to prevent permission errors.
   const submissionsQuery = useMemoFirebase(() => {
-    if (!firestore || !isAdmin) return null; // Only Admins can list all submissions
+    if (!firestore || isProfileLoading || !isAdmin) return null; 
     return query(collection(firestore, 'submissions'), where('status', 'in', ['Manager Review', 'Upper Manager Approval']));
-  }, [firestore, isAdmin]);
+  }, [firestore, isProfileLoading, isAdmin]);
 
-  const { data: submissionsData, isLoading } = useCollection<KpiSubmission>(submissionsQuery);
+  const { data: submissionsData, isLoading: isSubmissionsLoading } = useCollection<KpiSubmission>(submissionsQuery);
 
   const handleApprove = (item: WithId<KpiSubmission>) => {
     if(!firestore) return;
@@ -135,6 +136,7 @@ const KpiApprovalsTab = ({ isAdmin }: { isAdmin: boolean }) => {
       });
   };
 
+  const isLoading = isProfileLoading || isSubmissionsLoading;
 
   return (
     <Card>
@@ -143,7 +145,7 @@ const KpiApprovalsTab = ({ isAdmin }: { isAdmin: boolean }) => {
       </CardHeader>
       <CardContent className="p-0">
         <div className="divide-y divide-gray-200">
-           {isLoading && isAdmin ? (
+           {isLoading ? (
              [...Array(2)].map((_, i) => (
                 <div key={i} className="p-6 space-y-4">
                    <div className="flex justify-between items-start">
@@ -193,7 +195,7 @@ const KpiApprovalsTab = ({ isAdmin }: { isAdmin: boolean }) => {
             </div>
             ))
           ) : (
-             <p className="p-6 text-center text-gray-500">No pending submissions to review.</p>
+             <p className="p-6 text-center text-gray-500">{isAdmin ? "No pending submissions to review." : "Only admins can view pending submissions."}</p>
           )}
         </div>
       </CardContent>
@@ -201,19 +203,20 @@ const KpiApprovalsTab = ({ isAdmin }: { isAdmin: boolean }) => {
   );
 };
 
-const CommitmentRequestsTab = ({ isAdmin }: { isAdmin: boolean }) => {
+const CommitmentRequestsTab = ({ isAdmin, isProfileLoading }: { isAdmin: boolean, isProfileLoading: boolean }) => {
   const { toast } = useToast();
   const firestore = useFirestore();
   const [isRejectModalOpen, setRejectModalOpen] = useState(false);
   const [selectedKpi, setSelectedKpi] = useState<WithId<IndividualKpi> | null>(null);
 
   // Per SRS: Manager reviews what the employee has 'Agreed' to
+  // IMPORTANT: The query is now gated by isProfileLoading AND isAdmin status to prevent permission errors.
   const commitmentsQuery = useMemoFirebase(() => {
-      if (!firestore || !isAdmin) return null; // Only admins can list all commitments
+      if (!firestore || isProfileLoading || !isAdmin) return null;
       return query(collection(firestore, 'individual_kpis'), where('status', '==', 'Agreed'));
-  }, [firestore, isAdmin]);
+  }, [firestore, isProfileLoading, isAdmin]);
 
-  const { data: pendingCommitments, isLoading } = useCollection<IndividualKpi>(commitmentsQuery);
+  const { data: pendingCommitments, isLoading: isCommitmentsLoading } = useCollection<IndividualKpi>(commitmentsQuery);
 
   const handleAgreement = (kpi: WithId<IndividualKpi>) => {
     if (!firestore) return;
@@ -244,6 +247,8 @@ const CommitmentRequestsTab = ({ isAdmin }: { isAdmin: boolean }) => {
     setSelectedKpi(null);
   };
 
+  const isLoading = isProfileLoading || isCommitmentsLoading;
+
   return (
     <>
     <Card>
@@ -252,7 +257,7 @@ const CommitmentRequestsTab = ({ isAdmin }: { isAdmin: boolean }) => {
       </CardHeader>
        <CardContent className="p-0">
         <div className="divide-y divide-gray-200">
-           {isLoading && isAdmin ? (
+           {isLoading ? (
                 [...Array(2)].map((_, i) => (
                     <div key={i} className="p-6 space-y-4">
                         <div className="flex justify-between items-start">
@@ -296,7 +301,7 @@ const CommitmentRequestsTab = ({ isAdmin }: { isAdmin: boolean }) => {
                 </div>
                 </div>
           ))) : (
-            <p className="p-6 text-center text-gray-500">No pending commitments to review.</p>
+            <p className="p-6 text-center text-gray-500">{isAdmin ? "No pending commitments to review." : "Only admins can view commitment requests."}</p>
           )}
         </div>
       </CardContent>
@@ -329,14 +334,14 @@ export default function ApprovalsPage() {
   
   // These hooks are used to get the count for the tabs.
   const submissionsQuery = useMemoFirebase(() => {
-    if (!firestore || !isAdmin) return null;
+    if (!firestore || isUserProfileLoading || !isAdmin) return null;
     return query(collection(firestore, 'submissions'), where('status', 'in', ['Manager Review', 'Upper Manager Approval']))
-  }, [firestore, isAdmin]);
+  }, [firestore, isUserProfileLoading, isAdmin]);
 
   const commitmentsQuery = useMemoFirebase(() => {
-    if (!firestore || !isAdmin) return null;
+    if (!firestore || isUserProfileLoading || !isAdmin) return null;
     return query(collection(firestore, 'individual_kpis'), where('status', '==', 'Agreed'));
-  }, [firestore, isAdmin]);
+  }, [firestore, isUserProfileLoading, isAdmin]);
 
   const { data: submissionsData, isLoading: isSubmissionsLoading } = useCollection(submissionsQuery);
   const { data: commitmentsData, isLoading: isCommitmentsLoading } = useCollection(commitmentsQuery);
@@ -356,14 +361,12 @@ export default function ApprovalsPage() {
           <TabsTrigger value="commitments">Commitment Requests ({isLoading ? '...' : commitmentsData?.length ?? 0})</TabsTrigger>
         </TabsList>
         <TabsContent value="submissions" className="mt-6">
-          <KpiApprovalsTab isAdmin={isAdmin} />
+          <KpiApprovalsTab isAdmin={isAdmin} isProfileLoading={isUserProfileLoading} />
         </TabsContent>
         <TabsContent value="commitments" className="mt-6">
-          <CommitmentRequestsTab isAdmin={isAdmin} />
+          <CommitmentRequestsTab isAdmin={isAdmin} isProfileLoading={isUserProfileLoading} />
         </TabsContent>
       </Tabs>
     </div>
   );
 }
-
-    
