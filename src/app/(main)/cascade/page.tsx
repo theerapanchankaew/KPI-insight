@@ -349,8 +349,7 @@ const DeployAndCascadeDialog = ({
     if (isOpen) {
       generatePreview();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, strategy, seasonalPattern, progressiveCurve, customWeights, dateRange]);
+  }, [isOpen, strategy, seasonalPattern, progressiveCurve, customWeights, dateRange, generatePreview]);
 
 
   const handleCustomWeightChange = (monthIndex: number, weightValue: string) => {
@@ -368,7 +367,7 @@ const DeployAndCascadeDialog = ({
 
     newPreviewData[previewIndex].target = Number(targetValue) || 0;
     
-    // When a target changes, we can recalculate percentage. Weight becomes irrelevant.
+    // When a target changes, we can recalculate percentage. Weight becomes irrelevant for this calculation.
     if (yearlyTarget > 0) {
       const totalTarget = newPreviewData.reduce((sum, p) => sum + p.target, 0);
       newPreviewData.forEach(p => {
@@ -1519,5 +1518,7 @@ export default function KPICascadeManagement() {
     </div>
   );
 }
+
+    
 
     
