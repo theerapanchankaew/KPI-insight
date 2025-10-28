@@ -276,43 +276,57 @@ const DeployAndCascadeDialog = ({
   const [cascadedDepts, setCascadedDepts] = useState<DepartmentCascadeInput[]>([]);
 
   const generatePreview = useCallback(() => {
-      if (!kpi || !kpi.target) return;
-      
-      const yearlyTarget = parseFloat(String(kpi.target).replace(/[^0-9.]/g, '')) || 0;
-      let actualStrategy = strategy === 'auto' ? detectBestStrategy(kpi) : strategy;
-      
-      const intervalMonths = dateRange?.from && dateRange.to ? eachMonthOfInterval({ start: dateRange.from, end: dateRange.to }) : [];
-      const numMonths = intervalMonths.length;
+    if (!kpi || !kpi.target) return;
 
-      let basePreview: MonthlyDistribution[];
-      switch (actualStrategy) {
-          case 'equal': basePreview = DISTRIBUTION_STRATEGIES.equal(yearlyTarget, numMonths); break;
-          case 'weighted':
-              const activeWeights = intervalMonths.map(date => customWeights[getMonth(date)]);
-              basePreview = DISTRIBUTION_STRATEGIES.weighted(yearlyTarget, activeWeights);
-              break;
-          case 'seasonal': basePreview = DISTRIBUTION_STRATEGIES.seasonal(yearlyTarget, seasonalPattern); break;
-          case 'progressive': basePreview = DISTRIBUTION_STRATEGIES.progressive(yearlyTarget, progressiveCurve); break;
-          case 'historical': basePreview = DISTRIBUTION_STRATEGIES.equal(yearlyTarget, numMonths); break; // Placeholder
-          default: basePreview = DISTRIBUTION_STRATEGIES.equal(yearlyTarget, numMonths);
-      }
-      
-      const finalPreview = intervalMonths.map((date, index) => {
-          const monthIndex = getMonth(date);
-          if (actualStrategy === 'weighted') {
-            return basePreview[index] ? { ...basePreview[index], month: monthIndex + 1, monthName: MONTH_NAMES_TH[monthIndex] } : basePreview[0];
-          }
-          const dataForMonth = basePreview[monthIndex];
-          if(!dataForMonth) {
-              // This can happen if numMonths is less than 12 and the month is outside the range
-              return { month: monthIndex + 1, monthName: MONTH_NAMES_TH[monthIndex], percentage: 0, target: 0, weight: 0 };
-          }
-          return dataForMonth;
-      });
+    const yearlyTarget = parseFloat(String(kpi.target).replace(/[^0-9.]/g, '')) || 0;
+    let actualStrategy = strategy === 'auto' ? detectBestStrategy(kpi) : strategy;
 
-      setPreviewData(finalPreview);
-  }, [kpi, strategy, seasonalPattern, progressiveCurve, customWeights, dateRange]);
+    const intervalMonths = dateRange?.from && dateRange.to ? eachMonthOfInterval({ start: dateRange.from, end: dateRange.to }) : [];
+    const numMonths = intervalMonths.length;
 
+    let basePreview: MonthlyDistribution[];
+    switch (actualStrategy) {
+      case 'equal':
+        basePreview = DISTRIBUTION_STRATEGIES.equal(yearlyTarget, numMonths);
+        break;
+      case 'weighted':
+        const activeWeights = Array.from({ length: 12 }, (_, i) =>
+          isWithinInterval(new Date(selectedYear, i, 1), { start: dateRange!.from!, end: dateRange!.to! }) ? customWeights[i] : 0
+        );
+        basePreview = DISTRIBUTION_STRATEGIES.weighted(yearlyTarget, activeWeights);
+        break;
+      case 'seasonal':
+        basePreview = DISTRIBUTION_STRATEGIES.seasonal(yearlyTarget, seasonalPattern);
+        break;
+      case 'progressive':
+        basePreview = DISTRIBUTION_STRATEGIES.progressive(yearlyTarget, progressiveCurve);
+        break;
+      case 'historical':
+        basePreview = DISTRIBUTION_STRATEGIES.equal(yearlyTarget, numMonths); // Placeholder
+        break;
+      default:
+        basePreview = DISTRIBUTION_STRATEGIES.equal(yearlyTarget, numMonths);
+    }
+    
+    const finalPreview = intervalMonths.map(date => {
+        const monthIndex = getMonth(date);
+        return {
+            ...basePreview[monthIndex],
+            month: monthIndex + 1,
+            monthName: MONTH_NAMES_TH[monthIndex],
+        };
+    });
+    
+    // Recalculate percentages to sum to 100 for the selected period
+    const totalTargetInPeriod = finalPreview.reduce((sum, p) => sum + p.target, 0);
+    if(totalTargetInPeriod > 0) {
+        finalPreview.forEach(p => {
+            p.percentage = (p.target / totalTargetInPeriod) * 100;
+        });
+    }
+
+    setPreviewData(finalPreview);
+  }, [kpi, strategy, seasonalPattern, progressiveCurve, customWeights, dateRange, selectedYear]);
 
   useEffect(() => {
     if (kpi && isOpen) {
@@ -324,12 +338,12 @@ const DeployAndCascadeDialog = ({
       setStrategy('auto');
     }
   }, [kpi, isOpen, generatePreview]);
-  
-   useEffect(() => {
-    if (kpi && isOpen) {
-        generatePreview();
+
+  useEffect(() => {
+    if (isOpen) {
+      generatePreview();
     }
-   }, [kpi, isOpen, strategy, seasonalPattern, progressiveCurve, customWeights, generatePreview, dateRange]);
+  }, [isOpen, strategy, seasonalPattern, progressiveCurve, customWeights, dateRange, generatePreview]);
 
 
   const handleCustomWeightChange = (monthIndex: number, weightValue: string) => {
@@ -1483,4 +1497,3 @@ export default function KPICascadeManagement() {
 }
 
     
-
