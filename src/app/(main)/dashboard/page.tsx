@@ -68,15 +68,16 @@ const KpiCard = ({ kpi, monthlyData }: { kpi: WithId<any>, monthlyData: WithId<M
     const totalTarget = useMemo(() => chartData.reduce((sum, item) => sum + item.Target, 0), [chartData]);
     const achievement = totalTarget > 0 ? (totalActual / totalTarget) * 100 : 0;
     
-    // Find the max value from both Actual and Target to set the Y-axis domain
     const yAxisMax = useMemo(() => {
         const maxActual = Math.max(...chartData.map(d => d.Actual));
         const maxTarget = Math.max(...chartData.map(d => d.Target));
-        return Math.max(maxActual, maxTarget);
+        const highestValue = Math.max(maxActual, maxTarget);
+        // Ensure axis is not 0 if all data is 0
+        return highestValue === 0 ? 10 : highestValue;
     }, [chartData]);
 
     return (
-        <Card className="shadow-sm border-gray-200 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 group w-full">
+        <Card className="shadow-sm border-gray-200 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 group flex flex-col flex-1 min-w-[320px] md:max-w-md">
             <CardHeader className="pb-2">
                 <div className="flex items-start justify-between">
                     <CardTitle className="text-base font-semibold">{kpi.measure}</CardTitle>
@@ -88,7 +89,7 @@ const KpiCard = ({ kpi, monthlyData }: { kpi: WithId<any>, monthlyData: WithId<M
                     Target: {kpi.target} {kpi.unit && `(${kpi.unit})`}
                 </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex-1 flex">
                 <div className="h-40 w-full">
                      <ChartContainer config={chartConfig} className="h-full w-full">
                         <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
@@ -220,9 +221,9 @@ export default function DashboardPage() {
                 [...Array(2)].map((_, i) => (
                     <Card key={i}>
                         <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
-                        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <Skeleton className="h-56 w-full" />
-                            <Skeleton className="h-56 w-full" />
+                        <CardContent className="flex flex-wrap gap-4">
+                            <Skeleton className="h-56 w-full flex-1 min-w-[320px]" />
+                            <Skeleton className="h-56 w-full flex-1 min-w-[320px]" />
                         </CardContent>
                     </Card>
                 ))
@@ -239,7 +240,7 @@ export default function DashboardPage() {
                             </div>
                         </CollapsibleTrigger>
                         <CollapsibleContent className="p-4 bg-gray-50/50">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="flex flex-wrap gap-6">
                                 {kpis.map(kpi => (
                                     <KpiCard key={kpi.id} kpi={kpi} monthlyData={monthlyKpisData || []} />
                                 ))}
