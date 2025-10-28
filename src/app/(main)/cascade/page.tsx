@@ -18,7 +18,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronsUpDown, PlusCircle, Trash2, Edit, AlertTriangle, MoreVertical, Calendar, TrendingUp, BarChart3, Building, Share2, Upload, Download } from 'lucide-react';
-import { WithId, useCollection, useFirestore, useUser, useMemoFirebase } from '@/firebase';
+import { WithId, useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from '@/firebase';
 import { addDocumentNonBlocking, deleteDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { collection, doc } from 'firebase/firestore';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -122,6 +122,10 @@ interface CommittedKpiInput {
   task: string;
   weight: number;
   targets: { level1: string; level2: string; level3: string; level4: string; level5: string; };
+}
+
+interface AppUser {
+  role: Role;
 }
 
 
@@ -1271,6 +1275,14 @@ export default function KPICascadeManagement() {
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<WithId<Employee> | null>(null);
 
+  const userProfileRef = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return doc(firestore, 'users', user.uid);
+  }, [firestore, user]);
+  const { data: userProfile, isLoading: isUserProfileLoading } = useDoc<AppUser>(userProfileRef);
+  const isAdmin = useMemo(() => userProfile?.role === 'Admin', [userProfile]);
+
+
   // Firestore collections
   const cascadedKpisQuery = useMemoFirebase(
     () => (firestore ? collection(firestore, 'cascaded_kpis') : null),
@@ -1279,8 +1291,8 @@ export default function KPICascadeManagement() {
   const { data: cascadedKpis, isLoading: isCascadedKpisLoading } = useCollection<WithId<CascadedKpi>>(cascadedKpisQuery);
   
   const individualKpisQuery = useMemoFirebase(
-    () => (firestore ? collection(firestore, 'individual_kpis') : null),
-    [firestore]
+    () => (firestore && isAdmin ? collection(firestore, 'individual_kpis') : null),
+    [firestore, isAdmin]
   );
   const { data: individualKpis, isLoading: isIndividualKpisLoading } = useCollection<WithId<IndividualKpi>>(individualKpisQuery);
 
@@ -1293,17 +1305,16 @@ export default function KPICascadeManagement() {
 
   // Determine user role
   const userRole: Role = useMemo(() => {
-    if (!user) return null;
-    // Add your role determination logic here
-    return 'Admin'; // Default for demo
-  }, [user]);
+    if (!userProfile) return null;
+    return userProfile.role;
+  }, [userProfile]);
 
   const departments = useMemo(() => {
     if (!employees) return [];
     return Array.from(new Set(employees.map(emp => emp.department))).filter(Boolean);
   }, [employees]);
   
-  const overallLoading = isUserLoading || isCascadedKpisLoading || isIndividualKpisLoading || isEmployeesLoading;
+  const overallLoading = isUserLoading || isCascadedKpisLoading || isIndividualKpisLoading || isEmployeesLoading || isUserProfileLoading;
 
   // ==================== HANDLERS ====================
 

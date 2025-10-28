@@ -9,7 +9,7 @@ import { Check, X, UserCheck, AlertCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useCollection, useFirestore, useMemoFirebase, WithId, setDocumentNonBlocking } from '@/firebase';
+import { useCollection, useFirestore, useMemoFirebase, WithId, setDocumentNonBlocking, useUser, useDoc } from '@/firebase';
 import { collection, query, where, doc } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
@@ -44,6 +44,9 @@ interface AssignedCascadedKpi extends IndividualKpiBase { type: 'cascaded'; targ
 interface CommittedKpi extends IndividualKpiBase { type: 'committed'; task: string; targets: { [key: string]: string }; }
 type IndividualKpi = AssignedCascadedKpi | CommittedKpi;
 
+interface AppUser {
+  role: 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee' | null;
+}
 
 const RejectDialog = ({ isOpen, onClose, onConfirm, kpiName }: { isOpen: boolean, onClose: () => void, onConfirm: (reason: string) => void, kpiName: string }) => {
     const [reason, setReason] = useState('');
@@ -315,14 +318,31 @@ export default function ApprovalsPage() {
     setPageTitle('Action Center');
   }, [setPageTitle]);
   
-  // These hooks are used to get the count for the tabs.
+  const { user } = useUser();
   const firestore = useFirestore();
-  const submissionsQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'submissions'), where('status', 'in', ['Manager Review', 'Upper Manager Approval'])) : null, [firestore]);
-  const commitmentsQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'individual_kpis'), where('status', '==', 'Agreed')) : null, [firestore]);
+
+  const userProfileRef = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return doc(firestore, 'users', user.uid);
+  }, [firestore, user]);
+  const { data: userProfile, isLoading: isUserProfileLoading } = useDoc<AppUser>(userProfileRef);
+  const isAdmin = userProfile?.role === 'Admin';
+  
+  // These hooks are used to get the count for the tabs.
+  const submissionsQuery = useMemoFirebase(() => {
+    if (!firestore || !isAdmin) return null;
+    return query(collection(firestore, 'submissions'), where('status', 'in', ['Manager Review', 'Upper Manager Approval']))
+  }, [firestore, isAdmin]);
+
+  const commitmentsQuery = useMemoFirebase(() => {
+    if (!firestore || !isAdmin) return null;
+    return query(collection(firestore, 'individual_kpis'), where('status', '==', 'Agreed'));
+  }, [firestore, isAdmin]);
+
   const { data: submissionsData, isLoading: isSubmissionsLoading } = useCollection(submissionsQuery);
   const { data: commitmentsData, isLoading: isCommitmentsLoading } = useCollection(commitmentsQuery);
 
-  const isLoading = isSubmissionsLoading || isCommitmentsLoading;
+  const isLoading = isSubmissionsLoading || isCommitmentsLoading || isUserProfileLoading;
 
   return (
     <div className="fade-in space-y-6">
