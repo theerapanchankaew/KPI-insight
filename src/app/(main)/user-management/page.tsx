@@ -20,23 +20,31 @@ import { useCollection, useFirestore, useMemoFirebase, useUser, WithId } from '@
 import { collection, doc } from 'firebase/firestore';
 import { addDocumentNonBlocking, deleteDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useKpiData, type Employee } from '@/context/KpiDataContext';
 
 type Role = 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee';
+
+export interface Employee {
+  id: string;
+  name: string;
+  department: string;
+  position: string;
+  manager: string;
+}
 
 export interface AppUser {
   id: string;
   name: string;
   email?: string;
-  department: string;
-  position: string;
-  manager: string;
   role: Role;
   menuAccess: { [key: string]: boolean };
+  // Properties from Employee that might be on the user doc
+  department?: string;
+  position?: string;
+  manager?: string;
 }
 
 // Represents the merged data from employees and users collections
-type ManagedUser = Employee & Partial<AppUser>;
+type ManagedUser = WithId<Employee & Partial<AppUser>>;
 
 
 const defaultPermissions: { [key in Role]: { [key: string]: boolean } } = {
@@ -140,7 +148,6 @@ export default function UserManagementPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user, isUserLoading: isAuthLoading } = useUser();
-  const { orgData, isOrgDataLoading } = useKpiData();
 
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
@@ -170,17 +177,23 @@ export default function UserManagementPage() {
     return collection(firestore, 'users');
   }, [firestore, isAdmin]);
   
-  const { data: usersData, isLoading: isUsersLoading, error } = useCollection<AppUser>(usersQuery);
+  const employeesQuery = useMemoFirebase(() => {
+    if (!firestore || !isAdmin) return null;
+    return collection(firestore, 'employees');
+  }, [firestore, isAdmin]);
 
-  const [managedUsers, setManagedUsers] = useState<WithId<ManagedUser>[]>([]);
+  const { data: usersData, isLoading: isUsersLoading, error: usersError } = useCollection<AppUser>(usersQuery);
+  const { data: employeesData, isLoading: isEmployeesLoading, error: employeesError } = useCollection<Employee>(employeesQuery);
+
+  const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
   const [isAddUserModalOpen, setAddUserModalOpen] = useState(false);
 
   useEffect(() => {
-    const allKnownUsers = new Map<string, WithId<ManagedUser>>();
+    const allKnownUsers = new Map<string, ManagedUser>();
 
-    // First, process employees from orgData
-    if (orgData) {
-        orgData.forEach(employee => {
+    // First, process employees from employeesData
+    if (employeesData) {
+        employeesData.forEach(employee => {
             allKnownUsers.set(employee.id, {
                 ...employee,
                 role: 'Employee', // Default role
@@ -211,7 +224,7 @@ export default function UserManagementPage() {
     }
 
     setManagedUsers(Array.from(allKnownUsers.values()));
-  }, [orgData, usersData]);
+  }, [employeesData, usersData]);
   
   const handleRoleChange = (userId: string, role: Role) => {
     setManagedUsers(prev => prev.map(user => 
@@ -268,7 +281,6 @@ export default function UserManagementPage() {
         return;
     }
     const employeesCollection = collection(firestore, 'employees');
-    // Using a simple ID based on name for this example. In a real app, a better unique ID is needed.
     const newId = newUser.name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now().toString().slice(-5);
     addDocumentNonBlocking(doc(employeesCollection, newId), {id: newId, ...newUser});
     
@@ -297,7 +309,8 @@ export default function UserManagementPage() {
       toast({ title: 'User Removed', description: 'The user has been removed from the organization list.', variant: 'destructive' });
   };
 
-  const isLoading = isAuthLoading || isUsersLoading || isOrgDataLoading || isAdmin === null;
+  const isLoading = isAuthLoading || isUsersLoading || isEmployeesLoading || isAdmin === null;
+  const error = usersError || employeesError;
 
   const renderContent = () => {
     if (isLoading) {
@@ -412,7 +425,7 @@ export default function UserManagementPage() {
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={() => handleDeleteUser(employee.id)}>Delete</AlertDialogAction>
+                <AlertDialogAction onClick={() => handleDeleteUser(employee.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>

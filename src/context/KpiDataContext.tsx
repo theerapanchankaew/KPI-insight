@@ -3,7 +3,7 @@
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, doc, query } from 'firebase/firestore';
+import { collection, doc } from 'firebase/firestore';
 import { WithId } from '@/firebase/firestore/use-collection';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
@@ -40,7 +40,7 @@ export interface CascadedKpi {
   measure: string;
   department: string;
   weight: number;
-  departmentTarget: string;
+  target: string;
 }
 
 const defaultSettings: AppSettings = {
@@ -149,3 +149,5 @@ export const useKpiData = () => {
   }
   return context;
 };
+
+    
