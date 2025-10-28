@@ -29,6 +29,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogT
 import { Label } from '@/components/ui/label';
 import { updateProfile } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
+import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 
 interface AppLayoutContextType {
   pageTitle: string;
@@ -191,17 +192,36 @@ const EditProfileDialog = ({ children }: { children: React.ReactNode }) => {
 
 const AppHeader = () => {
   const { pageTitle } = useAppLayout();
-  const { settings } = useKpiData();
+  const { settings, kpiData, cascadedKpis } = useKpiData();
   const { user, isUserLoading } = useUser();
   const auth = useAuth();
   const router = useRouter();
+
+  const [openCommand, setOpenCommand] = React.useState(false);
+
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        setOpenCommand((open) => !open)
+      }
+    }
+    document.addEventListener("keydown", down)
+    return () => document.removeEventListener("keydown", down)
+  }, [])
 
   const handleLogout = () => {
     auth.signOut();
     router.push('/login');
   };
+  
+  const runCommand = (command: () => void) => {
+    setOpenCommand(false)
+    command()
+  }
 
   return (
+    <>
     <header className="bg-card shadow-sm border-b border-border px-4 sm:px-6 py-4 sticky top-0 z-10">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
@@ -256,8 +276,13 @@ const AppHeader = () => {
 
         <div className="flex items-center space-x-2 sm:space-x-4">
           <div className="relative hidden md:block">
-            <Search className="w-5 h-5 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
-            <Input type="text" placeholder="ค้นหา KPI..." className="w-40 sm:w-64 pl-10 pr-4 py-2" />
+            <Button variant="outline" onClick={() => setOpenCommand(true)} className="w-40 sm:w-64 justify-start text-muted-foreground">
+                <Search className="w-4 h-4 mr-2" />
+                ค้นหา KPI...
+                 <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
+                  <span className="text-xs">⌘</span>K
+                </kbd>
+            </Button>
           </div>
           <div className="relative">
             <Button variant="ghost" size="icon" className="relative">
@@ -323,6 +348,41 @@ const AppHeader = () => {
         </div>
       </div>
     </header>
+     <CommandDialog open={openCommand} onOpenChange={setOpenCommand}>
+        <CommandInput placeholder="Type a command or search..." />
+        <CommandList>
+          <CommandEmpty>No results found.</CommandEmpty>
+          <CommandGroup heading="Suggestions">
+             {navItems.map(item => (
+                <CommandItem key={item.href} value={item.label} onSelect={() => runCommand(() => router.push(item.href))}>
+                    <item.icon className="mr-2 h-4 w-4" />
+                    <span>{item.label}</span>
+                </CommandItem>
+            ))}
+          </CommandGroup>
+          {kpiData && (
+            <CommandGroup heading="Corporate KPIs">
+                 {kpiData.map(kpi => (
+                    <CommandItem key={kpi.id} value={kpi.measure} onSelect={() => runCommand(() => router.push('/cascade'))}>
+                        <ShieldCheck className="mr-2 h-4 w-4" />
+                        <span>{kpi.measure}</span>
+                    </CommandItem>
+                ))}
+            </CommandGroup>
+          )}
+          {cascadedKpis && (
+            <CommandGroup heading="Cascaded KPIs">
+                 {cascadedKpis.map(kpi => (
+                    <CommandItem key={kpi.id} value={`${kpi.measure} (${kpi.department})`} onSelect={() => runCommand(() => router.push('/cascade'))}>
+                        <span>{kpi.measure}</span>
+                        <span className="ml-2 text-xs text-muted-foreground">({kpi.department})</span>
+                    </CommandItem>
+                ))}
+            </CommandGroup>
+          )}
+        </CommandList>
+      </CommandDialog>
+    </>
   );
 };
 
