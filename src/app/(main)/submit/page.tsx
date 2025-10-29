@@ -4,7 +4,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useAppLayout } from '../layout';
 import { Button } from '@/components/ui/button';
-import { FileText, BadgeCheck, Briefcase, Upload, Send, Eye, MessageSquare, AlertCircle } from 'lucide-react';
+import { FileText, BadgeCheck, Briefcase, Upload, Send, Eye, MessageSquare, AlertCircle, ChevronsUpDown } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +20,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { useKpiData } from '@/context/KpiDataContext';
 import { format } from 'date-fns';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 // Consistent type definition with portfolio and cascade pages
 interface IndividualKpiBase {
@@ -35,6 +37,7 @@ interface IndividualKpiBase {
     agreedAt?: any;
     reviewedAt?: any;
     acknowledgedAt?: any;
+    category?: string; // Adding category for filtering
 }
 interface AssignedCascadedKpi extends IndividualKpiBase { type: 'cascaded'; target: string; }
 interface CommittedKpi extends IndividualKpiBase { type: 'committed'; task: string; targets: { [key: string]: string }; }
@@ -265,11 +268,14 @@ export default function SubmitPage() {
   const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { orgData: allEmployees, isOrgDataLoading: isEmployeesLoading } = useKpiData();
+  const { orgData: allEmployees, isOrgDataLoading: isEmployeesLoading, kpiData: kpiCatalog } = useKpiData();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isViewCommitmentOpen, setViewCommitmentOpen] = useState(false);
   const [selectedKpi, setSelectedKpi] = useState<WithId<IndividualKpi> | null>(null);
+  
+  const [departmentFilter, setDepartmentFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
 
   const userProfileRef = useMemoFirebase(() => {
     if (!user || !firestore) return null;
@@ -333,6 +339,43 @@ export default function SubmitPage() {
     return new Map(allEmployees.map(e => [e.id, e]));
   }, [allEmployees]);
   
+  const departments = useMemo(() => {
+    if (!allEmployees) return [];
+    return [...new Set(allEmployees.map(e => e.department))].filter(Boolean).sort();
+  }, [allEmployees]);
+
+  const kpiCategories = useMemo(() => {
+    if (!kpiCatalog) return [];
+    return [...new Set(kpiCatalog.map(k => k.category))].filter(Boolean).sort();
+  }, [kpiCatalog]);
+  
+
+  const filteredKpis = useMemo(() => {
+    if (!allKpis) return [];
+    return allKpis.filter(kpi => {
+        const employee = employeeMap.get(kpi.employeeId);
+        const departmentMatch = departmentFilter === 'all' || employee?.department === departmentFilter;
+        
+        const kpiInfo = kpiCatalog?.find(k => k.id === (kpi.type === 'cascaded' ? kpi.corporateKpiId : null));
+        const categoryMatch = categoryFilter === 'all' || (kpiInfo && kpiInfo.category === categoryFilter);
+
+        return departmentMatch && categoryMatch;
+    });
+  }, [allKpis, departmentFilter, categoryFilter, employeeMap, kpiCatalog]);
+
+  const kpisByDepartment = useMemo(() => {
+      if (!filteredKpis) return {};
+      return filteredKpis.reduce((acc, kpi) => {
+          const employee = employeeMap.get(kpi.employeeId);
+          const dept = employee?.department || 'Unassigned';
+          if (!acc[dept]) {
+              acc[dept] = [];
+          }
+          acc[dept].push(kpi);
+          return acc;
+      }, {} as { [key: string]: WithId<IndividualKpi>[] });
+  }, [filteredKpis, employeeMap]);
+
 
   const summaryStats = useMemo(() => {
       if(!allKpis) return { totalInProgress: 0, needsSubmission: 0, submitted: 0 };
@@ -424,132 +467,154 @@ export default function SubmitPage() {
 
       <Card>
         <CardHeader>
-             <CardTitle>KPI Submission Status</CardTitle>
+          <CardTitle>KPI Submission Status</CardTitle>
+          <div className="flex flex-col md:flex-row gap-4 pt-2">
+            <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+              <SelectTrigger className="w-full md:w-[240px]">
+                <SelectValue placeholder="Filter by Department" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Departments</SelectItem>
+                {departments.map(dept => <SelectItem key={dept} value={dept}>{dept}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="w-full md:w-[240px]">
+                <SelectValue placeholder="Filter by Category" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                {kpiCategories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  {isManagerOrAdmin && <TableHead>Employee</TableHead>}
-                  <TableHead>KPI / Task</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Target</TableHead>
-                  <TableHead>Weight</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading ? (
-                    [...Array(3)].map((_, i) => (
-                        <TableRow key={i}>
-                            {isManagerOrAdmin && <TableCell><Skeleton className="h-5 w-24" /></TableCell>}
-                            <TableCell><Skeleton className="h-5 w-48" /></TableCell>
-                            <TableCell><Skeleton className="h-5 w-20" /></TableCell>
-                            <TableCell><Skeleton className="h-5 w-24" /></TableCell>
-                            <TableCell><Skeleton className="h-5 w-10" /></TableCell>
-                            <TableCell><Skeleton className="h-6 w-24" /></TableCell>
-                            <TableCell className="text-right"><Skeleton className="h-8 w-24 ml-auto" /></TableCell>
+        <CardContent className="space-y-4">
+          {isLoading ? (
+            <div className="space-y-4">
+              <Skeleton className="h-48" />
+              <Skeleton className="h-48" />
+            </div>
+          ) : Object.keys(kpisByDepartment).length > 0 ? (
+            Object.entries(kpisByDepartment).map(([department, kpis]) => (
+              <Collapsible key={department} defaultOpen>
+                <CollapsibleTrigger asChild>
+                  <div className="flex w-full items-center justify-between rounded-md bg-muted/60 px-4 py-3 cursor-pointer border">
+                    <h4 className="font-semibold">{department}</h4>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <span>{kpis.length} KPIs</span>
+                      <ChevronsUpDown className="h-4 w-4" />
+                    </div>
+                  </div>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="p-0 pt-2">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          {isManagerOrAdmin && <TableHead>Employee</TableHead>}
+                          <TableHead>KPI / Task</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Target</TableHead>
+                          <TableHead>Weight</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
-                    ))
-                ) : allKpis && allKpis.length > 0 ? (
-                  allKpis.map((kpi) => {
-                    const submissionStatus = submissionStatusMap.get(kpi.id);
-                    const isSubmitted = !!submissionStatus;
-                    const employee = employeeMap.get(kpi.employeeId);
-                    
-                    const canResubmitData = submissionStatus === 'Rejected';
+                      </TableHeader>
+                      <TableBody>
+                        {kpis.map((kpi) => {
+                          const submissionStatus = submissionStatusMap.get(kpi.id);
+                          const isSubmitted = !!submissionStatus;
+                          const employee = employeeMap.get(kpi.employeeId);
+                          const canResubmitData = submissionStatus === 'Rejected';
 
-                    return (
-                        <TableRow key={kpi.id} className={cn(isSubmitted && !canResubmitData && kpi.status !== 'Rejected' && "bg-green-50/60")}>
-                        {isManagerOrAdmin && (
-                            <TableCell>
-                                <div className="font-medium">{employee?.name || kpi.employeeId}</div>
-                                <div className="text-xs text-muted-foreground">{employee?.department}</div>
-                            </TableCell>
-                        )}
-                        <TableCell className="font-medium">{kpi.kpiMeasure}</TableCell>
-                        <TableCell><Badge variant={kpi.type === 'cascaded' ? 'secondary' : 'default'}>{kpi.type}</Badge></TableCell>
-                        <TableCell>{kpi.type === 'cascaded' ? kpi.target : "5-level scale"}</TableCell>
-                        <TableCell>{kpi.weight}%</TableCell>
-                        <TableCell>
-                           {isSubmitted ? (
-                                <Badge variant={submissionStatus === 'Rejected' ? 'destructive' : 'outline'}>{submissionStatus}</Badge>
-                            ) : (
-                                <Badge variant="outline">{kpi.status}</Badge>
-                            )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                           {(() => {
-                                if (isSubmitted && !canResubmitData) {
+                          return (
+                            <TableRow key={kpi.id} className={cn(isSubmitted && !canResubmitData && kpi.status !== 'Rejected' && "bg-green-50/60")}>
+                              {isManagerOrAdmin && (
+                                <TableCell>
+                                  <div className="font-medium">{employee?.name || kpi.employeeId}</div>
+                                </TableCell>
+                              )}
+                              <TableCell className="font-medium">{kpi.kpiMeasure}</TableCell>
+                              <TableCell><Badge variant={kpi.type === 'cascaded' ? 'secondary' : 'default'}>{kpi.type}</Badge></TableCell>
+                              <TableCell>{kpi.type === 'cascaded' ? kpi.target : "5-level scale"}</TableCell>
+                              <TableCell>{kpi.weight}%</TableCell>
+                              <TableCell>
+                                {isSubmitted ? (
+                                  <Badge variant={submissionStatus === 'Rejected' ? 'destructive' : 'outline'}>{submissionStatus}</Badge>
+                                ) : (
+                                  <Badge variant="outline">{kpi.status}</Badge>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {(() => {
+                                  if (isSubmitted && !canResubmitData) {
                                     return (
-                                        <Button variant="outline" size="sm" disabled>
-                                            <BadgeCheck className="w-4 h-4 mr-2"/> Submitted
-                                        </Button>
+                                      <Button variant="outline" size="sm" disabled>
+                                        <BadgeCheck className="w-4 h-4 mr-2"/> Submitted
+                                      </Button>
                                     );
-                                }
-                                if (canResubmitData) {
+                                  }
+                                  if (canResubmitData) {
                                     return (
-                                        <Button variant="destructive" size="sm" onClick={() => handleOpenSubmitDialog(kpi)}>
-                                            Resubmit Data
-                                        </Button>
+                                      <Button variant="destructive" size="sm" onClick={() => handleOpenSubmitDialog(kpi)}>
+                                        Resubmit Data
+                                      </Button>
                                     );
-                                }
-                                if (kpi.status === 'In-Progress') {
+                                  }
+                                  if (kpi.status === 'In-Progress') {
                                     return (
-                                        <Button variant="default" size="sm" onClick={() => handleOpenSubmitDialog(kpi)}>
-                                            Submit Data
-                                        </Button>
+                                      <Button variant="default" size="sm" onClick={() => handleOpenSubmitDialog(kpi)}>
+                                        Submit Data
+                                      </Button>
                                     );
-                                }
-                                if (kpi.status === 'Draft' && isManagerOrAdmin) {
-                                     return (
-                                        <Button variant="secondary" size="sm" onClick={() => handleForceToAgreed(kpi.id)}>
-                                            <Send className="w-4 h-4 mr-2" />
-                                            Submit to Action Center
-                                        </Button>
+                                  }
+                                  if (kpi.status === 'Draft' && isManagerOrAdmin) {
+                                    return (
+                                      <Button variant="secondary" size="sm" onClick={() => handleForceToAgreed(kpi.id)}>
+                                        <Send className="w-4 h-4 mr-2" />
+                                        Submit to Action Center
+                                      </Button>
                                     );
-                                }
-                                if (kpi.status === 'Rejected') {
-                                     return (
-                                        <Button variant="destructive" size="sm" onClick={() => handleForceToAgreed(kpi.id)}>
-                                            <Send className="w-4 h-4 mr-2" />
-                                            Resubmit to Action Center
-                                        </Button>
+                                  }
+                                  if (kpi.status === 'Rejected') {
+                                    return (
+                                      <Button variant="destructive" size="sm" onClick={() => handleForceToAgreed(kpi.id)}>
+                                        <Send className="w-4 h-4 mr-2" />
+                                        Resubmit to Action Center
+                                      </Button>
                                     );
-                                }
-                                if (kpi.status === 'Upper Manager Approval') {
-                                  return (
-                                    <Button variant="outline" size="sm" onClick={() => handleOpenViewCommitmentDialog(kpi)}>
+                                  }
+                                  if (kpi.status === 'Upper Manager Approval') {
+                                    return (
+                                      <Button variant="outline" size="sm" onClick={() => handleOpenViewCommitmentDialog(kpi)}>
                                         <Eye className="w-4 h-4 mr-2"/> View Commitment
+                                      </Button>
+                                    );
+                                  }
+                                  return (
+                                    <Button variant="outline" size="sm" disabled>
+                                      Awaiting Agreement
                                     </Button>
                                   );
-                                }
-                                return (
-                                    <Button variant="outline" size="sm" disabled>
-                                        Awaiting Agreement
-                                    </Button>
-                                );
-                           })()}
-                        </TableCell>
-                        </TableRow>
-                    );
-                  })
-                ) : (
-                   <TableRow>
-                        <TableCell colSpan={isManagerOrAdmin ? 7 : 6} className="h-48 text-center text-gray-500">
-                            <div className="flex flex-col items-center justify-center space-y-2">
-                                <Briefcase className="h-10 w-10 text-gray-300" />
-                                <p className="font-medium">No KPIs awaiting action.</p>
-                                <p className="text-sm">KPIs that are not yet closed will appear here.</p>
-                            </div>
-                        </TableCell>
-                    </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                                })()}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            ))
+          ) : (
+            <div className="h-48 flex flex-col items-center justify-center text-center text-gray-500 space-y-2">
+                <Briefcase className="h-10 w-10 text-gray-300" />
+                <p className="font-medium">No KPIs Found</p>
+                <p className="text-sm">No KPIs match the current filter settings.</p>
+            </div>
+          )}
         </CardContent>
       </Card>
       
@@ -567,3 +632,5 @@ export default function SubmitPage() {
     </div>
   );
 }
+
+    
