@@ -4,7 +4,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useAppLayout } from '../layout';
 import { Button } from '@/components/ui/button';
-import { FileText, BadgeCheck, Briefcase, Upload, Send } from 'lucide-react';
+import { FileText, BadgeCheck, Briefcase, Upload, Send, Eye } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -136,6 +136,64 @@ const SubmitDataDialog = ({ isOpen, onOpenChange, kpi, onSubmit }: {
     );
 };
 
+const ViewCommitmentDialog = ({ isOpen, onOpenChange, kpi }: {
+    isOpen: boolean;
+    onOpenChange: (open: boolean) => void;
+    kpi: WithId<IndividualKpi> | null;
+}) => {
+    if (!kpi) return null;
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onOpenChange}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Approved Commitment Details</DialogTitle>
+                    <DialogDescription>{kpi.kpiMeasure}</DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <Label className="text-sm text-muted-foreground">Weight</Label>
+                            <p className="font-semibold">{kpi.weight}%</p>
+                        </div>
+                        <div className="space-y-1">
+                            <Label className="text-sm text-muted-foreground">Type</Label>
+                            <p className="font-semibold">{kpi.type}</p>
+                        </div>
+                    </div>
+                    {kpi.type === 'cascaded' && (
+                         <div className="space-y-1">
+                            <Label className="text-sm text-muted-foreground">Target</Label>
+                            <p className="font-semibold">{kpi.target}</p>
+                        </div>
+                    )}
+                     {kpi.type === 'committed' && (
+                        <>
+                             <div className="space-y-1">
+                                <Label className="text-sm text-muted-foreground">Task</Label>
+                                <p className="font-semibold">{kpi.task}</p>
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-sm text-muted-foreground">5-Level Targets</Label>
+                                <div className="space-y-1 text-sm p-3 bg-gray-50 rounded-md border">
+                                    {Object.entries(kpi.targets).map(([level, target]) => (
+                                        <p key={level}><strong>{level}:</strong> {target}</p>
+                                    ))}
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild>
+                        <Button>Close</Button>
+                    </DialogClose>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    )
+}
+
 
 export default function SubmitPage() {
   const { setPageTitle } = useAppLayout();
@@ -145,6 +203,7 @@ export default function SubmitPage() {
   const { orgData: allEmployees, isOrgDataLoading: isEmployeesLoading } = useKpiData();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isViewCommitmentOpen, setViewCommitmentOpen] = useState(false);
   const [selectedKpi, setSelectedKpi] = useState<WithId<IndividualKpi> | null>(null);
 
   const userProfileRef = useMemoFirebase(() => {
@@ -174,7 +233,7 @@ export default function SubmitPage() {
       // Employees only see their own active KPIs
       return query(baseQuery, 
         where('employeeId', '==', user.uid), 
-        where('status', 'in', ['Draft', 'In-Progress', 'Rejected', 'Agreed', 'Manager Review', 'Upper Manager Approval'])
+        where('status', 'in', ['Draft', 'In-Progress', 'Rejected', 'Agreed', 'Upper Manager Approval'])
       );
     }
     return null;
@@ -227,6 +286,11 @@ export default function SubmitPage() {
     setSelectedKpi(kpi);
     setIsModalOpen(true);
   };
+
+  const handleOpenViewCommitmentDialog = (kpi: WithId<IndividualKpi>) => {
+    setSelectedKpi(kpi);
+    setViewCommitmentOpen(true);
+  }
   
   const handleDataSubmit = async (submission: Omit<KpiSubmission, 'submissionDate' | 'submittedBy' | 'submitterName' | 'department'>) => {
     if (!firestore || !user) {
@@ -383,12 +447,19 @@ export default function SubmitPage() {
                                     );
                                 }
                                 if (kpi.status === 'Rejected') {
-                                    return (
+                                     return (
                                         <Button variant="destructive" size="sm" onClick={() => handleForceToAgreed(kpi.id)}>
                                             <Send className="w-4 h-4 mr-2" />
                                             Resubmit to Action Center
                                         </Button>
                                     );
+                                }
+                                if (kpi.status === 'Upper Manager Approval') {
+                                  return (
+                                    <Button variant="outline" size="sm" onClick={() => handleOpenViewCommitmentDialog(kpi)}>
+                                        <Eye className="w-4 h-4 mr-2"/> View Commitment
+                                    </Button>
+                                  );
                                 }
                                 return (
                                     <Button variant="outline" size="sm" disabled>
@@ -422,6 +493,11 @@ export default function SubmitPage() {
         onOpenChange={setIsModalOpen}
         kpi={selectedKpi}
         onSubmit={handleDataSubmit}
+      />
+      <ViewCommitmentDialog
+        isOpen={isViewCommitmentOpen}
+        onOpenChange={setViewCommitmentOpen}
+        kpi={selectedKpi}
       />
     </div>
   );
