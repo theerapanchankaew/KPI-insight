@@ -32,7 +32,8 @@ import {
   TrendingUp,
   TrendingDown,
   CalendarDays,
-  RefreshCw
+  RefreshCw,
+  Edit
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useUser, useCollection, useMemoFirebase, WithId, useDoc } from '@/firebase';
@@ -44,6 +45,7 @@ import { useKpiData } from '@/context/KpiDataContext';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Input } from '@/components/ui/input';
 
 // ==================== TYPE DEFINITIONS ====================
 
@@ -143,6 +145,68 @@ const parseValue = (value: string | number) => {
 };
 
 // ==================== DIALOGS ====================
+
+const EditKpiDialog = ({
+    isOpen,
+    onClose,
+    kpi,
+}: {
+    isOpen: boolean;
+    onClose: () => void;
+    kpi: WithId<IndividualKpi> | null;
+}) => {
+    const {toast} = useToast();
+    // Simplified state for demonstration. A real implementation would be more robust.
+    const [target, setTarget] = useState('');
+    const [weight, setWeight] = useState('');
+
+    useEffect(() => {
+        if(kpi) {
+            setWeight(String(kpi.weight));
+            if(kpi.type === 'cascaded'){
+                setTarget(kpi.target);
+            }
+        }
+    }, [kpi]);
+
+    const handleSave = () => {
+        // In a real scenario, this would call a Firestore update function
+        toast({ title: "Note: Save action is not implemented", description: "This is a placeholder for the edit functionality."});
+        onClose();
+    }
+
+    if (!kpi) return null;
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Edit KPI: {kpi.kpiMeasure}</DialogTitle>
+                </DialogHeader>
+                <div className="py-4 space-y-4">
+                    <div className="space-y-2">
+                        <Label>Weight (%)</Label>
+                        <Input type="number" value={weight} onChange={e => setWeight(e.target.value)} />
+                    </div>
+                     {kpi.type === 'cascaded' && (
+                         <div className="space-y-2">
+                            <Label>Target</Label>
+                            <Input value={target} onChange={e => setTarget(e.target.value)} />
+                        </div>
+                     )}
+                     {kpi.type === 'committed' && (
+                         <p className="text-sm text-muted-foreground">Editing 5-level targets for committed KPIs would be done here.</p>
+                     )}
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                    <Button onClick={handleSave}>Save Changes</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 
 const MonthlyReportDialog = ({
   isOpen,
@@ -414,12 +478,14 @@ const KpiProgressCard = ({
   onViewDetails,
   onAcknowledge,
   onViewMonthlyReport,
+  onEdit,
 }: { 
   kpi: WithId<IndividualKpi>; 
   submission: WithId<KpiSubmission> | undefined;
   onViewDetails: (kpi: WithId<IndividualKpi>) => void;
   onAcknowledge: (kpiId: string) => void;
   onViewMonthlyReport: (kpi: WithId<IndividualKpi>) => void;
+  onEdit: (kpi: WithId<IndividualKpi>) => void;
 }) => {
 
   const canAcknowledge = kpi.status === 'Upper Manager Approval';
@@ -446,7 +512,7 @@ const KpiProgressCard = ({
     };
   }, [kpi, submission]);
   
-  const getActionButton = () => {
+  const getActionButtons = () => {
     if (canAcknowledge) {
       return (
         <Button size="sm" variant="default" onClick={() => onAcknowledge(kpi.id)}>
@@ -455,13 +521,27 @@ const KpiProgressCard = ({
         </Button>
       );
     }
-    if (canRevise) {
+    if (kpi.status === 'Rejected') {
       return (
-        <Button size="sm" variant="destructive" onClick={() => onViewDetails(kpi)}>
-          <RefreshCw className="mr-2 h-4 w-4" />
-          Revise & Resubmit
-        </Button>
+        <>
+          <Button size="sm" variant="outline" onClick={() => onEdit(kpi)}>
+            <Edit className="mr-2 h-4 w-4" />
+            Edit
+          </Button>
+          <Button size="sm" variant="destructive" onClick={() => onViewDetails(kpi)}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Resubmit
+          </Button>
+        </>
       );
+    }
+    if (kpi.status === 'Draft') {
+      return (
+         <Button size="sm" variant="secondary" onClick={() => onViewDetails(kpi)}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Review & Agree
+        </Button>
+      )
     }
     return (
        <Button size="sm" variant="outline" onClick={() => onViewDetails(kpi)}>
@@ -521,7 +601,7 @@ const KpiProgressCard = ({
               <CalendarDays className="mr-2 h-4 w-4" />
               Monthly Report
             </Button>
-            {getActionButton()}
+            {getActionButtons()}
         </div>
     </Card>
   );
@@ -540,6 +620,7 @@ export default function MyPortfolioPage() {
   const [selectedKpi, setSelectedKpi] = useState<WithId<IndividualKpi> | null>(null);
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
   const [isMonthlyReportOpen, setMonthlyReportOpen] = useState(false);
+  const [isEditDialogOpen, setEditDialogOpen] = useState(false);
 
   const userProfileRef = useMemoFirebase(() => {
     if (!user || !firestore) return null;
@@ -567,7 +648,8 @@ export default function MyPortfolioPage() {
   
   const kpiQueryIds = useMemo(() => {
     if (teamMembers.length === 0) return null;
-    return teamMembers.map(tm => tm.id).slice(0, 30);
+    const ids = teamMembers.map(tm => tm.id);
+    return ids.length > 0 ? ids.slice(0, 30) : null; // Firestore 'in' query limit is 30
   }, [teamMembers]);
 
 
@@ -581,7 +663,8 @@ export default function MyPortfolioPage() {
   
   const submissionKpiIds = useMemo(() => {
     if(!kpis || kpis.length === 0) return null;
-    return kpis.map(k => k.id).slice(0, 30);
+    const ids = kpis.map(k => k.id);
+    return ids.length > 0 ? ids.slice(0,30) : null;
   }, [kpis]);
 
   const submissionsQuery = useMemoFirebase(() => {
@@ -652,6 +735,11 @@ export default function MyPortfolioPage() {
   const handleViewMonthlyReport = (kpi: WithId<IndividualKpi>) => {
     setSelectedKpi(kpi);
     setMonthlyReportOpen(true);
+  };
+
+  const handleEdit = (kpi: WithId<IndividualKpi>) => {
+    setSelectedKpi(kpi);
+    setEditDialogOpen(true);
   };
 
   // ==================== RENDER ====================
@@ -740,6 +828,7 @@ export default function MyPortfolioPage() {
                                       onViewDetails={handleViewDetails}
                                       onAcknowledge={handleAcknowledgeKpi}
                                       onViewMonthlyReport={handleViewMonthlyReport}
+                                      onEdit={handleEdit}
                                   />
                               ))}
                           </div>
@@ -776,6 +865,16 @@ export default function MyPortfolioPage() {
         kpi={selectedKpi}
         monthlyData={monthlyKpisData || []}
       />
+      
+      <EditKpiDialog 
+        isOpen={isEditDialogOpen}
+        onClose={() => {
+            setEditDialogOpen(false);
+            setSelectedKpi(null);
+        }}
+        kpi={selectedKpi}
+      />
+
     </div>
   );
 }
