@@ -91,7 +91,7 @@ interface AppUser {
   role: Role;
 }
 
-// ==================== REJECTION DIALOG ====================
+// ==================== DIALOGS ====================
 
 const RejectionDialog = ({ isOpen, onClose, onConfirm }: {
     isOpen: boolean;
@@ -116,6 +116,35 @@ const RejectionDialog = ({ isOpen, onClose, onConfirm }: {
                 <DialogFooter>
                     <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
                     <Button variant="destructive" onClick={() => onConfirm(reason)} disabled={!reason.trim()}>Confirm Rejection</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
+const ApprovalDialog = ({ isOpen, onClose, onConfirm }: {
+    isOpen: boolean;
+    onClose: () => void;
+    onConfirm: (notes: string) => void;
+}) => {
+    const [notes, setNotes] = useState('');
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Approve Commitment</DialogTitle>
+                    <DialogDescription>Add any final notes before approving this commitment. This will be visible to the employee.</DialogDescription>
+                </DialogHeader>
+                <div className="py-4">
+                    <Textarea 
+                        placeholder="e.g., Great commitment. Looking forward to seeing the results."
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                    />
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                    <Button onClick={() => onConfirm(notes)}>Confirm Approval</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -208,17 +237,23 @@ const KpiSubmissions = ({ submissions, onApprove, onReject, isLoading }: {
 // ==================== COMMITMENT REQUESTS TAB ====================
 const CommitmentRequests = ({ kpis, onApprove, onReject, isLoading, employees }: {
     kpis: WithId<IndividualKpi>[];
-    onApprove: (kpiId: string) => void;
+    onApprove: (kpiId: string, notes: string) => void;
     onReject: (kpiId: string, reason: string) => void;
     isLoading: boolean;
     employees: WithId<Employee>[];
 }) => {
     const [selectedKpiId, setSelectedKpiId] = useState<string | null>(null);
     const [isRejectDialogOpen, setRejectDialogOpen] = useState(false);
+    const [isApproveDialogOpen, setApproveDialogOpen] = useState(false);
 
     const handleRejectClick = (id: string) => {
         setSelectedKpiId(id);
         setRejectDialogOpen(true);
+    };
+    
+    const handleApproveClick = (id: string) => {
+        setSelectedKpiId(id);
+        setApproveDialogOpen(true);
     };
 
     const handleConfirmReject = (reason: string) => {
@@ -226,6 +261,14 @@ const CommitmentRequests = ({ kpis, onApprove, onReject, isLoading, employees }:
             onReject(selectedKpiId, reason);
         }
         setRejectDialogOpen(false);
+        setSelectedKpiId(null);
+    };
+
+    const handleConfirmApprove = (notes: string) => {
+        if(selectedKpiId) {
+            onApprove(selectedKpiId, notes);
+        }
+        setApproveDialogOpen(false);
         setSelectedKpiId(null);
     };
 
@@ -266,7 +309,7 @@ const CommitmentRequests = ({ kpis, onApprove, onReject, isLoading, employees }:
                             </div>
                             <div className="md:col-span-2 flex justify-end gap-2">
                                 <Button variant="destructive" size="sm" onClick={() => handleRejectClick(kpi.id)}>Reject</Button>
-                                <Button variant="default" size="sm" onClick={() => onApprove(kpi.id)}>Final Agreement</Button>
+                                <Button variant="default" size="sm" onClick={() => handleApproveClick(kpi.id)}>Final Agreement</Button>
                             </div>
                             {kpi.employeeNotes && (
                                 <div className="md:col-span-5 text-sm text-gray-600 bg-blue-50 p-3 rounded-md border border-blue-200">
@@ -282,6 +325,12 @@ const CommitmentRequests = ({ kpis, onApprove, onReject, isLoading, employees }:
                 isOpen={isRejectDialogOpen}
                 onClose={() => setRejectDialogOpen(false)}
                 onConfirm={handleConfirmReject}
+            />
+
+            <ApprovalDialog
+                isOpen={isApproveDialogOpen}
+                onClose={() => setApproveDialogOpen(false)}
+                onConfirm={handleConfirmApprove}
             />
         </>
     );
@@ -349,10 +398,10 @@ export default function ActionCenterPage() {
     toast({ title: "Submission Rejected", description: "The submission has been marked as rejected.", variant: "destructive" });
   };
   
-  const handleApproveCommitment = async (kpiId: string) => {
+  const handleApproveCommitment = async (kpiId: string, notes: string) => {
     if (!firestore) return;
     const kpiRef = doc(firestore, 'individual_kpis', kpiId);
-    setDocumentNonBlocking(kpiRef, { status: 'Upper Manager Approval', reviewedAt: serverTimestamp() }, { merge: true });
+    setDocumentNonBlocking(kpiRef, { status: 'Upper Manager Approval', managerNotes: notes, reviewedAt: serverTimestamp() }, { merge: true });
     toast({ title: "Commitment Approved", description: "The KPI is now pending final acknowledgment by the employee." });
   };
 
