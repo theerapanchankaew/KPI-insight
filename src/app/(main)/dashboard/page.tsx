@@ -81,7 +81,7 @@ const KpiCard = ({ kpi, monthlyData }: { kpi: WithId<any>, monthlyData: WithId<M
             <CardHeader className="pb-2">
                 <div className="flex items-start justify-between">
                     <CardTitle className="text-base font-semibold">{kpi.measure}</CardTitle>
-                    <Badge variant={achievement >= 100 ? "success" : achievement >= 80 ? "warning" : "destructive"}>
+                    <Badge variant={achievement >= 100 ? 'success' : achievement >= 80 ? 'warning' : 'destructive'}>
                         {achievement.toFixed(0)}%
                     </Badge>
                 </div>
