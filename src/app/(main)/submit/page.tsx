@@ -130,7 +130,7 @@ export default function SubmitPage() {
   const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { orgData } = useKpiData();
+  const { orgData, isOrgDataLoading } = useKpiData();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedKpi, setSelectedKpi] = useState<WithId<IndividualKpi> | null>(null);
@@ -151,6 +151,7 @@ export default function SubmitPage() {
   
   const userSubmissionsQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
+    // This could be refined to only fetch submissions for the current period
     return query(
       collection(firestore, 'submissions'),
       where('submittedBy', '==', user.uid)
@@ -158,21 +159,25 @@ export default function SubmitPage() {
   }, [firestore, user]);
 
 
-  const { data: kpisForSubmission, isLoading: isKpisLoading } = useCollection<IndividualKpi>(kpisForSubmissionQuery);
-  const { data: userSubmissions, isLoading: isSubmissionsLoading } = useCollection<KpiSubmission>(userSubmissionsQuery);
+  const { data: kpisForSubmission, isLoading: isKpisLoading } = useCollection<WithId<IndividualKpi>>(kpisForSubmissionQuery);
+  const { data: userSubmissions, isLoading: isSubmissionsLoading } = useCollection<WithId<KpiSubmission>>(userSubmissionsQuery);
   
-  const summaryStats = useMemo(() => {
-    const total = kpisForSubmission?.length || 0;
-    const submittedIds = new Set(userSubmissions?.map(s => s.kpiId));
-    const needsSubmission = kpisForSubmission?.filter(kpi => !submittedIds.has(kpi.id)).length || 0;
-    const submittedCount = total - needsSubmission;
+  const submittedKpiIds = useMemo(() => {
+    return new Set(userSubmissions?.map(s => s.kpiId) || []);
+  }, [userSubmissions]);
+  
+  const kpisNeedingSubmission = useMemo(() => {
+    if (!kpisForSubmission) return [];
+    return kpisForSubmission.filter(kpi => !submittedKpiIds.has(kpi.id));
+  }, [kpisForSubmission, submittedKpiIds]);
 
+  const summaryStats = useMemo(() => {
     return {
-        totalApproved: total,
-        needsSubmission: needsSubmission,
-        submitted: submittedCount,
+        totalInProgress: kpisForSubmission?.length || 0,
+        needsSubmission: kpisNeedingSubmission.length,
+        submitted: submittedKpiIds.size,
     };
-  }, [kpisForSubmission, userSubmissions]);
+  }, [kpisForSubmission, kpisNeedingSubmission, submittedKpiIds]);
   
   const handleOpenSubmitDialog = (kpi: WithId<IndividualKpi>) => {
     setSelectedKpi(kpi);
@@ -205,10 +210,10 @@ export default function SubmitPage() {
     });
   };
 
-  const isLoading = isUserLoading || isKpisLoading || isSubmissionsLoading;
+  const isLoading = isUserLoading || isKpisLoading || isSubmissionsLoading || isOrgDataLoading;
 
   const statCards = [
-    { label: 'In-Progress KPIs', value: summaryStats.totalApproved, icon: BadgeCheck, color: 'text-success' },
+    { label: 'In-Progress KPIs', value: summaryStats.totalInProgress, icon: BadgeCheck, color: 'text-success' },
     { label: 'Needs Submission', value: summaryStats.needsSubmission, icon: FileText, color: 'text-accent' },
     { label: 'Submitted (This Period)', value: summaryStats.submitted, icon: Upload, color: 'text-primary' },
   ];
@@ -263,9 +268,9 @@ export default function SubmitPage() {
                     ))
                 ) : kpisForSubmission && kpisForSubmission.length > 0 ? (
                   kpisForSubmission.map((kpi) => {
-                    const isSubmitted = userSubmissions?.some(s => s.kpiId === kpi.id);
+                    const isSubmitted = submittedKpiIds.has(kpi.id);
                     return (
-                        <TableRow key={kpi.id} className={cn(isSubmitted && "bg-green-50")}>
+                        <TableRow key={kpi.id} className={cn(isSubmitted && "bg-green-50/60")}>
                         <TableCell className="font-medium">{kpi.kpiMeasure}</TableCell>
                         <TableCell><Badge variant={kpi.type === 'cascaded' ? 'secondary' : 'default'}>{kpi.type}</Badge></TableCell>
                         <TableCell>{kpi.type === 'cascaded' ? kpi.target : "5-level scale"}</TableCell>
@@ -310,3 +315,5 @@ export default function SubmitPage() {
     </div>
   );
 }
+
+    
