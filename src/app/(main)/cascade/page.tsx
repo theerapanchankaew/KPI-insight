@@ -9,7 +9,7 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
-import { useKpiData, type Employee, type Kpi } from '@/context/KpiDataContext';
+import { useKpiData } from '@/context/KpiDataContext';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription, DialogClose } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -17,10 +17,10 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronsUpDown, PlusCircle, Trash2, Edit, AlertTriangle, MoreVertical, Calendar, TrendingUp, BarChart3, Building, Share2, Upload, Download, FileText, CheckCircle2, Clock, Eye } from 'lucide-react';
+import { ChevronsUpDown, PlusCircle, Trash2, Edit, AlertTriangle, MoreVertical, Calendar, TrendingUp, BarChart3, Building, Share2, Upload, Download, FileText, CheckCircle2, Clock, Eye, Award } from 'lucide-react';
 import { WithId, useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from '@/firebase';
 import { addDocumentNonBlocking, deleteDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
-import { collection, doc } from 'firebase/firestore';
+import { collection, doc, serverTimestamp } from 'firebase/firestore';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -33,18 +33,7 @@ import { getMonth, getYear, isWithinInterval, eachMonthOfInterval, startOfMonth,
 
 
 // ==================== TYPE DEFINITIONS ====================
-
-// Add CascadedKpi to the existing types if not already present
-export interface CascadedKpi {
-  id?: string;
-  corporateKpiId: string;
-  measure: string;
-  department: string;
-  weight: number;
-  target: string;
-  category?: string;
-  unit?: string;
-}
+import type { Employee, Kpi, CascadedKpi, MonthlyKpi, AppSettings } from '@/context/KpiDataContext';
 
 type Role = 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee' | null;
 type CorporateKpi = WithId<Kpi>;
@@ -61,26 +50,6 @@ interface MonthlyDistribution {
 type DistributionStrategy = 'auto' | 'equal' | 'weighted' | 'seasonal' | 'progressive' | 'historical';
 type SeasonalPattern = 'tourism' | 'retail' | 'agriculture' | 'custom';
 type ProgressiveCurve = 'linear' | 'exponential';
-
-interface MonthlyKpi {
-  id?: string;
-  parentKpiId: string;
-  measure: string;
-  perspective: string;
-  category: string;
-  year: number;
-  month: number;
-  target: number;
-  actual: number;
-  progress: number;
-  percentage: number;
-  unit: string;
-  status: 'Active' | 'Completed' | 'Overdue';
-  distributionStrategy: string;
-  createdAt: any;
-  updatedAt?: any;
-  createdBy: string;
-}
 
 // Individual KPI Types
 interface IndividualKpiBase {
@@ -109,7 +78,7 @@ interface CommittedKpi extends IndividualKpiBase {
   };
 }
 
-type IndividualKpi = (AssignedCascadedKpi | CommittedKpi) & {id: string};
+type IndividualKpi = (AssignedCascadedKpi | CommittedKpi);
 
 
 // Types for the Assign Dialog
@@ -206,7 +175,7 @@ const detectBestStrategy = (kpi: CorporateKpi | null, historicalData?: number[][
 };
 
 const getStatusColor = (status: IndividualKpi['status']) => {
-  const colors = {
+  const colors: Record<IndividualKpi['status'], string> = {
     'Draft': 'bg-gray-100 text-gray-800 border-gray-300',
     'Agreed': 'bg-blue-100 text-blue-800 border-blue-300',
     'In-Progress': 'bg-yellow-100 text-yellow-800 border-yellow-300',
@@ -220,13 +189,13 @@ const getStatusColor = (status: IndividualKpi['status']) => {
 };
 
 const getStatusIcon = (status: IndividualKpi['status']) => {
-  const icons = {
+  const icons: Record<IndividualKpi['status'], React.ReactNode> = {
     'Draft': <FileText className="h-4 w-4" />,
     'Agreed': <CheckCircle2 className="h-4 w-4" />,
     'In-Progress': <Clock className="h-4 w-4" />,
     'Manager Review': <Eye className="h-4 w-4" />,
-    'Upper Manager Approval': <AlertTriangle className="h-4 w-4" />,
-    'Employee Acknowledged': <CheckCircle2 className="h-4 w-4" />,
+    'Upper Manager Approval': <CheckCircle2 className="h-4 w-4" />,
+    'Employee Acknowledged': <Award className="h-4 w-4" />,
     'Closed': <CheckCircle2 className="h-4 w-4" />,
     'Rejected': <AlertTriangle className="h-4 w-4" />,
   };
@@ -1076,7 +1045,60 @@ const EnhancedIndividualLevel = ({
 
 // ==================== PLACEHOLDER DIALOGS ====================
 
-const EditKpiDialog = (props: any) => <div />;
+const EditKpiDialog = ({ 
+    isOpen, onClose, kpi, onConfirm, user 
+} : {
+    isOpen: boolean;
+    onClose: () => void;
+    kpi: CorporateKpi | null;
+    onConfirm: (editedKpi: Kpi) => void;
+    user: any;
+}) => {
+    const [editedKpi, setEditedKpi] = useState<Partial<Kpi> | null>(null);
+
+    useEffect(() => {
+        setEditedKpi(kpi);
+    }, [kpi]);
+
+    const handleChange = (field: keyof Kpi, value: string) => {
+        if(editedKpi) {
+            setEditedKpi({ ...editedKpi, [field]: value });
+        }
+    };
+    
+    const handleSave = () => {
+        if (editedKpi && editedKpi.id) {
+            onConfirm(editedKpi as Kpi);
+            onClose();
+        }
+    };
+
+    if(!kpi) return null;
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Edit Corporate KPI</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                        <Label>Measure</Label>
+                        <Input value={editedKpi?.measure || ''} onChange={(e) => handleChange('measure', e.target.value)} />
+                    </div>
+                     <div className="space-y-2">
+                        <Label>Target</Label>
+                        <Input value={editedKpi?.target || ''} onChange={(e) => handleChange('target', e.target.value)} />
+                    </div>
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                    <Button onClick={handleSave} disabled={!user}>Save Changes</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
 
 
 const AssignKpiDialog = ({ 
@@ -1141,7 +1163,7 @@ const AssignKpiDialog = ({
     }
     
     const handleConfirmClick = () => {
-        if (!employee) return;
+        if (!employee || !user) return;
         
         const cascadedAssignments = selectedCascaded.map(selected => {
             const kpi = employeeDeptKpis.find(dk => dk.id === selected.kpiId);
@@ -1152,7 +1174,8 @@ const AssignKpiDialog = ({
                 kpiId: selected.kpiId,
                 kpiMeasure: kpi?.measure || 'Unknown KPI',
                 target: kpi?.target || 'N/A',
-                weight: selected.weight
+                weight: selected.weight,
+                notes: `Assigned to ${employee.name} by ${user.displayName}`
             };
         }).filter(Boolean);
 
@@ -1164,6 +1187,7 @@ const AssignKpiDialog = ({
             task: committed.task,
             weight: committed.weight,
             targets: committed.targets,
+            notes: `Committed by ${employee.name} and assigned by ${user.displayName}`
         }));
         
         onConfirm([...cascadedAssignments, ...committedAssignments]);
@@ -1311,8 +1335,6 @@ export default function KPICascadeManagement() {
     return doc(firestore, 'users', user.uid);
   }, [firestore, user]);
   const { data: userProfile, isLoading: isUserProfileLoading } = useDoc<AppUser>(userProfileRef);
-  const isAdmin = useMemo(() => userProfile?.role === 'Admin', [userProfile]);
-
 
   // Firestore collections
   const cascadedKpisQuery = useMemoFirebase(
@@ -1335,10 +1357,7 @@ export default function KPICascadeManagement() {
 
 
   // Determine user role
-  const userRole: Role = useMemo(() => {
-    if (!userProfile) return null;
-    return userProfile.role;
-  }, [userProfile]);
+  const userRole: Role = useMemo(() => userProfile?.role || null, [userProfile]);
 
   const departments = useMemo(() => {
     if (!employees) return [];
@@ -1370,13 +1389,13 @@ export default function KPICascadeManagement() {
       const monthlyKpisCollection = collection(firestore, 'monthly_kpis');
       for (const m of distributions) {
         if(!m) continue; // Skip if month data is missing
-        const monthlyKpi: Omit<MonthlyKpi, 'id' | 'createdAt' | 'updatedAt'> = {
+        const monthlyKpiData: Omit<MonthlyKpi, 'id' | 'createdAt' | 'updatedAt' | 'actual' | 'progress' | 'status'> = {
           parentKpiId: selectedKpi.id, measure: selectedKpi.measure, perspective: selectedKpi.perspective || '',
-          category: selectedKpi.category || '', year, month: m.month, target: m.target, actual: 0,
-          progress: 0, percentage: m.percentage, unit: selectedKpi.unit || '', status: 'Active',
+          category: selectedKpi.category || '', year, month: m.month, target: m.target, 
+          percentage: m.percentage, unit: selectedKpi.unit || '',
           distributionStrategy: strategy, createdBy: user.uid,
         };
-        addDocumentNonBlocking(monthlyKpisCollection, { ...monthlyKpi, createdAt: new Date() });
+        addDocumentNonBlocking(monthlyKpisCollection, { ...monthlyKpiData, createdAt: serverTimestamp(), status: 'Active', actual: 0, progress: 0 });
       }
 
       // 2. Cascade to Departments

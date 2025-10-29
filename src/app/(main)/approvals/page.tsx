@@ -6,7 +6,6 @@ import { useAppLayout } from '../layout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Dialog, 
@@ -19,25 +18,15 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
-  CheckCircle2, 
-  Clock, 
-  AlertCircle, 
-  FileText, 
-  MessageSquare,
   ShieldCheck,
-  User,
-  Users,
   Inbox
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useUser, useCollection, useMemoFirebase, useDoc } from '@/firebase';
-import { collection, query, where, doc, getDocs } from 'firebase/firestore';
+import { useFirestore, useUser, useCollection, useMemoFirebase, useDoc, WithId } from '@/firebase';
+import { collection, query, where, doc, serverTimestamp } from 'firebase/firestore';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { Skeleton } from '@/components/ui/skeleton';
-import { cn } from '@/lib/utils';
-import { kpiApprovalData } from '@/lib/data/approval-data';
 
 // ==================== TYPE DEFINITIONS ====================
 
@@ -72,7 +61,7 @@ interface CommittedKpi extends IndividualKpiBase {
   };
 }
 
-type IndividualKpi = (AssignedCascadedKpi | CommittedKpi) & { id: string };
+type IndividualKpi = (AssignedCascadedKpi | CommittedKpi);
 
 interface KpiSubmission {
     id: string;
@@ -113,12 +102,12 @@ const RejectionDialog = ({ isOpen, onClose, onConfirm }: {
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Reject Submission</DialogTitle>
+                    <DialogTitle>Reject Submission/Commitment</DialogTitle>
                     <DialogDescription>Please provide a reason for the rejection. This will be sent to the employee.</DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
                     <Textarea 
-                        placeholder="e.g., The actual value seems incorrect, please double-check and resubmit..."
+                        placeholder="e.g., The actual value seems incorrect, or the proposed commitment needs adjustment..."
                         value={reason}
                         onChange={(e) => setReason(e.target.value)}
                     />
@@ -135,12 +124,11 @@ const RejectionDialog = ({ isOpen, onClose, onConfirm }: {
 
 // ==================== KPI SUBMISSIONS TAB ====================
 
-const KpiSubmissions = ({ submissions, onApprove, onReject, isLoading, teamMembers }: {
-    submissions: KpiSubmission[];
+const KpiSubmissions = ({ submissions, onApprove, onReject, isLoading }: {
+    submissions: WithId<KpiSubmission>[];
     onApprove: (submissionId: string) => void;
     onReject: (submissionId: string, reason: string) => void;
     isLoading: boolean;
-    teamMembers: Employee[];
 }) => {
     const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null);
     const [isRejectDialogOpen, setRejectDialogOpen] = useState(false);
@@ -218,11 +206,11 @@ const KpiSubmissions = ({ submissions, onApprove, onReject, isLoading, teamMembe
 
 // ==================== COMMITMENT REQUESTS TAB ====================
 const CommitmentRequests = ({ kpis, onApprove, onReject, isLoading, employees }: {
-    kpis: IndividualKpi[];
+    kpis: WithId<IndividualKpi>[];
     onApprove: (kpiId: string) => void;
     onReject: (kpiId: string, reason: string) => void;
     isLoading: boolean;
-    employees: Employee[];
+    employees: WithId<Employee>[];
 }) => {
     const [selectedKpiId, setSelectedKpiId] = useState<string | null>(null);
     const [isRejectDialogOpen, setRejectDialogOpen] = useState(false);
@@ -325,7 +313,7 @@ export default function ActionCenterPage() {
   
   // Fetch employees to get names for submissions
   const employeesQuery = useMemoFirebase(() => (firestore ? collection(firestore, 'employees') : null), [firestore]);
-  const { data: employeesData, isLoading: isEmployeesLoading } = useCollection<Employee>(employeesQuery);
+  const { data: employeesData, isLoading: isEmployeesLoading } = useCollection<WithId<Employee>>(employeesQuery);
 
   // Fetch KPI Submissions needing Manager Review
   const submissionsQuery = useMemoFirebase(() => {
@@ -333,7 +321,7 @@ export default function ActionCenterPage() {
     return query(collection(firestore, 'submissions'), where('status', '==', 'Manager Review'));
   }, [firestore, isManagerOrAdmin]);
 
-  const { data: submissions, isLoading: isSubmissionsLoading } = useCollection<KpiSubmission>(submissionsQuery);
+  const { data: submissions, isLoading: isSubmissionsLoading } = useCollection<WithId<KpiSubmission>>(submissionsQuery);
 
   // Fetch individual KPIs needing manager agreement
   const commitmentRequestsQuery = useMemoFirebase(() => {
@@ -341,7 +329,7 @@ export default function ActionCenterPage() {
     return query(collection(firestore, 'individual_kpis'), where('status', '==', 'Agreed'));
   }, [firestore, isManagerOrAdmin]);
   
-  const { data: commitmentRequests, isLoading: isCommitmentsLoading } = useCollection<IndividualKpi>(commitmentRequestsQuery);
+  const { data: commitmentRequests, isLoading: isCommitmentsLoading } = useCollection<WithId<IndividualKpi>>(commitmentRequestsQuery);
 
   const isLoading = isUserLoading || isProfileLoading || isSubmissionsLoading || isEmployeesLoading || isCommitmentsLoading;
 
@@ -349,30 +337,28 @@ export default function ActionCenterPage() {
   const handleApproveSubmission = async (submissionId: string) => {
     if (!firestore) return;
     const submissionRef = doc(firestore, 'submissions', submissionId);
-    setDocumentNonBlocking(submissionRef, { status: 'Upper Manager Approval' }, { merge: true });
+    setDocumentNonBlocking(submissionRef, { status: 'Upper Manager Approval', reviewedAt: serverTimestamp() }, { merge: true });
     toast({ title: "Submission Approved", description: "The submission has been moved to the next approval stage." });
   };
 
   const handleRejectSubmission = async (submissionId: string, reason: string) => {
     if (!firestore) return;
-    // This action could be enhanced to notify the user or revert KPI status
     const submissionRef = doc(firestore, 'submissions', submissionId);
-    setDocumentNonBlocking(submissionRef, { status: 'Rejected', rejectionReason: reason }, { merge: true });
+    setDocumentNonBlocking(submissionRef, { status: 'Rejected', rejectionReason: reason, reviewedAt: serverTimestamp() }, { merge: true });
     toast({ title: "Submission Rejected", description: "The submission has been marked as rejected.", variant: "destructive" });
   };
   
   const handleApproveCommitment = async (kpiId: string) => {
     if (!firestore) return;
     const kpiRef = doc(firestore, 'individual_kpis', kpiId);
-    // As per docs, this moves to Upper Manager Approval, which then the employee acknowledges to move to In-Progress
-    setDocumentNonBlocking(kpiRef, { status: 'Upper Manager Approval' }, { merge: true });
+    setDocumentNonBlocking(kpiRef, { status: 'Upper Manager Approval', reviewedAt: serverTimestamp() }, { merge: true });
     toast({ title: "Commitment Approved", description: "The KPI is now pending final approval/acknowledgment." });
   };
 
   const handleRejectCommitment = async (kpiId: string, reason: string) => {
     if (!firestore) return;
     const kpiRef = doc(firestore, 'individual_kpis', kpiId);
-    setDocumentNonBlocking(kpiRef, { status: 'Rejected', rejectionReason: reason }, { merge: true });
+    setDocumentNonBlocking(kpiRef, { status: 'Rejected', rejectionReason: reason, reviewedAt: serverTimestamp() }, { merge: true });
     toast({ title: "Commitment Rejected", description: "The employee has been notified to revise their commitment.", variant: "destructive" });
   };
   
@@ -448,7 +434,6 @@ export default function ActionCenterPage() {
                 onApprove={handleApproveSubmission}
                 onReject={handleRejectSubmission}
                 isLoading={isSubmissionsLoading}
-                teamMembers={employeesData || []}
              />
           </TabsContent>
           <TabsContent value="commitments" className="mt-6">

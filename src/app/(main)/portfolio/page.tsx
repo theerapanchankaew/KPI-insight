@@ -32,12 +32,11 @@ import {
   Eye
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useUser, useCollection, useMemoFirebase, useDoc } from '@/firebase';
-import { collection, query, where, doc } from 'firebase/firestore';
+import { useFirestore, useUser, useCollection, useMemoFirebase, WithId } from '@/firebase';
+import { collection, query, where, doc, serverTimestamp } from 'firebase/firestore';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { kpiApprovalData } from '@/lib/data/approval-data';
 
 // ==================== TYPE DEFINITIONS ====================
 
@@ -47,7 +46,7 @@ interface IndividualKpiBase {
   kpiMeasure: string;
   weight: number;
   status: 'Draft' | 'Agreed' | 'In-Progress' | 'Manager Review' | 'Upper Manager Approval' | 'Employee Acknowledged' | 'Closed' | 'Rejected';
-  notes?: string;
+  notes?: string; // Manager's initial notes
   employeeNotes?: string;
   managerNotes?: string;
   rejectionReason?: string;
@@ -74,14 +73,6 @@ interface CommittedKpi extends IndividualKpiBase {
 }
 
 type IndividualKpi = (AssignedCascadedKpi | CommittedKpi) & { id: string };
-
-interface Employee {
-  id: string;
-  name: string;
-  position: string;
-  department: string;
-  userId?: string;
-}
 
 // ==================== UTILITY FUNCTIONS ====================
 
@@ -297,6 +288,7 @@ const KpiDetailDialog = ({
   );
 };
 
+
 // ==================== KPI CARD COMPONENT ====================
 
 const KpiCard = ({ 
@@ -304,8 +296,8 @@ const KpiCard = ({
   onViewDetails,
   onAcknowledge,
 }: { 
-  kpi: IndividualKpi; 
-  onViewDetails: (kpi: IndividualKpi) => void;
+  kpi: WithId<IndividualKpi>; 
+  onViewDetails: (kpi: WithId<IndividualKpi>) => void;
   onAcknowledge: (kpiId: string) => void;
 }) => {
 
@@ -383,6 +375,7 @@ const KpiCard = ({
   );
 };
 
+
 // ==================== MAIN COMPONENT ====================
 
 export default function MyPortfolioPage() {
@@ -391,34 +384,23 @@ export default function MyPortfolioPage() {
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
 
-  const [selectedKpi, setSelectedKpi] = useState<IndividualKpi | null>(null);
+  const [selectedKpi, setSelectedKpi] = useState<WithId<IndividualKpi> | null>(null);
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
 
   useEffect(() => {
     setPageTitle("My Portfolio");
   }, [setPageTitle]);
 
-  // Get employee profile
-  const employeeQuery = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
-    return query(collection(firestore, 'employees'), where('userId', '==', user.uid));
-  }, [firestore, user]);
-  
-  const { data: employeeData } = useCollection<Employee>(employeeQuery);
-  const employee = employeeData?.[0];
-
   // Get individual KPIs for the current user
   const kpisQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
-    // Assuming 'employeeId' on 'individual_kpis' matches the user's UID.
-    // If not, you might need to link via the 'employees' collection.
     return query(
       collection(firestore, 'individual_kpis'),
       where('employeeId', '==', user.uid)
     );
   }, [firestore, user]);
 
-  const { data: kpis, isLoading: isKpisLoading } = useCollection<IndividualKpi>(kpisQuery);
+  const { data: kpis, isLoading: isKpisLoading } = useCollection<WithId<IndividualKpi>>(kpisQuery);
 
   // Group KPIs by status
   const kpisByStatus = useMemo(() => {
@@ -460,11 +442,11 @@ export default function MyPortfolioPage() {
 
     try {
       const kpiRef = doc(firestore, 'individual_kpis', kpiId);
-      await setDocumentNonBlocking(kpiRef, {
+      setDocumentNonBlocking(kpiRef, {
         status: 'Agreed',
         employeeNotes: notes,
         rejectionReason: '', // Clear previous rejection reason
-        agreedAt: new Date(),
+        agreedAt: serverTimestamp(),
       }, { merge: true });
 
       toast({
@@ -486,9 +468,9 @@ export default function MyPortfolioPage() {
     if (!firestore) return;
     try {
       const kpiRef = doc(firestore, 'individual_kpis', kpiId);
-      await setDocumentNonBlocking(kpiRef, {
+      setDocumentNonBlocking(kpiRef, {
         status: 'In-Progress', // Acknowledging moves it to 'In-Progress'
-        acknowledgedAt: new Date(),
+        acknowledgedAt: serverTimestamp(),
       }, { merge: true });
       toast({
         title: "KPI Acknowledged!",
@@ -504,7 +486,7 @@ export default function MyPortfolioPage() {
     }
   };
 
-  const handleViewDetails = (kpi: IndividualKpi) => {
+  const handleViewDetails = (kpi: WithId<IndividualKpi>) => {
     setSelectedKpi(kpi);
     setIsDetailDialogOpen(true);
   };

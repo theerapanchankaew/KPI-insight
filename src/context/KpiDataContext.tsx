@@ -25,6 +25,7 @@ export interface Employee {
   department: string;
   position: string;
   manager: string;
+  userId?: string; // Link to auth user
 }
 
 export interface AppSettings {
@@ -36,11 +37,35 @@ export interface AppSettings {
 
 // Type for a cascaded KPI in a department
 export interface CascadedKpi {
+  id: string;
   corporateKpiId: string;
   measure: string;
   department: string;
   weight: number;
   target: string;
+  category?: string;
+  unit?: string;
+}
+
+// Type for a monthly deployed KPI
+export interface MonthlyKpi {
+  id: string;
+  parentKpiId: string;
+  measure: string;
+  perspective: string;
+  category: string;
+  year: number;
+  month: number;
+  target: number;
+  actual: number;
+  progress: number;
+  percentage: number;
+  unit: string;
+  status: 'Active' | 'Completed' | 'Overdue';
+  distributionStrategy: string;
+  createdAt: any;
+  updatedAt?: any;
+  createdBy: string;
 }
 
 const defaultSettings: AppSettings = {
@@ -149,5 +174,3 @@ export const useKpiData = () => {
   }
   return context;
 };
-
-    
