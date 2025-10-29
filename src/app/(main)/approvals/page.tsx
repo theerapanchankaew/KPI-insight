@@ -84,16 +84,16 @@ const RejectDialog = ({ isOpen, onClose, onConfirm, kpiName }: { isOpen: boolean
     );
 };
 
-const KpiApprovalsTab = ({ isAdmin, isProfileLoading }: { isAdmin: boolean, isProfileLoading: boolean }) => {
+const KpiApprovalsTab = ({ isManagerOrAdmin, isProfileLoading }: { isManagerOrAdmin: boolean, isProfileLoading: boolean }) => {
   const { toast } = useToast();
   const firestore = useFirestore();
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [selectedSubmission, setSelectedSubmission] = useState<WithId<KpiSubmission> | null>(null);
 
   const submissionsQuery = useMemoFirebase(() => {
-    if (!firestore || isProfileLoading || !isAdmin) return null; 
+    if (!firestore || isProfileLoading || !isManagerOrAdmin) return null; 
     return query(collection(firestore, 'submissions'), where('status', 'in', ['Manager Review', 'Upper Manager Approval']));
-  }, [firestore, isProfileLoading, isAdmin]);
+  }, [firestore, isProfileLoading, isManagerOrAdmin]);
 
   const { data: submissionsData, isLoading: isSubmissionsLoading } = useCollection<KpiSubmission>(submissionsQuery);
 
@@ -212,7 +212,7 @@ const KpiApprovalsTab = ({ isAdmin, isProfileLoading }: { isAdmin: boolean, isPr
             </div>
             ))
           ) : (
-             <p className="p-6 text-center text-gray-500">{isAdmin ? "No pending submissions to review." : "Only admins can view pending submissions."}</p>
+             <p className="p-6 text-center text-gray-500">{isManagerOrAdmin ? "No pending submissions to review." : "Only managers and admins can view pending submissions."}</p>
           )}
         </div>
       </CardContent>
@@ -227,16 +227,16 @@ const KpiApprovalsTab = ({ isAdmin, isProfileLoading }: { isAdmin: boolean, isPr
   );
 };
 
-const CommitmentRequestsTab = ({ isAdmin, isProfileLoading }: { isAdmin: boolean, isProfileLoading: boolean }) => {
+const CommitmentRequestsTab = ({ isManagerOrAdmin, isProfileLoading }: { isManagerOrAdmin: boolean, isProfileLoading: boolean }) => {
   const { toast } = useToast();
   const firestore = useFirestore();
   const [isRejectModalOpen, setRejectModalOpen] = useState(false);
   const [selectedKpi, setSelectedKpi] = useState<WithId<IndividualKpi> | null>(null);
 
   const commitmentsQuery = useMemoFirebase(() => {
-      if (!firestore || isProfileLoading || !isAdmin) return null;
+      if (!firestore || isProfileLoading || !isManagerOrAdmin) return null;
       return query(collection(firestore, 'individual_kpis'), where('status', '==', 'Agreed'));
-  }, [firestore, isProfileLoading, isAdmin]);
+  }, [firestore, isProfileLoading, isManagerOrAdmin]);
 
   const { data: pendingCommitments, isLoading: isCommitmentsLoading } = useCollection<IndividualKpi>(commitmentsQuery);
 
@@ -322,7 +322,7 @@ const CommitmentRequestsTab = ({ isAdmin, isProfileLoading }: { isAdmin: boolean
                 </div>
                 </div>
           ))) : (
-            <p className="p-6 text-center text-gray-500">{isAdmin ? "No pending commitments to review." : "Only admins can view commitment requests."}</p>
+            <p className="p-6 text-center text-gray-500">{isManagerOrAdmin ? "No pending commitments to review." : "Only managers and admins can view commitment requests."}</p>
           )}
         </div>
       </CardContent>
@@ -351,17 +351,20 @@ export default function ApprovalsPage() {
     return doc(firestore, 'users', user.uid);
   }, [firestore, user]);
   const { data: userProfile, isLoading: isUserProfileLoading } = useDoc<AppUser>(userProfileRef);
-  const isAdmin = useMemo(() => userProfile?.role === 'Admin' || userProfile?.role === 'Manager' || userProfile?.role === 'AVP' || userProfile?.role === 'VP', [userProfile]);
+  const isManagerOrAdmin = useMemo(() => {
+      if (!userProfile) return false;
+      return ['Admin', 'VP', 'AVP', 'Manager'].includes(userProfile.role || '');
+  }, [userProfile]);
   
   const submissionsQuery = useMemoFirebase(() => {
-    if (!firestore || isUserProfileLoading || !isAdmin) return null;
+    if (!firestore || isUserProfileLoading || !isManagerOrAdmin) return null;
     return query(collection(firestore, 'submissions'), where('status', 'in', ['Manager Review', 'Upper Manager Approval']))
-  }, [firestore, isUserProfileLoading, isAdmin]);
+  }, [firestore, isUserProfileLoading, isManagerOrAdmin]);
 
   const commitmentsQuery = useMemoFirebase(() => {
-    if (!firestore || isUserProfileLoading || !isAdmin) return null;
+    if (!firestore || isUserProfileLoading || !isManagerOrAdmin) return null;
     return query(collection(firestore, 'individual_kpis'), where('status', '==', 'Agreed'));
-  }, [firestore, isUserProfileLoading, isAdmin]);
+  }, [firestore, isUserProfileLoading, isManagerOrAdmin]);
 
   const { data: submissionsData, isLoading: isSubmissionsLoading } = useCollection(submissionsQuery);
   const { data: commitmentsData, isLoading: isCommitmentsLoading } = useCollection(commitmentsQuery);
@@ -381,10 +384,10 @@ export default function ApprovalsPage() {
           <TabsTrigger value="commitments">Commitment Requests ({isLoading ? '...' : commitmentsData?.length ?? 0})</TabsTrigger>
         </TabsList>
         <TabsContent value="submissions" className="mt-6">
-          <KpiApprovalsTab isAdmin={isAdmin} isProfileLoading={isUserProfileLoading} />
+          <KpiApprovalsTab isManagerOrAdmin={isManagerOrAdmin} isProfileLoading={isUserProfileLoading} />
         </TabsContent>
         <TabsContent value="commitments" className="mt-6">
-          <CommitmentRequestsTab isAdmin={isAdmin} isProfileLoading={isUserProfileLoading} />
+          <CommitmentRequestsTab isManagerOrAdmin={isManagerOrAdmin} isProfileLoading={isUserProfileLoading} />
         </TabsContent>
       </Tabs>
     </div>
