@@ -5,7 +5,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useAppLayout } from '../layout';
 import { Button } from '@/components/ui/button';
 import { FileText, BadgeCheck, Briefcase, Upload, Send, Eye, MessageSquare, AlertCircle, ChevronsUpDown } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -22,6 +22,7 @@ import { format } from 'date-fns';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 // Consistent type definition with portfolio and cascade pages
 interface IndividualKpiBase {
@@ -262,6 +263,102 @@ const ViewCommitmentDialog = ({ isOpen, onOpenChange, kpi }: {
     )
 }
 
+const getStatusColor = (status: IndividualKpi['status']) => {
+  const colors: Record<IndividualKpi['status'], string> = {
+    'Draft': 'bg-gray-100 text-gray-800 border-gray-300',
+    'Agreed': 'bg-blue-100 text-blue-800 border-blue-300',
+    'In-Progress': 'bg-yellow-100 text-yellow-800 border-yellow-300',
+    'Manager Review': 'bg-purple-100 text-purple-800 border-purple-300',
+    'Upper Manager Approval': 'bg-indigo-100 text-indigo-800 border-indigo-300',
+    'Employee Acknowledged': 'bg-green-100 text-green-800 border-green-300',
+    'Closed': 'bg-gray-100 text-gray-800 border-gray-300',
+    'Rejected': 'bg-red-100 text-red-800 border-red-300',
+  };
+  return colors[status] || colors['Draft'];
+};
+
+const getStatusIcon = (status: IndividualKpi['status']) => {
+  const icons: Record<IndividualKpi['status'], React.ReactNode> = {
+    'Draft': <FileText className="h-4 w-4" />,
+    'Agreed': <BadgeCheck className="h-4 w-4" />,
+    'In-Progress': <Briefcase className="h-4 w-4" />,
+    'Manager Review': <Eye className="h-4 w-4" />,
+    'Upper Manager Approval': <BadgeCheck className="h-4 w-4" />,
+    'Employee Acknowledged': <BadgeCheck className="h-4 w-4" />,
+    'Closed': <BadgeCheck className="h-4 w-4" />,
+    'Rejected': <AlertCircle className="h-4 w-4" />,
+  };
+  return icons[status] || icons['Draft'];
+};
+
+
+const KpiActionCard = ({ kpi, submissionStatus, employee, onOpenSubmit, onForceSubmit, onViewCommitment }: {
+    kpi: WithId<IndividualKpi>;
+    submissionStatus?: KpiSubmission['status'];
+    employee?: Employee;
+    onOpenSubmit: (kpi: WithId<IndividualKpi>) => void;
+    onForceSubmit: (kpiId: string) => void;
+    onViewCommitment: (kpi: WithId<IndividualKpi>) => void;
+    isManager: boolean;
+}) => {
+    const isSubmitted = !!submissionStatus;
+    const canResubmitData = submissionStatus === 'Rejected';
+
+    const getAction = () => {
+        if (isSubmitted && !canResubmitData && kpi.status !== 'Rejected') {
+            return <Button variant="outline" size="sm" disabled><BadgeCheck className="w-4 h-4 mr-2"/> Submitted</Button>;
+        }
+        if (canResubmitData) {
+            return <Button variant="destructive" size="sm" onClick={() => onOpenSubmit(kpi)}>Resubmit Data</Button>;
+        }
+        if (kpi.status === 'In-Progress') {
+            return <Button variant="default" size="sm" onClick={() => onOpenSubmit(kpi)}>Submit Data</Button>;
+        }
+        if (kpi.status === 'Draft' && onForceSubmit) {
+            return <Button variant="secondary" size="sm" onClick={() => onForceSubmit(kpi.id)}><Send className="w-4 h-4 mr-2" />Submit to Action Center</Button>;
+        }
+        if (kpi.status === 'Rejected') {
+            return <Button variant="destructive" size="sm" onClick={() => onForceSubmit(kpi.id)}><Send className="w-4 h-4 mr-2" />Resubmit to Action Center</Button>;
+        }
+        if (kpi.status === 'Upper Manager Approval') {
+            return <Button variant="outline" size="sm" onClick={() => onViewCommitment(kpi)}><Eye className="w-4 h-4 mr-2"/> View Commitment</Button>;
+        }
+        return <Button variant="outline" size="sm" disabled>Awaiting Agreement</Button>;
+    };
+
+    return (
+        <Card className="flex flex-col">
+            <CardHeader>
+                <div className="flex justify-between items-start">
+                    <CardTitle className="text-base font-semibold leading-tight flex-1 pr-2">{kpi.kpiMeasure}</CardTitle>
+                    <Badge className={cn("text-xs", getStatusColor(isSubmitted ? submissionStatus : kpi.status))}>
+                      {getStatusIcon(isSubmitted ? submissionStatus : kpi.status)}
+                      <span className="ml-1.5">{isSubmitted ? submissionStatus : kpi.status}</span>
+                    </Badge>
+                </div>
+                {employee && <p className="text-sm text-muted-foreground">{employee.name}</p>}
+            </CardHeader>
+            <CardContent className="flex-1 space-y-3">
+                <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Type</span>
+                    <Badge variant={kpi.type === 'cascaded' ? 'secondary' : 'default'} className="capitalize">{kpi.type}</Badge>
+                </div>
+                <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Weight</span>
+                    <span className="font-medium">{kpi.weight}%</span>
+                </div>
+                 <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Target</span>
+                    <span className="font-medium truncate">{kpi.type === 'cascaded' ? kpi.target : "5-level scale"}</span>
+                </div>
+            </CardContent>
+            <CardFooter>
+                {getAction()}
+            </CardFooter>
+        </Card>
+    );
+};
+
 
 export default function SubmitPage() {
   const { setPageTitle } = useAppLayout();
@@ -469,7 +566,7 @@ export default function SubmitPage() {
         <CardHeader>
           <CardTitle>KPI Submission Status</CardTitle>
           <div className="flex flex-col md:flex-row gap-4 pt-2">
-            <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+            <Select value={departmentFilter} onValueChange={setDepartmentFilter} disabled={!isManagerOrAdmin}>
               <SelectTrigger className="w-full md:w-[240px]">
                 <SelectValue placeholder="Filter by Department" />
               </SelectTrigger>
@@ -507,104 +604,21 @@ export default function SubmitPage() {
                     </div>
                   </div>
                 </CollapsibleTrigger>
-                <CollapsibleContent className="p-0 pt-2">
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          {isManagerOrAdmin && <TableHead>Employee</TableHead>}
-                          <TableHead>KPI / Task</TableHead>
-                          <TableHead>Type</TableHead>
-                          <TableHead>Target</TableHead>
-                          <TableHead>Weight</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {kpis.map((kpi) => {
-                          const submissionStatus = submissionStatusMap.get(kpi.id);
-                          const isSubmitted = !!submissionStatus;
-                          const employee = employeeMap.get(kpi.employeeId);
-                          const canResubmitData = submissionStatus === 'Rejected';
-
-                          return (
-                            <TableRow key={kpi.id} className={cn(isSubmitted && !canResubmitData && kpi.status !== 'Rejected' && "bg-green-50/60")}>
-                              {isManagerOrAdmin && (
-                                <TableCell>
-                                  <div className="font-medium">{employee?.name || kpi.employeeId}</div>
-                                </TableCell>
-                              )}
-                              <TableCell className="font-medium">{kpi.kpiMeasure}</TableCell>
-                              <TableCell><Badge variant={kpi.type === 'cascaded' ? 'secondary' : 'default'}>{kpi.type}</Badge></TableCell>
-                              <TableCell>{kpi.type === 'cascaded' ? kpi.target : "5-level scale"}</TableCell>
-                              <TableCell>{kpi.weight}%</TableCell>
-                              <TableCell>
-                                {isSubmitted ? (
-                                  <Badge variant={submissionStatus === 'Rejected' ? 'destructive' : 'outline'}>{submissionStatus}</Badge>
-                                ) : (
-                                  <Badge variant="outline">{kpi.status}</Badge>
-                                )}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {(() => {
-                                  if (isSubmitted && !canResubmitData) {
-                                    return (
-                                      <Button variant="outline" size="sm" disabled>
-                                        <BadgeCheck className="w-4 h-4 mr-2"/> Submitted
-                                      </Button>
-                                    );
-                                  }
-                                  if (canResubmitData) {
-                                    return (
-                                      <Button variant="destructive" size="sm" onClick={() => handleOpenSubmitDialog(kpi)}>
-                                        Resubmit Data
-                                      </Button>
-                                    );
-                                  }
-                                  if (kpi.status === 'In-Progress') {
-                                    return (
-                                      <Button variant="default" size="sm" onClick={() => handleOpenSubmitDialog(kpi)}>
-                                        Submit Data
-                                      </Button>
-                                    );
-                                  }
-                                  if (kpi.status === 'Draft' && isManagerOrAdmin) {
-                                    return (
-                                      <Button variant="secondary" size="sm" onClick={() => handleForceToAgreed(kpi.id)}>
-                                        <Send className="w-4 h-4 mr-2" />
-                                        Submit to Action Center
-                                      </Button>
-                                    );
-                                  }
-                                  if (kpi.status === 'Rejected') {
-                                    return (
-                                      <Button variant="destructive" size="sm" onClick={() => handleForceToAgreed(kpi.id)}>
-                                        <Send className="w-4 h-4 mr-2" />
-                                        Resubmit to Action Center
-                                      </Button>
-                                    );
-                                  }
-                                  if (kpi.status === 'Upper Manager Approval') {
-                                    return (
-                                      <Button variant="outline" size="sm" onClick={() => handleOpenViewCommitmentDialog(kpi)}>
-                                        <Eye className="w-4 h-4 mr-2"/> View Commitment
-                                      </Button>
-                                    );
-                                  }
-                                  return (
-                                    <Button variant="outline" size="sm" disabled>
-                                      Awaiting Agreement
-                                    </Button>
-                                  );
-                                })()}
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </div>
+                <CollapsibleContent className="p-4 bg-gray-50/10 border border-t-0 rounded-b-md">
+                   <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                        {kpis.map((kpi) => (
+                           <KpiActionCard 
+                             key={kpi.id}
+                             kpi={kpi}
+                             submissionStatus={submissionStatusMap.get(kpi.id)}
+                             employee={isManagerOrAdmin ? employeeMap.get(kpi.employeeId) : undefined}
+                             onOpenSubmit={handleOpenSubmitDialog}
+                             onForceSubmit={handleForceToAgreed}
+                             onViewCommitment={handleOpenViewCommitmentDialog}
+                             isManager={isManagerOrAdmin || false}
+                           />
+                        ))}
+                    </div>
                 </CollapsibleContent>
               </Collapsible>
             ))
@@ -632,5 +646,3 @@ export default function SubmitPage() {
     </div>
   );
 }
-
-    
