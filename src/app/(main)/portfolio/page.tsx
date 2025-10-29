@@ -489,7 +489,6 @@ const KpiProgressCard = ({
 }) => {
 
   const canAcknowledge = kpi.status === 'Upper Manager Approval';
-  const canRevise = kpi.status === 'Rejected' || kpi.status === 'Draft';
   
   const { targetValue, actualValue, achievement, isPositive } = useMemo(() => {
     let targetNum = 0;
@@ -530,7 +529,7 @@ const KpiProgressCard = ({
           </Button>
           <Button size="sm" variant="destructive" onClick={() => onViewDetails(kpi)}>
             <RefreshCw className="mr-2 h-4 w-4" />
-            Resubmit
+            Revise & Resubmit
           </Button>
         </>
       );
@@ -878,5 +877,7 @@ export default function MyPortfolioPage() {
     </div>
   );
 }
+
+    
 
     
