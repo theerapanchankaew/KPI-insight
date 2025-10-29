@@ -80,7 +80,7 @@ const getStatusColor = (status: IndividualKpi['status']) => {
   const colors = {
     'Draft': 'bg-gray-100 text-gray-800 border-gray-300',
     'Agreed': 'bg-blue-100 text-blue-800 border-blue-300',
-    'In-Progress': 'bg-green-100 text-green-800 border-green-300',
+    'In-Progress': 'bg-yellow-100 text-yellow-800 border-yellow-300',
     'Manager Review': 'bg-purple-100 text-purple-800 border-purple-300',
     'Upper Manager Approval': 'bg-indigo-100 text-indigo-800 border-indigo-300',
     'Employee Acknowledged': 'bg-green-100 text-green-800 border-green-300',
@@ -639,7 +639,7 @@ export default function MyPortfolioPage() {
               <CardContent className="p-12 text-center">
                 <CheckCircle2 className="h-12 w-12 mx-auto text-green-500 mb-4" />
                 <p className="text-gray-600">No pending KPIs</p>
-                <p className="text-sm text-gray-500 mt-2">All your KPIs have been reviewed</p>
+                <p className="text-sm text-gray-500 mt-2">KPIs awaiting your review or revision will appear here.</p>
               </CardContent>
             </Card>
           ) : (
@@ -657,6 +657,7 @@ export default function MyPortfolioPage() {
               <CardContent className="p-12 text-center">
                 <Clock className="h-12 w-12 mx-auto text-gray-400 mb-4" />
                 <p className="text-gray-600">No active KPIs</p>
+                <p className="text-sm text-gray-500 mt-2">KPIs that are in progress or awaiting your acknowledgment will appear here.</p>
               </CardContent>
             </Card>
           ) : (
@@ -720,5 +721,6 @@ export default function MyPortfolioPage() {
     </div>
   );
 }
+    
 
     
