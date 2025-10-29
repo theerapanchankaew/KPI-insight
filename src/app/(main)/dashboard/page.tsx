@@ -60,13 +60,17 @@ const KpiCard = ({ kpi, monthlyData }: { kpi: WithId<any>, monthlyData: WithId<M
     }, [kpi.id, monthlyData]);
     
     const chartConfig = {
-      Actual: { label: 'Actual', color: 'hsl(var(--chart-1))' },
-      Target: { label: 'Target', color: 'hsl(var(--chart-2))' },
+      Actual: { label: 'Actual', color: 'hsl(var(--primary))' },
+      Target: { label: 'Target', color: 'hsl(var(--accent))' },
     };
 
     const totalActual = useMemo(() => chartData.reduce((sum, item) => sum + item.Actual, 0), [chartData]);
-    const totalTarget = useMemo(() => chartData.reduce((sum, item) => sum + item.Target, 0), [chartData]);
-    const achievement = totalTarget > 0 ? (totalActual / totalTarget) * 100 : 0;
+    const yearlyTarget = useMemo(() => {
+      const targetValue = typeof kpi.target === 'string' ? parseFloat(kpi.target.replace(/[^0-9.]/g, '')) : kpi.target;
+      return isNaN(targetValue) ? 0 : targetValue;
+    }, [kpi.target]);
+
+    const achievement = yearlyTarget > 0 ? (totalActual / yearlyTarget) * 100 : 0;
     
     const yAxisMax = useMemo(() => {
         const maxActual = Math.max(...chartData.map(d => d.Actual));
@@ -86,7 +90,7 @@ const KpiCard = ({ kpi, monthlyData }: { kpi: WithId<any>, monthlyData: WithId<M
                     </Badge>
                 </div>
                 <CardDescription>
-                    Target: {kpi.target} {kpi.unit && `(${kpi.unit})`}
+                    Yearly Target: {kpi.target} {kpi.unit && `(${kpi.unit})`}
                 </CardDescription>
             </CardHeader>
             <CardContent className="flex-1 flex">
@@ -138,7 +142,7 @@ const DepartmentPerformance = () => {
   }, [cascadedKpis, orgData]);
   
   const departments = useMemo(() => {
-    return orgData ? [...new Set(orgData.map(e => e.department))] : [];
+    return orgData ? [...new Set(orgData.map(e => e.department))].filter(Boolean) : [];
   }, [orgData]);
   
   const isLoading = isOrgDataLoading || isCascadedKpisLoading;
@@ -268,3 +272,5 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+    
