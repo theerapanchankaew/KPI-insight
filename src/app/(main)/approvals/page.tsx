@@ -102,20 +102,19 @@ const KpiApprovalsTab = ({ isAdmin, isProfileLoading }: { isAdmin: boolean, isPr
     const submissionRef = doc(firestore, 'submissions', item.id);
     const individualKpiRef = doc(firestore, 'individual_kpis', item.kpiId);
     
-    let nextStatus: KpiSubmission['status'];
+    let nextSubmissionStatus: KpiSubmission['status'];
     let individualKpiNextStatus: IndividualKpi['status'] | null = null;
     
     if (item.status === 'Manager Review') {
-        nextStatus = 'Upper Manager Approval';
-        individualKpiNextStatus = 'Upper Manager Approval'; // Align statuses
+        nextSubmissionStatus = 'Upper Manager Approval';
         toast({ title: 'Approved by Manager', description: 'KPI sent for upper management approval.'});
     } else { // Upper Manager Approval
-        nextStatus = 'Closed';
-        individualKpiNextStatus = 'Employee Acknowledged'; // Notify employee to acknowledge the final score
+        nextSubmissionStatus = 'Closed';
+        individualKpiNextStatus = 'Closed'; // Close the loop on the KPI itself
         toast({ title: 'Final Approval Complete', description: 'KPI submission has been closed.'});
     }
 
-    setDocumentNonBlocking(submissionRef, { status: nextStatus }, { merge: true });
+    setDocumentNonBlocking(submissionRef, { status: nextSubmissionStatus }, { merge: true });
 
     if(individualKpiNextStatus) {
         setDocumentNonBlocking(individualKpiRef, { status: individualKpiNextStatus }, { merge: true });
@@ -133,10 +132,10 @@ const KpiApprovalsTab = ({ isAdmin, isProfileLoading }: { isAdmin: boolean, isPr
       const submissionRef = doc(firestore, 'submissions', selectedSubmission.id);
       const individualKpiRef = doc(firestore, 'individual_kpis', selectedSubmission.kpiId);
       
-      // Update individual kpi to 'Rejected' with the reason
+      // Update individual kpi to 'In-Progress' so employee can resubmit
       const updatedData: Partial<IndividualKpi> = {
-          status: 'Rejected',
-          rejectionReason: reason,
+          status: 'In-Progress',
+          rejectionReason: `Submission rejected: ${reason}`, // Add context
       };
       setDocumentNonBlocking(individualKpiRef, updatedData, { merge: true });
 
@@ -145,7 +144,7 @@ const KpiApprovalsTab = ({ isAdmin, isProfileLoading }: { isAdmin: boolean, isPr
 
       toast({
           title: "Submission Rejected",
-          description: `The submission for "${selectedSubmission.kpiMeasure}" has been rejected. The employee has been notified.`,
+          description: `The submission for "${selectedSubmission.kpiMeasure}" has been rejected and sent back to the employee.`,
           variant: 'destructive',
       });
       
@@ -351,7 +350,7 @@ export default function ApprovalsPage() {
     return doc(firestore, 'users', user.uid);
   }, [firestore, user]);
   const { data: userProfile, isLoading: isUserProfileLoading } = useDoc<AppUser>(userProfileRef);
-  const isAdmin = useMemo(() => userProfile?.role === 'Admin', [userProfile]);
+  const isAdmin = useMemo(() => userProfile?.role === 'Admin' || userProfile?.role === 'Manager' || userProfile?.role === 'AVP' || userProfile?.role === 'VP', [userProfile]);
   
   const submissionsQuery = useMemoFirebase(() => {
     if (!firestore || isUserProfileLoading || !isAdmin) return null;
@@ -390,5 +389,3 @@ export default function ApprovalsPage() {
     </div>
   );
 }
-
-    

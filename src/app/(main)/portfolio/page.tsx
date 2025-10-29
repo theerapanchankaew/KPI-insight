@@ -44,10 +44,10 @@ type IndividualKpi = AssignedCascadedKpi | CommittedKpi;
 
 const statusConfig: { [key in IndividualKpi['status']]: { icon: React.ElementType, color: string, label: string } } = {
     Draft: { icon: Edit, color: 'text-gray-500', label: 'Draft' },
-    Agreed: { icon: UserCheck, color: 'text-blue-500', label: 'Agreed' },
+    Agreed: { icon: UserCheck, color: 'text-blue-500', label: 'Pending Manager Agreement' },
     'In-Progress': { icon: Clock, color: 'text-accent', label: 'In Progress' },
     'Manager Review': { icon: ShieldCheck, color: 'text-primary', label: 'Manager Review' },
-    'Upper Manager Approval': { icon: ShieldCheck, color: 'text-purple-500', label: 'Final Approval' },
+    'Upper Manager Approval': { icon: ShieldCheck, color: 'text-purple-500', label: 'Pending Final Acknowledgement' },
     'Employee Acknowledged': { icon: CheckCircle, color: 'text-teal-500', label: 'Acknowledged' },
     Closed: { icon: CheckCircle, color: 'text-success', label: 'Closed' },
     Rejected: { icon: AlertCircle, color: 'text-destructive', label: 'Rejected' },
@@ -64,7 +64,7 @@ const KpiActionDialog = ({ isOpen, onClose, kpi, onConfirm }: {
 
     useEffect(() => {
         if (isOpen && kpi) {
-            setNotes(kpi.notes || kpi.rejectionReason || '');
+            setNotes(kpi.notes || '');
         }
     }, [isOpen, kpi]);
 
@@ -104,7 +104,7 @@ const KpiActionDialog = ({ isOpen, onClose, kpi, onConfirm }: {
                             onChange={(e) => setNotes(e.target.value)}
                         />
                     </div>
-                     <p className="text-xs text-gray-600">By clicking "Agree & Submit," you agree to the terms of this KPI and send it for manager approval.</p>
+                     <p className="text-xs text-gray-600">By clicking "Agree & Submit," you agree to the terms of this KPI and send it for manager review.</p>
                 </div>
                 <DialogFooter>
                     <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
@@ -218,7 +218,7 @@ export default function PortfolioPage() {
                                     // Per SRS, employee action needed on Draft or Rejected
                                     const canReview = kpi.status === 'Draft' || kpi.status === 'Rejected';
                                     // Per SRS, employee acknowledges after Upper Manager Approval
-                                    const canAcknowledge = kpi.status === 'Upper Manager Approval' || kpi.status === 'Employee Acknowledged';
+                                    const canAcknowledge = kpi.status === 'Upper Manager Approval';
 
                                     return (
                                         <TableRow key={kpi.id}>
@@ -239,7 +239,7 @@ export default function PortfolioPage() {
                                                     <Button size="sm" onClick={() => handleReviewClick(kpi)}>
                                                         Review & Agree
                                                     </Button>
-                                                ) : canAcknowledge && kpi.status !== 'In-Progress' ? (
+                                                ) : canAcknowledge ? (
                                                      <Button size="sm" variant="secondary" onClick={() => handleAcknowledge(kpi.id)}>
                                                         <Check className="w-4 h-4 mr-1"/> Acknowledge
                                                     </Button>
@@ -273,5 +273,3 @@ export default function PortfolioPage() {
         </div>
     );
 }
-
-    
