@@ -364,8 +364,9 @@ export default function ActionCenterPage() {
   const handleApproveCommitment = async (kpiId: string) => {
     if (!firestore) return;
     const kpiRef = doc(firestore, 'individual_kpis', kpiId);
+    // As per docs, this moves to Upper Manager Approval, which then the employee acknowledges to move to In-Progress
     setDocumentNonBlocking(kpiRef, { status: 'Upper Manager Approval' }, { merge: true });
-    toast({ title: "Commitment Approved", description: "The KPI is now pending final approval." });
+    toast({ title: "Commitment Approved", description: "The KPI is now pending final approval/acknowledgment." });
   };
 
   const handleRejectCommitment = async (kpiId: string, reason: string) => {

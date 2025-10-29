@@ -395,7 +395,7 @@ export default function MyPortfolioPage() {
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
 
   useEffect(() => {
-    setPageTitle("My KPI Portfolio");
+    setPageTitle("My Portfolio");
   }, [setPageTitle]);
 
   // Get employee profile
@@ -407,9 +407,11 @@ export default function MyPortfolioPage() {
   const { data: employeeData } = useCollection<Employee>(employeeQuery);
   const employee = employeeData?.[0];
 
-  // Get individual KPIs
+  // Get individual KPIs for the current user
   const kpisQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
+    // Assuming 'employeeId' on 'individual_kpis' matches the user's UID.
+    // If not, you might need to link via the 'employees' collection.
     return query(
       collection(firestore, 'individual_kpis'),
       where('employeeId', '==', user.uid)
@@ -485,7 +487,7 @@ export default function MyPortfolioPage() {
     try {
       const kpiRef = doc(firestore, 'individual_kpis', kpiId);
       await setDocumentNonBlocking(kpiRef, {
-        status: 'In-Progress',
+        status: 'In-Progress', // Acknowledging moves it to 'In-Progress'
         acknowledgedAt: new Date(),
       }, { merge: true });
       toast({
@@ -528,24 +530,27 @@ export default function MyPortfolioPage() {
       </Card>
     );
   }
-
-  if (!employee && !isKpisLoading) {
+  
+  if (!kpis && !isKpisLoading) {
     return (
       <Card>
-        <CardContent className="p-6 text-center">
-          <AlertCircle className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-          <p className="text-gray-600">No employee profile found for your user account.</p>
-          <p className="text-sm text-gray-500 mt-2">Please contact your administrator to link your account.</p>
+        <CardContent className="p-12 text-center">
+          <Target className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+          <p className="text-gray-600">No KPIs have been assigned to you yet.</p>
+          <p className="text-sm text-gray-500 mt-2">
+            Once your manager assigns KPIs, they will appear here.
+          </p>
         </CardContent>
       </Card>
     );
   }
 
+
   return (
     <div className="fade-in space-y-6">
       {/* Header Section */}
       <div>
-        <h3 className="text-2xl font-bold text-gray-900 mb-2">My KPI Portfolio</h3>
+        <h3 className="text-2xl font-bold text-gray-900 mb-2">My Portfolio</h3>
         <p className="text-gray-600">
           Review and manage your Key Performance Indicators
         </p>
@@ -732,4 +737,3 @@ export default function MyPortfolioPage() {
     </div>
   );
 }
-

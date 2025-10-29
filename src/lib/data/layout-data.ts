@@ -9,7 +9,7 @@ import {
   FileUp,
   User,
   Users,
-  Target // Added Target icon
+  Target
 } from 'lucide-react';
 
 export const appConfig = {
@@ -36,7 +36,7 @@ export const navItems = [
     href: '/portfolio',
     label: 'My Portfolio',
     description: 'KPI ของฉัน',
-    icon: Target, // Changed from User to Target
+    icon: Target,
   },
   {
     href: '/submit',

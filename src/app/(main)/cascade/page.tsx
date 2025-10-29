@@ -109,7 +109,7 @@ interface CommittedKpi extends IndividualKpiBase {
   };
 }
 
-type IndividualKpi = AssignedCascadedKpi | CommittedKpi;
+type IndividualKpi = (AssignedCascadedKpi | CommittedKpi) & {id: string};
 
 
 // Types for the Assign Dialog
@@ -1561,5 +1561,3 @@ export default function KPICascadeManagement() {
     </div>
   );
 }
-
-    
