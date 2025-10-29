@@ -4,7 +4,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useAppLayout } from '../layout';
 import { Button } from '@/components/ui/button';
-import { FileText, BadgeCheck, Briefcase, Upload } from 'lucide-react';
+import { FileText, BadgeCheck, Briefcase, Upload, Send } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from "@/components/ui/dialog";
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useUser, useFirestore, useCollection, useMemoFirebase, WithId, addDocumentNonBlocking, useDoc } from '@/firebase';
+import { useUser, useFirestore, useCollection, useMemoFirebase, WithId, addDocumentNonBlocking, useDoc, setDocumentNonBlocking } from '@/firebase';
 import { collection, query, where, serverTimestamp, doc } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
@@ -34,6 +34,7 @@ type IndividualKpi = AssignedCascadedKpi | CommittedKpi;
 
 
 interface KpiSubmission {
+    id?: string;
     kpiId: string;
     kpiMeasure: string;
     submittedBy: string;
@@ -61,7 +62,7 @@ const SubmitDataDialog = ({ isOpen, onOpenChange, kpi, onSubmit }: {
     isOpen: boolean; 
     onOpenChange: (open: boolean) => void;
     kpi: WithId<IndividualKpi> | null;
-    onSubmit: (submission: Omit<KpiSubmission, 'submissionDate' | 'status' | 'submittedBy' | 'submitterName' | 'department' | 'rejectionReason'>) => void;
+    onSubmit: (submission: Omit<KpiSubmission, 'submissionDate' | 'submittedBy' | 'submitterName' | 'department'>) => void;
 }) => {
     const [actualValue, setActualValue] = useState('');
     const [notes, setNotes] = useState('');
@@ -81,6 +82,7 @@ const SubmitDataDialog = ({ isOpen, onOpenChange, kpi, onSubmit }: {
                 actualValue,
                 targetValue: kpi.type === 'cascaded' ? kpi.target : '5-level scale',
                 notes,
+                status: 'Manager Review'
             });
             onOpenChange(false);
         }
@@ -166,13 +168,13 @@ export default function SubmitPage() {
     const baseQuery = collection(firestore, 'individual_kpis');
     
     if (isManagerOrAdmin) {
-      // Managers/Admins see all KPIs that are in a submittable state
-      return query(baseQuery, where('status', 'in', ['Draft', 'In-Progress']));
+      // Managers/Admins see all KPIs that are not yet closed
+      return query(baseQuery, where('status', '!=', 'Closed'));
     } else if (user) {
-      // Employees only see their own
+      // Employees only see their own active KPIs
       return query(baseQuery, 
         where('employeeId', '==', user.uid), 
-        where('status', 'in', ['Draft', 'In-Progress'])
+        where('status', 'in', ['Draft', 'In-Progress', 'Rejected', 'Agreed', 'Manager Review'])
       );
     }
     return null;
@@ -188,8 +190,18 @@ export default function SubmitPage() {
   const { data: allKpis, isLoading: isKpisLoading } = useCollection<WithId<IndividualKpi>>(kpisQuery);
   const { data: allSubmissions, isLoading: isSubmissionsLoading } = useCollection<WithId<KpiSubmission>>(submissionsQuery);
   
-  const submittedKpiIds = useMemo(() => {
-    return new Set(allSubmissions?.map(s => s.kpiId) || []);
+  const submissionStatusMap = useMemo(() => {
+    const map = new Map<string, KpiSubmission['status']>();
+    if (allSubmissions) {
+      // Sort by date to get the most recent status
+      const sortedSubmissions = [...allSubmissions].sort((a, b) => b.submissionDate?.toMillis() - a.submissionDate?.toMillis());
+      sortedSubmissions.forEach(s => {
+        if (!map.has(s.kpiId)) {
+          map.set(s.kpiId, s.status);
+        }
+      });
+    }
+    return map;
   }, [allSubmissions]);
   
   const employeeMap = useMemo(() => {
@@ -199,25 +211,27 @@ export default function SubmitPage() {
   
 
   const summaryStats = useMemo(() => {
-    return {
+      const uniqueKpiIds = new Set(allSubmissions?.map(s => s.kpiId));
+      const inProgressCount = allKpis?.filter(k => k.status === 'In-Progress').length || 0;
+      
+      return {
         totalInProgress: allKpis?.length || 0,
-        needsSubmission: allKpis?.filter(k => k.status === 'In-Progress' && !submittedKpiIds.has(k.id)).length || 0,
-        submitted: submittedKpiIds.size,
-    };
-  }, [allKpis, submittedKpiIds]);
+        needsSubmission: inProgressCount - uniqueKpiIds.size,
+        submitted: uniqueKpiIds.size,
+      };
+  }, [allKpis, allSubmissions]);
   
   const handleOpenSubmitDialog = (kpi: WithId<IndividualKpi>) => {
     setSelectedKpi(kpi);
     setIsModalOpen(true);
   };
   
-  const handleDataSubmit = async (submission: Omit<KpiSubmission, 'submissionDate' | 'status' | 'submittedBy' | 'submitterName' | 'department' | 'rejectionReason'>) => {
+  const handleDataSubmit = async (submission: Omit<KpiSubmission, 'submissionDate' | 'submittedBy' | 'submitterName' | 'department'>) => {
     if (!firestore || !user) {
         toast({ title: "Error", description: "Could not connect to the database.", variant: "destructive"});
         return;
     }
     
-    // Find the employee submitting the data
     const kpiOwner = allKpis?.find(k => k.id === submission.kpiId);
     const employeeData = allEmployees?.find(e => e.id === kpiOwner?.employeeId);
 
@@ -227,7 +241,6 @@ export default function SubmitPage() {
         submitterName: employeeData?.name || 'Unknown User',
         department: employeeData?.department || 'Unassigned',
         submissionDate: serverTimestamp(),
-        status: 'Manager Review', // Per SRS, first step is Manager Review
     };
     
     const submissionsCollection = collection(firestore, 'submissions');
@@ -238,6 +251,16 @@ export default function SubmitPage() {
         description: `Your data for "${submission.kpiMeasure}" has been sent for approval.`
     });
   };
+
+  const handleForceToAgreed = (kpiId: string) => {
+      if(!firestore || !isManagerOrAdmin) {
+          toast({ title: 'Permission Denied', variant: 'destructive'});
+          return;
+      }
+      const kpiRef = doc(firestore, 'individual_kpis', kpiId);
+      setDocumentNonBlocking(kpiRef, { status: 'Agreed', agreedAt: serverTimestamp() }, { merge: true });
+      toast({ title: 'KPI Submitted to Action Center', description: 'The KPI is now awaiting manager approval.' });
+  }
 
   const isLoading = isUserLoading || isKpisLoading || isSubmissionsLoading || isEmployeesLoading || isProfileLoading;
 
@@ -270,7 +293,7 @@ export default function SubmitPage() {
 
       <Card>
         <CardHeader>
-             <CardTitle>My KPIs Ready for Submission</CardTitle>
+             <CardTitle>KPI Submission Status</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -301,10 +324,14 @@ export default function SubmitPage() {
                     ))
                 ) : allKpis && allKpis.length > 0 ? (
                   allKpis.map((kpi) => {
-                    const isSubmitted = submittedKpiIds.has(kpi.id);
+                    const submissionStatus = submissionStatusMap.get(kpi.id);
+                    const isSubmitted = !!submissionStatus;
                     const employee = employeeMap.get(kpi.employeeId);
+                    
+                    const canResubmit = submissionStatus === 'Rejected';
+
                     return (
-                        <TableRow key={kpi.id} className={cn(isSubmitted && "bg-green-50/60")}>
+                        <TableRow key={kpi.id} className={cn(isSubmitted && !canResubmit && "bg-green-50/60")}>
                         {isManagerOrAdmin && (
                             <TableCell>
                                 <div className="font-medium">{employee?.name || kpi.employeeId}</div>
@@ -316,22 +343,49 @@ export default function SubmitPage() {
                         <TableCell>{kpi.type === 'cascaded' ? kpi.target : "5-level scale"}</TableCell>
                         <TableCell>{kpi.weight}%</TableCell>
                         <TableCell>
-                            <Badge variant="outline">{kpi.status}</Badge>
+                           {isSubmitted ? (
+                                <Badge variant={submissionStatus === 'Rejected' ? 'destructive' : 'outline'}>{submissionStatus}</Badge>
+                            ) : (
+                                <Badge variant="outline">{kpi.status}</Badge>
+                            )}
                         </TableCell>
                         <TableCell className="text-right">
-                            {isSubmitted ? (
-                                <Button variant="outline" size="sm" disabled>
-                                    <BadgeCheck className="w-4 h-4 mr-2"/> Submitted
-                                </Button>
-                            ) : kpi.status === 'In-Progress' ? (
-                                <Button variant="default" size="sm" onClick={() => handleOpenSubmitDialog(kpi)}>
-                                    Submit Data
-                                </Button>
-                            ) : (
-                                <Button variant="outline" size="sm" disabled>
-                                    Awaiting Agreement
-                                </Button>
-                            )}
+                           {(() => {
+                                if (isSubmitted && !canResubmit) {
+                                    return (
+                                        <Button variant="outline" size="sm" disabled>
+                                            <BadgeCheck className="w-4 h-4 mr-2"/> Submitted
+                                        </Button>
+                                    );
+                                }
+                                if (canResubmit) {
+                                    return (
+                                        <Button variant="destructive" size="sm" onClick={() => handleOpenSubmitDialog(kpi)}>
+                                            Resubmit Data
+                                        </Button>
+                                    );
+                                }
+                                if (kpi.status === 'In-Progress') {
+                                    return (
+                                        <Button variant="default" size="sm" onClick={() => handleOpenSubmitDialog(kpi)}>
+                                            Submit Data
+                                        </Button>
+                                    );
+                                }
+                                if (kpi.status === 'Draft' && isManagerOrAdmin) {
+                                     return (
+                                        <Button variant="secondary" size="sm" onClick={() => handleForceToAgreed(kpi.id)}>
+                                            <Send className="w-4 h-4 mr-2" />
+                                            Submit to Action Center
+                                        </Button>
+                                    );
+                                }
+                                return (
+                                    <Button variant="outline" size="sm" disabled>
+                                        Awaiting Agreement
+                                    </Button>
+                                );
+                           })()}
                         </TableCell>
                         </TableRow>
                     );
@@ -342,7 +396,7 @@ export default function SubmitPage() {
                             <div className="flex flex-col items-center justify-center space-y-2">
                                 <Briefcase className="h-10 w-10 text-gray-300" />
                                 <p className="font-medium">No KPIs awaiting action.</p>
-                                <p className="text-sm">KPIs in 'Draft' or 'In-Progress' status will appear here.</p>
+                                <p className="text-sm">KPIs that are not yet closed will appear here.</p>
                             </div>
                         </TableCell>
                     </TableRow>
@@ -362,5 +416,3 @@ export default function SubmitPage() {
     </div>
   );
 }
-
-    
