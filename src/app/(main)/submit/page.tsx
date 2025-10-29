@@ -40,7 +40,7 @@ interface IndividualKpiBase {
     acknowledgedAt?: any;
     category?: string; // Adding category for filtering
 }
-interface AssignedCascadedKpi extends IndividualKpiBase { type: 'cascaded'; target: string; }
+interface AssignedCascadedKpi extends IndividualKpiBase { type: 'cascaded'; target: string; corporateKpiId: string;}
 interface CommittedKpi extends IndividualKpiBase { type: 'committed'; task: string; targets: { [key: string]: string }; }
 type IndividualKpi = AssignedCascadedKpi | CommittedKpi;
 
@@ -263,8 +263,8 @@ const ViewCommitmentDialog = ({ isOpen, onOpenChange, kpi }: {
     )
 }
 
-const getStatusColor = (status: IndividualKpi['status']) => {
-  const colors: Record<IndividualKpi['status'], string> = {
+const getStatusColor = (status: IndividualKpi['status'] | KpiSubmission['status']) => {
+  const colors: Record<IndividualKpi['status'] | KpiSubmission['status'], string> = {
     'Draft': 'bg-gray-100 text-gray-800 border-gray-300',
     'Agreed': 'bg-blue-100 text-blue-800 border-blue-300',
     'In-Progress': 'bg-yellow-100 text-yellow-800 border-yellow-300',
@@ -277,8 +277,8 @@ const getStatusColor = (status: IndividualKpi['status']) => {
   return colors[status] || colors['Draft'];
 };
 
-const getStatusIcon = (status: IndividualKpi['status']) => {
-  const icons: Record<IndividualKpi['status'], React.ReactNode> = {
+const getStatusIcon = (status: IndividualKpi['status'] | KpiSubmission['status']) => {
+  const icons: Record<IndividualKpi['status'] | KpiSubmission['status'], React.ReactNode> = {
     'Draft': <FileText className="h-4 w-4" />,
     'Agreed': <BadgeCheck className="h-4 w-4" />,
     'In-Progress': <Briefcase className="h-4 w-4" />,
@@ -292,7 +292,7 @@ const getStatusIcon = (status: IndividualKpi['status']) => {
 };
 
 
-const KpiActionCard = ({ kpi, submissionStatus, employee, onOpenSubmit, onForceSubmit, onViewCommitment }: {
+const KpiActionCard = ({ kpi, submissionStatus, employee, onOpenSubmit, onForceSubmit, onViewCommitment, isManager }: {
     kpi: WithId<IndividualKpi>;
     submissionStatus?: KpiSubmission['status'];
     employee?: Employee;
@@ -314,10 +314,10 @@ const KpiActionCard = ({ kpi, submissionStatus, employee, onOpenSubmit, onForceS
         if (kpi.status === 'In-Progress') {
             return <Button variant="default" size="sm" onClick={() => onOpenSubmit(kpi)}>Submit Data</Button>;
         }
-        if (kpi.status === 'Draft' && onForceSubmit) {
+        if (kpi.status === 'Draft' && isManager) {
             return <Button variant="secondary" size="sm" onClick={() => onForceSubmit(kpi.id)}><Send className="w-4 h-4 mr-2" />Submit to Action Center</Button>;
         }
-        if (kpi.status === 'Rejected') {
+        if (kpi.status === 'Rejected' && isManager) {
             return <Button variant="destructive" size="sm" onClick={() => onForceSubmit(kpi.id)}><Send className="w-4 h-4 mr-2" />Resubmit to Action Center</Button>;
         }
         if (kpi.status === 'Upper Manager Approval') {
@@ -331,8 +331,8 @@ const KpiActionCard = ({ kpi, submissionStatus, employee, onOpenSubmit, onForceS
             <CardHeader>
                 <div className="flex justify-between items-start">
                     <CardTitle className="text-base font-semibold leading-tight flex-1 pr-2">{kpi.kpiMeasure}</CardTitle>
-                    <Badge className={cn("text-xs", getStatusColor(isSubmitted ? submissionStatus : kpi.status))}>
-                      {getStatusIcon(isSubmitted ? submissionStatus : kpi.status)}
+                    <Badge className={cn("text-xs", getStatusColor(isSubmitted ? submissionStatus! : kpi.status))}>
+                      {getStatusIcon(isSubmitted ? submissionStatus! : kpi.status)}
                       <span className="ml-1.5">{isSubmitted ? submissionStatus : kpi.status}</span>
                     </Badge>
                 </div>
@@ -373,6 +373,7 @@ export default function SubmitPage() {
   
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [employeeFilter, setEmployeeFilter] = useState('all');
 
   const userProfileRef = useMemoFirebase(() => {
     if (!user || !firestore) return null;
@@ -453,12 +454,14 @@ export default function SubmitPage() {
         const employee = employeeMap.get(kpi.employeeId);
         const departmentMatch = departmentFilter === 'all' || employee?.department === departmentFilter;
         
-        const kpiInfo = kpiCatalog?.find(k => k.id === (kpi.type === 'cascaded' ? kpi.corporateKpiId : null));
+        const kpiInfo = kpi.type === 'cascaded' ? kpiCatalog?.find(k => k.id === kpi.corporateKpiId) : null;
         const categoryMatch = categoryFilter === 'all' || (kpiInfo && kpiInfo.category === categoryFilter);
 
-        return departmentMatch && categoryMatch;
+        const employeeMatch = employeeFilter === 'all' || kpi.employeeId === employeeFilter;
+
+        return departmentMatch && categoryMatch && employeeMatch;
     });
-  }, [allKpis, departmentFilter, categoryFilter, employeeMap, kpiCatalog]);
+  }, [allKpis, departmentFilter, categoryFilter, employeeFilter, employeeMap, kpiCatalog]);
 
   const kpisByDepartment = useMemo(() => {
       if (!filteredKpis) return {};
@@ -567,7 +570,7 @@ export default function SubmitPage() {
           <CardTitle>KPI Submission Status</CardTitle>
           <div className="flex flex-col md:flex-row gap-4 pt-2">
             <Select value={departmentFilter} onValueChange={setDepartmentFilter} disabled={!isManagerOrAdmin}>
-              <SelectTrigger className="w-full md:w-[240px]">
+              <SelectTrigger className="w-full md:w-[200px]">
                 <SelectValue placeholder="Filter by Department" />
               </SelectTrigger>
               <SelectContent>
@@ -575,8 +578,17 @@ export default function SubmitPage() {
                 {departments.map(dept => <SelectItem key={dept} value={dept}>{dept}</SelectItem>)}
               </SelectContent>
             </Select>
+            <Select value={employeeFilter} onValueChange={setEmployeeFilter} disabled={!isManagerOrAdmin}>
+                <SelectTrigger className="w-full md:w-[200px]">
+                    <SelectValue placeholder="Filter by Employee" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="all">All Employees</SelectItem>
+                    {allEmployees?.map(emp => <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>)}
+                </SelectContent>
+            </Select>
             <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-full md:w-[240px]">
+              <SelectTrigger className="w-full md:w-[200px]">
                 <SelectValue placeholder="Filter by Category" />
               </SelectTrigger>
               <SelectContent>
@@ -646,3 +658,5 @@ export default function SubmitPage() {
     </div>
   );
 }
+
+    
