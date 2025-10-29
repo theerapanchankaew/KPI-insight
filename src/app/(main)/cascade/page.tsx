@@ -17,7 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronsUpDown, PlusCircle, Trash2, Edit, AlertTriangle, MoreVertical, Calendar, TrendingUp, BarChart3, Building, Share2, Upload, Download } from 'lucide-react';
+import { ChevronsUpDown, PlusCircle, Trash2, Edit, AlertTriangle, MoreVertical, Calendar, TrendingUp, BarChart3, Building, Share2, Upload, Download, FileText, CheckCircle2, Clock, Eye } from 'lucide-react';
 import { WithId, useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from '@/firebase';
 import { addDocumentNonBlocking, deleteDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { collection, doc } from 'firebase/firestore';
@@ -203,6 +203,34 @@ const detectBestStrategy = (kpi: CorporateKpi | null, historicalData?: number[][
   const growthKeywords = ['growth','increase','expand','new','เติบโต','เพิ่ม','ขยาย'];
   if (growthKeywords.some(x => measure.includes(x))) return 'progressive';
   return 'equal';
+};
+
+const getStatusColor = (status: IndividualKpi['status']) => {
+  const colors = {
+    'Draft': 'bg-gray-100 text-gray-800 border-gray-300',
+    'Agreed': 'bg-blue-100 text-blue-800 border-blue-300',
+    'In-Progress': 'bg-yellow-100 text-yellow-800 border-yellow-300',
+    'Manager Review': 'bg-purple-100 text-purple-800 border-purple-300',
+    'Upper Manager Approval': 'bg-indigo-100 text-indigo-800 border-indigo-300',
+    'Employee Acknowledged': 'bg-green-100 text-green-800 border-green-300',
+    'Closed': 'bg-gray-100 text-gray-800 border-gray-300',
+    'Rejected': 'bg-red-100 text-red-800 border-red-300',
+  };
+  return colors[status] || colors['Draft'];
+};
+
+const getStatusIcon = (status: IndividualKpi['status']) => {
+  const icons = {
+    'Draft': <FileText className="h-4 w-4" />,
+    'Agreed': <CheckCircle2 className="h-4 w-4" />,
+    'In-Progress': <Clock className="h-4 w-4" />,
+    'Manager Review': <Eye className="h-4 w-4" />,
+    'Upper Manager Approval': <AlertTriangle className="h-4 w-4" />,
+    'Employee Acknowledged': <CheckCircle2 className="h-4 w-4" />,
+    'Closed': <CheckCircle2 className="h-4 w-4" />,
+    'Rejected': <AlertTriangle className="h-4 w-4" />,
+  };
+  return icons[status] || icons['Draft'];
 };
 
 // ==================== DELETE CONFIRMATION DIALOG ====================
@@ -892,9 +920,9 @@ const DepartmentLevel = ({
   );
 };
 
-// ==================== INDIVIDUAL LEVEL COMPONENT ====================
+// ==================== ENHANCED INDIVIDUAL LEVEL COMPONENT ====================
 
-const IndividualLevel = ({
+const EnhancedIndividualLevel = ({
   employees,
   individualKpis,
   isLoading,
@@ -999,7 +1027,10 @@ const IndividualLevel = ({
                               <div className="flex-1">
                                 <p className="font-medium text-sm">{kpi.kpiMeasure}</p>
                                 <div className="flex items-center gap-2 mt-1">
-                                  <Badge variant="secondary" className="text-xs">{kpi.status}</Badge>
+                                  <Badge className={cn('text-xs', getStatusColor(kpi.status))}>
+                                      {getStatusIcon(kpi.status)}
+                                      <span className="ml-1.5">{kpi.status}</span>
+                                  </Badge>
                                   <span className="text-xs text-gray-500">Weight: {kpi.weight}%</span>
                                 </div>
                               </div>
@@ -1291,8 +1322,8 @@ export default function KPICascadeManagement() {
   const { data: cascadedKpis, isLoading: isCascadedKpisLoading } = useCollection<WithId<CascadedKpi>>(cascadedKpisQuery);
   
   const individualKpisQuery = useMemoFirebase(
-    () => (firestore && isAdmin ? collection(firestore, 'individual_kpis') : null),
-    [firestore, isAdmin]
+    () => (firestore ? collection(firestore, 'individual_kpis') : null),
+    [firestore]
   );
   const { data: individualKpis, isLoading: isIndividualKpisLoading } = useCollection<WithId<IndividualKpi>>(individualKpisQuery);
 
@@ -1483,7 +1514,7 @@ export default function KPICascadeManagement() {
           </TabsContent>
 
           <TabsContent value="individual" className="mt-6">
-             <IndividualLevel
+             <EnhancedIndividualLevel
               employees={employees}
               individualKpis={individualKpis}
               isLoading={overallLoading}
@@ -1530,3 +1561,5 @@ export default function KPICascadeManagement() {
     </div>
   );
 }
+
+    
