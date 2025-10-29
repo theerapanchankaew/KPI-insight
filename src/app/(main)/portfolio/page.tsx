@@ -30,7 +30,8 @@ import {
   Eye,
   ChevronsUpDown,
   TrendingUp,
-  TrendingDown
+  TrendingDown,
+  CalendarDays
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useUser, useCollection, useMemoFirebase, WithId, useDoc } from '@/firebase';
@@ -41,7 +42,7 @@ import { cn } from '@/lib/utils';
 import { useKpiData } from '@/context/KpiDataContext';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 // ==================== TYPE DEFINITIONS ====================
 
@@ -64,6 +65,7 @@ interface AssignedCascadedKpi extends IndividualKpiBase {
   type: 'cascaded';
   target: string;
   unit: string;
+  corporateKpiId: string;
 }
 
 interface CommittedKpi extends IndividualKpiBase {
@@ -81,10 +83,20 @@ interface CommittedKpi extends IndividualKpiBase {
 type IndividualKpi = (AssignedCascadedKpi | CommittedKpi) & { id: string };
 
 interface KpiSubmission {
+    id: string;
     kpiId: string;
     actualValue: string;
     submissionDate: any;
     status: string;
+}
+
+interface MonthlyKpi {
+  id: string;
+  parentKpiId: string;
+  month: number;
+  year: number;
+  target: number;
+  actual: number;
 }
 
 interface AppUser {
@@ -93,6 +105,7 @@ interface AppUser {
 }
 
 // ==================== UTILITY FUNCTIONS ====================
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 const getStatusColor = (status: IndividualKpi['status']) => {
   const colors = {
@@ -122,12 +135,89 @@ const getStatusIcon = (status: IndividualKpi['status']) => {
   return icons[status] || icons['Draft'];
 };
 
-const parseValue = (value: string) => {
+const parseValue = (value: string | number) => {
+    if (typeof value === 'number') return value;
     if (typeof value !== 'string') return 0;
     return parseFloat(value.replace(/[^0-9.-]+/g, "")) || 0;
 };
 
-// ==================== KPI DETAIL/ACTION DIALOG ====================
+// ==================== DIALOGS ====================
+
+const MonthlyReportDialog = ({
+  isOpen,
+  onClose,
+  kpi,
+  monthlyData,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  kpi: WithId<IndividualKpi> | null;
+  monthlyData: WithId<MonthlyKpi>[];
+}) => {
+  if (!kpi) return null;
+
+  const dataForKpi = monthlyData
+    .filter(m => kpi.type === 'cascaded' && m.parentKpiId === kpi.corporateKpiId)
+    .sort((a, b) => a.month - b.month);
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Monthly Report: {kpi.kpiMeasure}</DialogTitle>
+          <DialogDescription>
+            Detailed monthly performance breakdown for this KPI.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4">
+          {kpi.type === 'cascaded' && dataForKpi.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Month</TableHead>
+                  <TableHead className="text-right">Target</TableHead>
+                  <TableHead className="text-right">Actual</TableHead>
+                  <TableHead className="text-right">Achievement</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {dataForKpi.map(month => {
+                  const achievement = month.target > 0 ? (month.actual / month.target) * 100 : 0;
+                  return (
+                    <TableRow key={month.id}>
+                      <TableCell className="font-medium">{MONTH_NAMES[month.month - 1]}</TableCell>
+                      <TableCell className="text-right">{month.target.toLocaleString()}</TableCell>
+                      <TableCell className="text-right">{month.actual.toLocaleString()}</TableCell>
+                      <TableCell className="text-right">
+                        <Badge variant={achievement >= 100 ? 'success' : 'destructive'}>{achievement.toFixed(1)}%</Badge>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <p>No monthly data deployed for this KPI.</p>
+            </div>
+          )}
+           {kpi.type === 'committed' && (
+             <div className="text-center py-8 text-gray-500">
+               <p>Monthly reporting is not applicable for 'Committed' KPIs.</p>
+               <p className="text-sm">Achievement is based on the 5-level scale submission.</p>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">Close</Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 
 const KpiDetailDialog = ({
   kpi,
@@ -316,27 +406,36 @@ const KpiProgressCard = ({
   submission,
   onViewDetails,
   onAcknowledge,
+  onViewMonthlyReport,
 }: { 
   kpi: WithId<IndividualKpi>; 
   submission: WithId<KpiSubmission> | undefined;
   onViewDetails: (kpi: WithId<IndividualKpi>) => void;
   onAcknowledge: (kpiId: string) => void;
+  onViewMonthlyReport: (kpi: WithId<IndividualKpi>) => void;
 }) => {
 
   const canAcknowledge = kpi.status === 'Upper Manager Approval';
   
   const { targetValue, actualValue, achievement, isPositive } = useMemo(() => {
-    if (kpi.type !== 'cascaded') {
-      return { targetValue: '5-Level Scale', actualValue: submission?.actualValue ?? 'N/A', achievement: -1, isPositive: true };
-    }
-    const target = parseValue(kpi.target);
-    const actual = submission ? parseValue(submission.actualValue) : 0;
-    const achievement = target > 0 ? (actual / target) * 100 : 0;
-    
-    // Simple logic for trend direction. Can be made more complex.
-    const isPositive = actual >= target;
+    let targetNum = 0;
+    let actualNum = 0;
 
-    return { targetValue: kpi.target, actualValue: submission?.actualValue ?? 'Not Submitted', achievement, isPositive };
+    if (kpi.type === 'cascaded') {
+      targetNum = parseValue(kpi.target);
+      actualNum = submission ? parseValue(submission.actualValue) : 0;
+    }
+    // For 'committed' KPIs, a numeric progress might not be applicable in the same way.
+    // We can show a placeholder or a different kind of progress.
+    const ach = targetNum > 0 ? (actualNum / targetNum) * 100 : 0;
+    const isPos = actualNum >= targetNum;
+
+    return { 
+        targetValue: kpi.type === 'cascaded' ? kpi.target : '5-Level Scale', 
+        actualValue: submission?.actualValue ?? 'Not Submitted', 
+        achievement: ach, 
+        isPositive: isPos
+    };
   }, [kpi, submission]);
 
   return (
@@ -384,6 +483,10 @@ const KpiProgressCard = ({
             )}
         </CardContent>
         <div className="p-4 pt-2 flex justify-end gap-2">
+            <Button size="sm" variant="ghost" onClick={() => onViewMonthlyReport(kpi)}>
+              <CalendarDays className="mr-2 h-4 w-4" />
+              Monthly Report
+            </Button>
             <Button size="sm" variant="outline" onClick={() => onViewDetails(kpi)}>
                 <Eye className="mr-2 h-4 w-4" />
                 Details
@@ -411,6 +514,7 @@ export default function MyPortfolioPage() {
 
   const [selectedKpi, setSelectedKpi] = useState<WithId<IndividualKpi> | null>(null);
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
+  const [isMonthlyReportOpen, setMonthlyReportOpen] = useState(false);
 
   const userProfileRef = useMemoFirebase(() => {
     if (!user || !firestore) return null;
@@ -432,14 +536,12 @@ export default function MyPortfolioPage() {
         }
         return allEmployees.filter(emp => emp.department === userProfile.department);
     }
-    // For employees, the "team" is just themselves
     return allEmployees.filter(emp => emp.id === user.uid);
   }, [isManagerOrAdmin, allEmployees, userProfile, user]);
 
   
   const kpiQueryIds = useMemo(() => {
     if (teamMembers.length === 0) return null;
-    // Firestore 'in' query is limited to 30 items.
     return teamMembers.map(tm => tm.id).slice(0, 30);
   }, [teamMembers]);
 
@@ -451,10 +553,8 @@ export default function MyPortfolioPage() {
 
   const { data: kpis, isLoading: isKpisLoading } = useCollection<WithId<IndividualKpi>>(kpisQuery);
   
-  // Fetch all submissions related to the fetched KPIs
   const submissionKpiIds = useMemo(() => {
     if(!kpis || kpis.length === 0) return null;
-    // Limit to 30 to match 'in' query limit
     return kpis.map(k => k.id).slice(0, 30);
   }, [kpis]);
 
@@ -465,10 +565,18 @@ export default function MyPortfolioPage() {
 
   const { data: submissions, isLoading: isSubmissionsLoading } = useCollection<WithId<KpiSubmission>>(submissionsQuery);
 
+  const monthlyKpisQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    const currentYear = new Date().getFullYear();
+    return query(collection(firestore, 'monthly_kpis'), where('year', '==', currentYear));
+  }, [firestore]);
+
+  const { data: monthlyKpisData, isLoading: isMonthlyKpisLoading } = useCollection<MonthlyKpi>(monthlyKpisQuery);
+
+
   const submissionsMap = useMemo(() => {
       const map = new Map<string, WithId<KpiSubmission>>();
       if (submissions) {
-          // Get the most recent submission for each KPI
           submissions.forEach(s => {
               if (!map.has(s.kpiId) || s.submissionDate > map.get(s.kpiId)!.submissionDate) {
                   map.set(s.kpiId, s);
@@ -515,9 +623,14 @@ export default function MyPortfolioPage() {
     setIsDetailDialogOpen(true);
   };
   
+  const handleViewMonthlyReport = (kpi: WithId<IndividualKpi>) => {
+    setSelectedKpi(kpi);
+    setMonthlyReportOpen(true);
+  };
+
   // ==================== RENDER ====================
 
-  const isLoading = isUserLoading || isKpisLoading || isProfileLoading || isEmployeesLoading || isSubmissionsLoading;
+  const isLoading = isUserLoading || isKpisLoading || isProfileLoading || isEmployeesLoading || isSubmissionsLoading || isMonthlyKpisLoading;
 
   if (isLoading) {
     return (
@@ -546,9 +659,9 @@ export default function MyPortfolioPage() {
   return (
     <div className="fade-in space-y-6">
       <div>
-        <h3 className="text-2xl font-bold text-gray-900 mb-2">KPI Portfolio</h3>
+        <h3 className="text-2xl font-bold text-gray-900 mb-2">Portfolio</h3>
         <p className="text-gray-600">
-          Track and report results against your performance targets.
+          Review and manage your team's KPI portfolio.
         </p>
       </div>
       
@@ -556,8 +669,10 @@ export default function MyPortfolioPage() {
         {(teamMembers || []).map(employee => {
             const employeeKpis = kpis?.filter(k => k.employeeId === employee.id) || [];
             const needsActionCount = employeeKpis.filter(k => ['Draft', 'Rejected', 'Upper Manager Approval'].includes(k.status)).length;
-            if (employeeKpis.length === 0) {
-              return null; // Don't show employees with no KPIs for a cleaner view
+            const totalWeight = employeeKpis.reduce((sum, kpi) => sum + kpi.weight, 0);
+
+            if (teamMembers.length > 1 && employeeKpis.length === 0) {
+              return null; // Don't show employees with no KPIs for a cleaner view in manager mode
             }
 
             return (
@@ -574,10 +689,11 @@ export default function MyPortfolioPage() {
                               </div>
                           </div>
                           <div className="flex items-center gap-4">
-                              {needsActionCount > 0 && (
-                                  <Badge variant="destructive">{needsActionCount} Action(s) Required</Badge>
-                              )}
                               <div className="text-right hidden sm:block">
+                                  <p className="font-semibold">{totalWeight}%</p>
+                                  <p className="text-xs text-muted-foreground">Total Weight</p>
+                              </div>
+                               <div className="text-right hidden sm:block">
                                   <p className="font-semibold">{employeeKpis.length}</p>
                                   <p className="text-xs text-muted-foreground">Total KPIs</p>
                               </div>
@@ -597,11 +713,16 @@ export default function MyPortfolioPage() {
                                       submission={submissionsMap.get(kpi.id)}
                                       onViewDetails={handleViewDetails}
                                       onAcknowledge={handleAcknowledgeKpi}
+                                      onViewMonthlyReport={handleViewMonthlyReport}
                                   />
                               ))}
                           </div>
                       ) : (
-                          <p className="text-sm text-center text-gray-500 py-8">No KPIs assigned to this employee.</p>
+                         <div className="text-center py-10">
+                            <Target className="h-12 w-12 text-gray-300 mx-auto mb-4"/>
+                            <h4 className="font-semibold">No KPIs assigned yet</h4>
+                            <p className="text-sm text-muted-foreground">Your manager will assign KPIs to you soon.</p>
+                         </div>
                       )}
                   </CollapsibleContent>
               </Collapsible>
@@ -619,8 +740,16 @@ export default function MyPortfolioPage() {
         onAgree={handleAgreeToKpi}
         canAgree={!!selectedKpi && ['Draft', 'Rejected'].includes(selectedKpi.status) && selectedKpi.employeeId === user.uid}
       />
+      
+      <MonthlyReportDialog
+        isOpen={isMonthlyReportOpen}
+        onClose={() => {
+            setMonthlyReportOpen(false);
+            setSelectedKpi(null);
+        }}
+        kpi={selectedKpi}
+        monthlyData={monthlyKpisData || []}
+      />
     </div>
   );
 }
-
-    
