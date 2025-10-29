@@ -1182,7 +1182,7 @@ const AssignKpiDialog = ({
         const committedAssignments = committedKpis.map(committed => ({
             type: 'committed',
             employeeId: employee.id,
-            kpiId: `committed-${Date.now()}-${Math.random()}`, // temp ID
+            kpiId: `committed-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`, // temp ID
             kpiMeasure: committed.task,
             task: committed.task,
             weight: committed.weight,
@@ -1580,3 +1580,5 @@ export default function KPICascadeManagement() {
     </div>
   );
 }
+
+    

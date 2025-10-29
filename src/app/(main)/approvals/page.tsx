@@ -352,7 +352,7 @@ export default function ActionCenterPage() {
     if (!firestore) return;
     const kpiRef = doc(firestore, 'individual_kpis', kpiId);
     setDocumentNonBlocking(kpiRef, { status: 'Upper Manager Approval', reviewedAt: serverTimestamp() }, { merge: true });
-    toast({ title: "Commitment Approved", description: "The KPI is now pending final approval/acknowledgment." });
+    toast({ title: "Commitment Approved", description: "The KPI is now pending final acknowledgment by the employee." });
   };
 
   const handleRejectCommitment = async (kpiId: string, reason: string) => {
@@ -450,3 +450,5 @@ export default function ActionCenterPage() {
     </div>
   );
 }
+
+    

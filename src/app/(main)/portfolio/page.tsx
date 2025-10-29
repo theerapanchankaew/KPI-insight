@@ -96,7 +96,7 @@ const getStatusIcon = (status: IndividualKpi['status']) => {
     'Agreed': <CheckCircle2 className="h-4 w-4" />,
     'In-Progress': <Clock className="h-4 w-4" />,
     'Manager Review': <Eye className="h-4 w-4" />,
-    'Upper Manager Approval': <AlertCircle className="h-4 w-4" />,
+    'Upper Manager Approval': <CheckCircle2 className="h-4 w-4" />,
     'Employee Acknowledged': <Award className="h-4 w-4" />,
     'Closed': <CheckCircle2 className="h-4 w-4" />,
     'Rejected': <AlertCircle className="h-4 w-4" />,
@@ -364,6 +364,7 @@ const KpiCard = ({
                     size="sm" 
                     variant="secondary"
                     onClick={() => onAcknowledge(kpi.id)}
+                    className="bg-indigo-600 hover:bg-indigo-700"
                 >
                    <Award className="mr-2 h-4 w-4" />
                    Acknowledge
@@ -404,13 +405,13 @@ export default function MyPortfolioPage() {
 
   // Group KPIs by status
   const kpisByStatus = useMemo(() => {
-    if (!kpis) return { draft: [], agreed: [], inProgress: [], completed: [], rejected: [] };
+    if (!kpis) return { draft: [], active: [], completed: [], all: [] };
     
     return {
       draft: kpis.filter(k => k.status === 'Draft' || k.status === 'Rejected'),
-      agreed: kpis.filter(k => k.status === 'Agreed'),
-      inProgress: kpis.filter(k => ['In-Progress', 'Manager Review', 'Upper Manager Approval'].includes(k.status)),
+      active: kpis.filter(k => ['Agreed', 'In-Progress', 'Manager Review', 'Upper Manager Approval'].includes(k.status)),
       completed: kpis.filter(k => ['Employee Acknowledged', 'Closed'].includes(k.status)),
+      all: kpis,
     };
   }, [kpis]);
 
@@ -624,8 +625,8 @@ export default function MyPortfolioPage() {
           </TabsTrigger>
           <TabsTrigger value="active">
             Active / In Progress
-            {kpisByStatus.inProgress.length > 0 && (
-              <Badge className="ml-2 bg-yellow-500">{kpisByStatus.inProgress.length}</Badge>
+            {kpisByStatus.active.length > 0 && (
+              <Badge className="ml-2 bg-yellow-500">{kpisByStatus.active.length}</Badge>
             )}
           </TabsTrigger>
           <TabsTrigger value="completed">Completed</TabsTrigger>
@@ -651,7 +652,7 @@ export default function MyPortfolioPage() {
         </TabsContent>
 
         <TabsContent value="active" className="mt-6">
-          {kpisByStatus.inProgress.length === 0 ? (
+          {kpisByStatus.active.length === 0 ? (
             <Card>
               <CardContent className="p-12 text-center">
                 <Clock className="h-12 w-12 mx-auto text-gray-400 mb-4" />
@@ -660,7 +661,7 @@ export default function MyPortfolioPage() {
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {kpisByStatus.inProgress.map(kpi => (
+              {kpisByStatus.active.map(kpi => (
                 <KpiCard key={kpi.id} kpi={kpi} onViewDetails={handleViewDetails} onAcknowledge={handleAcknowledgeKpi} />
               ))}
             </div>
@@ -719,3 +720,5 @@ export default function MyPortfolioPage() {
     </div>
   );
 }
+
+    
