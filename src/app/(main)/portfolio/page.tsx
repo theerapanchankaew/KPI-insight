@@ -47,7 +47,7 @@ const statusConfig: { [key in IndividualKpi['status']]: { icon: React.ElementTyp
     Agreed: { icon: UserCheck, color: 'text-blue-500', label: 'Pending Manager Agreement' },
     'In-Progress': { icon: Clock, color: 'text-accent', label: 'In Progress' },
     'Manager Review': { icon: ShieldCheck, color: 'text-primary', label: 'Manager Review' },
-    'Upper Manager Approval': { icon: ShieldCheck, color: 'text-purple-500', label: 'Pending Final Acknowledgement' },
+    'Upper Manager Approval': { icon: ShieldCheck, color: 'text-purple-500', label: 'Pending Final Approval' },
     'Employee Acknowledged': { icon: CheckCircle, color: 'text-teal-500', label: 'Acknowledged' },
     Closed: { icon: CheckCircle, color: 'text-success', label: 'Closed' },
     Rejected: { icon: AlertCircle, color: 'text-destructive', label: 'Rejected' },

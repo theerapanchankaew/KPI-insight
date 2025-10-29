@@ -201,7 +201,7 @@ const KpiApprovalsTab = ({ isAdmin, isProfileLoading }: { isAdmin: boolean, isPr
                   )}
                 </div>
                 <div className="flex space-x-2 ml-0 sm:ml-4 mt-4 sm:mt-0">
-                  <Button onClick={() => handleApprove(item)} className="bg-success/90 hover:bg-success text-white">
+                  <Button onClick={() => handleApprove(item)} className="bg-green-600 hover:bg-green-700 text-white">
                     <Check className="w-4 h-4 mr-1" /> Approve
                   </Button>
                   <Button onClick={() => handleOpenRejectDialog(item)} variant="destructive">
@@ -243,7 +243,8 @@ const CommitmentRequestsTab = ({ isAdmin, isProfileLoading }: { isAdmin: boolean
   const handleAgreement = (kpi: WithId<IndividualKpi>) => {
     if (!firestore) return;
     const kpiRef = doc(firestore, 'individual_kpis', kpi.id);
-    const updatedData = { ...kpi, status: 'Upper Manager Approval' as const };
+    // After manager agreement, it goes for Upper Manager (final) approval
+    const updatedData = { status: 'Upper Manager Approval' as const };
     setDocumentNonBlocking(kpiRef, updatedData, { merge: true });
 
     toast({ title: 'Agreement Confirmed', description: `You have agreed to the commitment for KPI: ${kpi.kpiMeasure}. Sent for final approval.`});
