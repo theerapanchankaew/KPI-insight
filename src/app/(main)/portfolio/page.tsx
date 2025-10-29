@@ -31,7 +31,8 @@ import {
   ChevronsUpDown,
   TrendingUp,
   TrendingDown,
-  CalendarDays
+  CalendarDays,
+  RefreshCw
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useUser, useCollection, useMemoFirebase, WithId, useDoc } from '@/firebase';
@@ -246,14 +247,20 @@ const KpiDetailDialog = ({
     onAgree(kpi.id, employeeNotes);
     onClose();
   };
+  
+  const isRejected = kpi.status === 'Rejected';
+  const dialogTitle = isRejected ? "Revise & Resubmit KPI" : "Review & Agree to KPI";
+  const buttonText = isRejected ? "Resubmit to Manager" : "Agree & Submit to Manager";
+  const buttonIcon = isRejected ? <RefreshCw className="mr-2 h-4 w-4" /> : <CheckCircle2 className="mr-2 h-4 w-4" />;
+
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-3xl max-h-[90vh]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Target className="h-5 w-5" />
-            Review & Agree to KPI
+            {isRejected ? <RefreshCw className="h-5 w-5" /> : <Target className="h-5 w-5" />}
+            {dialogTitle}
           </DialogTitle>
           <DialogDescription>
             Review your assigned KPI. Add any notes for your manager before agreeing.
@@ -389,9 +396,9 @@ const KpiDetailDialog = ({
             <Button variant="outline">Close</Button>
           </DialogClose>
           {canAgree && (
-            <Button onClick={handleAgree} className="bg-green-600 hover:bg-green-700">
-              <CheckCircle2 className="mr-2 h-4 w-4" />
-              Agree & Submit to Manager
+            <Button onClick={handleAgree} className={isRejected ? "bg-orange-500 hover:bg-orange-600" : "bg-green-600 hover:bg-green-700"}>
+              {buttonIcon}
+              {buttonText}
             </Button>
           )}
         </DialogFooter>
@@ -416,6 +423,7 @@ const KpiProgressCard = ({
 }) => {
 
   const canAcknowledge = kpi.status === 'Upper Manager Approval';
+  const canRevise = kpi.status === 'Rejected' || kpi.status === 'Draft';
   
   const { targetValue, actualValue, achievement, isPositive } = useMemo(() => {
     let targetNum = 0;
@@ -437,6 +445,32 @@ const KpiProgressCard = ({
         isPositive: isPos
     };
   }, [kpi, submission]);
+  
+  const getActionButton = () => {
+    if (canAcknowledge) {
+      return (
+        <Button size="sm" variant="default" onClick={() => onAcknowledge(kpi.id)}>
+          <Award className="mr-2 h-4 w-4" />
+          Acknowledge
+        </Button>
+      );
+    }
+    if (canRevise) {
+      return (
+        <Button size="sm" variant="destructive" onClick={() => onViewDetails(kpi)}>
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Revise & Resubmit
+        </Button>
+      );
+    }
+    return (
+       <Button size="sm" variant="outline" onClick={() => onViewDetails(kpi)}>
+          <Eye className="mr-2 h-4 w-4" />
+          Details
+      </Button>
+    );
+  };
+
 
   return (
     <Card className="hover:shadow-lg transition-shadow duration-300 flex flex-col">
@@ -487,16 +521,7 @@ const KpiProgressCard = ({
               <CalendarDays className="mr-2 h-4 w-4" />
               Monthly Report
             </Button>
-            <Button size="sm" variant="outline" onClick={() => onViewDetails(kpi)}>
-                <Eye className="mr-2 h-4 w-4" />
-                Details
-            </Button>
-            {canAcknowledge && (
-                <Button size="sm" variant="default" onClick={() => onAcknowledge(kpi.id)}>
-                   <Award className="mr-2 h-4 w-4" />
-                   Acknowledge
-                </Button>
-            )}
+            {getActionButton()}
         </div>
     </Card>
   );
@@ -548,6 +573,7 @@ export default function MyPortfolioPage() {
 
   const kpisQuery = useMemoFirebase(() => {
     if (!firestore || !kpiQueryIds) return null;
+    // Show all KPIs for the user/team regardless of status to give a full picture.
     return query(collection(firestore, 'individual_kpis'), where('employeeId', 'in', kpiQueryIds));
   }, [firestore, kpiQueryIds]);
 
@@ -753,3 +779,5 @@ export default function MyPortfolioPage() {
     </div>
   );
 }
+
+    
