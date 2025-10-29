@@ -5,17 +5,23 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { useAppLayout } from '../layout';
-import { Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell } from 'recharts';
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
 import KpiInsights from './components/kpi-insights';
-import { Building2, Target } from 'lucide-react';
+import { Building2, Target, Edit } from 'lucide-react';
 import { useKpiData } from '@/context/KpiDataContext';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useCollection, useFirestore, useMemoFirebase, WithId } from '@/firebase';
-import { collection, query, where } from 'firebase/firestore';
+import { useCollection, useFirestore, useMemoFirebase, WithId, setDocumentNonBlocking } from '@/firebase';
+import { collection, query, where, doc } from 'firebase/firestore';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronsUpDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
+
 
 interface MonthlyKpi {
   id: string;
@@ -45,26 +51,98 @@ const formatYAxis = (tick: number | string) => {
     return num.toString();
 };
 
+const EditDataDialog = ({
+  isOpen,
+  onClose,
+  monthlyKpi,
+  onSave
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  monthlyKpi: WithId<MonthlyKpi> | null;
+  onSave: (id: string, actual: number) => void;
+}) => {
+  const [actualValue, setActualValue] = useState('');
+
+  useEffect(() => {
+    if (monthlyKpi) {
+      setActualValue(String(monthlyKpi.actual || ''));
+    }
+  }, [monthlyKpi]);
+
+  const handleSave = () => {
+    if (monthlyKpi) {
+      onSave(monthlyKpi.id, Number(actualValue));
+    }
+    onClose();
+  };
+
+  if (!monthlyKpi) return null;
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Update Actual for {monthlyKpi.measure}</DialogTitle>
+          <DialogDescription>
+            Editing data for {MONTH_NAMES[monthlyKpi.month - 1]}, {monthlyKpi.year}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label>Target</Label>
+            <Input value={monthlyKpi.target.toLocaleString()} disabled />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="actual-value">Actual</Label>
+            <Input
+              id="actual-value"
+              type="number"
+              value={actualValue}
+              onChange={(e) => setActualValue(e.target.value)}
+              placeholder="Enter actual value"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+          <Button onClick={handleSave}>Save Actual</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+
 const KpiCard = ({ kpi, monthlyData }: { kpi: WithId<any>, monthlyData: WithId<MonthlyKpi>[] }) => {
+    const firestore = useFirestore();
+    const { toast } = useToast();
+    const [isEditDialogOpen, setEditDialogOpen] = useState(false);
+    const [selectedMonthKpi, setSelectedMonthKpi] = useState<WithId<MonthlyKpi> | null>(null);
+
+    const dataForKpi = useMemo(() => {
+        return monthlyData.filter(m => m.parentKpiId === kpi.id);
+    }, [kpi.id, monthlyData]);
+
     const chartData = useMemo(() => {
-        const dataForKpi = monthlyData.filter(m => m.parentKpiId === kpi.id);
         const dataByMonth = MONTH_NAMES.map((name, index) => {
             const monthData = dataForKpi.find(d => d.month === index + 1);
             return {
                 month: name,
-                Actual: monthData?.actual || 0,
+                Actual: monthData?.actual ?? null, // Use null for missing data to create gaps
                 Target: monthData?.target || 0,
+                isEditable: !!monthData,
             };
         });
         return dataByMonth;
-    }, [kpi.id, monthlyData]);
+    }, [dataForKpi]);
     
     const chartConfig = {
       Actual: { label: 'Actual', color: 'hsl(var(--primary))' },
       Target: { label: 'Target', color: 'hsl(var(--accent))' },
     };
 
-    const totalActual = useMemo(() => chartData.reduce((sum, item) => sum + item.Actual, 0), [chartData]);
+    const totalActual = useMemo(() => chartData.reduce((sum, item) => sum + (item.Actual || 0), 0), [chartData]);
     const yearlyTarget = useMemo(() => {
       const targetValue = typeof kpi.target === 'string' ? parseFloat(kpi.target.replace(/[^0-9.]/g, '')) : kpi.target;
       return isNaN(targetValue) ? 0 : targetValue;
@@ -73,49 +151,91 @@ const KpiCard = ({ kpi, monthlyData }: { kpi: WithId<any>, monthlyData: WithId<M
     const achievement = yearlyTarget > 0 ? (totalActual / yearlyTarget) * 100 : 0;
     
     const yAxisMax = useMemo(() => {
-        const maxActual = Math.max(...chartData.map(d => d.Actual));
-        const maxTarget = Math.max(...chartData.map(d => d.Target));
+        const maxActual = Math.max(...chartData.map(d => d.Actual || 0));
+        const maxTarget = Math.max(...chartData.map(d => d.Target || 0));
         const highestValue = Math.max(maxActual, maxTarget);
-        // Ensure axis is not 0 if all data is 0
-        return highestValue === 0 ? 10 : highestValue;
+        return highestValue === 0 ? 100 : highestValue;
     }, [chartData]);
 
+    const handlePointClick = (data: any) => {
+        if (data && data.activePayload && data.activePayload.length > 0) {
+            const monthName = data.activePayload[0].payload.month;
+            const monthIndex = MONTH_NAMES.indexOf(monthName);
+            const kpiForMonth = dataForKpi.find(d => d.month === monthIndex + 1);
+            if (kpiForMonth) {
+                setSelectedMonthKpi(kpiForMonth);
+                setEditDialogOpen(true);
+            }
+        }
+    };
+    
+    const handleSaveActual = (id: string, actual: number) => {
+        if (!firestore) return;
+        const docRef = doc(firestore, 'monthly_kpis', id);
+        setDocumentNonBlocking(docRef, { actual: actual }, { merge: true });
+        toast({ title: 'Success', description: 'Actual value has been updated.' });
+    };
+
     return (
-        <Card className="shadow-sm border-gray-200 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 group flex flex-col flex-1 min-w-[320px] md:max-w-md">
-            <CardHeader className="pb-2">
-                <div className="flex items-start justify-between">
-                    <CardTitle className="text-base font-semibold">{kpi.measure}</CardTitle>
-                    <Badge variant={achievement >= 100 ? 'success' : achievement >= 80 ? 'warning' : 'destructive'}>
-                        {achievement.toFixed(0)}%
-                    </Badge>
-                </div>
-                <CardDescription>
-                    Yearly Target: {kpi.target} {kpi.unit && `(${kpi.unit})`}
-                </CardDescription>
-            </CardHeader>
-            <CardContent className="flex-1 flex">
-                <div className="h-40 w-full">
-                     <ChartContainer config={chartConfig} className="h-full w-full">
-                        <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                            <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                            <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} fontSize={10} />
-                            <YAxis 
-                                tickLine={false} 
-                                axisLine={false} 
-                                tickMargin={8} 
-                                fontSize={10} 
-                                width={40} 
-                                tickFormatter={formatYAxis}
-                                domain={[0, dataMax => Math.max(yAxisMax, dataMax) * 1.1]}
-                            />
-                            <Tooltip content={<ChartTooltipContent indicator="dot" />} />
-                            <Line type="monotone" dataKey="Actual" stroke="var(--color-Actual)" strokeWidth={2} dot={false} />
-                            <Line type="monotone" dataKey="Target" stroke="var(--color-Target)" strokeWidth={2} strokeDasharray="3 3" dot={false} />
-                        </LineChart>
-                    </ChartContainer>
-                </div>
-            </CardContent>
-        </Card>
+        <>
+            <Card className="shadow-sm border-gray-200 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 group flex flex-col flex-1 min-w-[320px] md:max-w-md">
+                <CardHeader className="pb-2">
+                    <div className="flex items-start justify-between">
+                        <CardTitle className="text-base font-semibold">{kpi.measure}</CardTitle>
+                        <Badge variant={achievement >= 100 ? 'success' : achievement >= 80 ? 'warning' : 'destructive'}>
+                            {achievement.toFixed(0)}%
+                        </Badge>
+                    </div>
+                    <CardDescription>
+                        Yearly Target: {kpi.target} {kpi.unit && `(${kpi.unit})`}
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="flex-1 flex">
+                    <div className="h-40 w-full">
+                        <ChartContainer config={chartConfig} className="h-full w-full">
+                            <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }} onClick={handlePointClick}>
+                                <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                                <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} fontSize={10} />
+                                <YAxis 
+                                    tickLine={false} 
+                                    axisLine={false} 
+                                    tickMargin={8} 
+                                    fontSize={10} 
+                                    width={40} 
+                                    tickFormatter={formatYAxis}
+                                    domain={[0, dataMax => Math.max(yAxisMax, dataMax) * 1.1]}
+                                />
+                                <Tooltip content={<ChartTooltipContent indicator="dot" />} />
+                                <Line 
+                                    type="monotone" 
+                                    dataKey="Actual" 
+                                    stroke="var(--color-Actual)" 
+                                    strokeWidth={2} 
+                                    dot={(props) => {
+                                        const { cx, cy, payload } = props;
+                                        return (
+                                            <g>
+                                                <Cell fill={payload.isEditable ? 'var(--color-Actual)' : 'transparent'} />
+                                                <circle cx={cx} cy={cy} r={4} fill={payload.isEditable ? 'var(--color-Actual)' : 'transparent'} stroke="white" strokeWidth={2} className="cursor-pointer" />
+                                                <circle cx={cx} cy={cy} r={6} fill="transparent" />
+                                            </g>
+                                        );
+                                    }}
+                                    connectNulls={false}
+                                />
+                                <Line type="monotone" dataKey="Target" stroke="var(--color-Target)" strokeWidth={2} strokeDasharray="3 3" dot={false} />
+                            </LineChart>
+                        </ChartContainer>
+                    </div>
+                </CardContent>
+            </Card>
+            <EditDataDialog 
+                isOpen={isEditDialogOpen}
+                onClose={() => setEditDialogOpen(false)}
+                monthlyKpi={selectedMonthKpi}
+                onSave={handleSaveActual}
+            />
+        </>
     )
 }
 
@@ -193,7 +313,6 @@ export default function DashboardPage() {
 
   const monthlyKpisQuery = useMemoFirebase(() => {
     if (!firestore) return null;
-    // Assuming the current year for simplicity. Could be made dynamic.
     const currentYear = new Date().getFullYear();
     return query(collection(firestore, 'monthly_kpis'), where('year', '==', currentYear));
   }, [firestore]);
@@ -272,5 +391,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-    
