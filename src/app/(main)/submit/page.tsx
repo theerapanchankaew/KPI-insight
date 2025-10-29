@@ -174,7 +174,7 @@ export default function SubmitPage() {
       // Employees only see their own active KPIs
       return query(baseQuery, 
         where('employeeId', '==', user.uid), 
-        where('status', 'in', ['Draft', 'In-Progress', 'Rejected', 'Agreed', 'Manager Review'])
+        where('status', 'in', ['Draft', 'In-Progress', 'Rejected', 'Agreed', 'Manager Review', 'Upper Manager Approval'])
       );
     }
     return null;
@@ -211,13 +211,15 @@ export default function SubmitPage() {
   
 
   const summaryStats = useMemo(() => {
-      const uniqueKpiIds = new Set(allSubmissions?.map(s => s.kpiId));
-      const inProgressCount = allKpis?.filter(k => k.status === 'In-Progress').length || 0;
+      if(!allKpis) return { totalInProgress: 0, needsSubmission: 0, submitted: 0 };
+      const submittedIds = new Set(allSubmissions?.map(s => s.kpiId));
+      const inProgressKpis = allKpis.filter(k => k.status === 'In-Progress');
+      const needsSubmissionCount = inProgressKpis.filter(k => !submittedIds.has(k.id)).length;
       
       return {
-        totalInProgress: allKpis?.length || 0,
-        needsSubmission: inProgressCount - uniqueKpiIds.size,
-        submitted: uniqueKpiIds.size,
+        totalInProgress: allKpis.filter(k=> k.status !== 'Closed').length,
+        needsSubmission: needsSubmissionCount,
+        submitted: submittedIds.size,
       };
   }, [allKpis, allSubmissions]);
   
@@ -331,7 +333,7 @@ export default function SubmitPage() {
                     const canResubmit = submissionStatus === 'Rejected';
 
                     return (
-                        <TableRow key={kpi.id} className={cn(isSubmitted && !canResubmit && "bg-green-50/60")}>
+                        <TableRow key={kpi.id} className={cn(isSubmitted && !canResubmit && kpi.status !== 'Rejected' && "bg-green-50/60")}>
                         {isManagerOrAdmin && (
                             <TableCell>
                                 <div className="font-medium">{employee?.name || kpi.employeeId}</div>
@@ -377,6 +379,14 @@ export default function SubmitPage() {
                                         <Button variant="secondary" size="sm" onClick={() => handleForceToAgreed(kpi.id)}>
                                             <Send className="w-4 h-4 mr-2" />
                                             Submit to Action Center
+                                        </Button>
+                                    );
+                                }
+                                if (kpi.status === 'Rejected') {
+                                    return (
+                                        <Button variant="destructive" size="sm" onClick={() => handleForceToAgreed(kpi.id)}>
+                                            <Send className="w-4 h-4 mr-2" />
+                                            Resubmit to Action Center
                                         </Button>
                                     );
                                 }
