@@ -218,7 +218,7 @@ export default function PortfolioPage() {
                                     // Per SRS, employee action needed on Draft or Rejected
                                     const canReview = kpi.status === 'Draft' || kpi.status === 'Rejected';
                                     // Per SRS, employee acknowledges after Upper Manager Approval
-                                    const canAcknowledge = kpi.status === 'Upper Manager Approval';
+                                    const canAcknowledge = kpi.status === 'Upper Manager Approval' || kpi.status === 'Employee Acknowledged';
 
                                     return (
                                         <TableRow key={kpi.id}>
@@ -239,7 +239,7 @@ export default function PortfolioPage() {
                                                     <Button size="sm" onClick={() => handleReviewClick(kpi)}>
                                                         Review & Agree
                                                     </Button>
-                                                ) : canAcknowledge ? (
+                                                ) : canAcknowledge && kpi.status !== 'In-Progress' ? (
                                                      <Button size="sm" variant="secondary" onClick={() => handleAcknowledge(kpi.id)}>
                                                         <Check className="w-4 h-4 mr-1"/> Acknowledge
                                                     </Button>
@@ -273,3 +273,5 @@ export default function PortfolioPage() {
         </div>
     );
 }
+
+    

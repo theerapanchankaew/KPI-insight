@@ -61,7 +61,7 @@ const RejectDialog = ({ isOpen, onClose, onConfirm, kpiName }: { isOpen: boolean
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Reject KPI: {kpiName}</DialogTitle>
+                    <DialogTitle>Reject: {kpiName}</DialogTitle>
                     <DialogDescription>
                         Please provide a reason for the rejection. This will be sent back to the employee.
                     </DialogDescription>

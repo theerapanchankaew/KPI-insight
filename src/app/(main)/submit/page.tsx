@@ -91,7 +91,7 @@ const SubmitDataDialog = ({ isOpen, onOpenChange, kpi, onSubmit }: {
                     <div className="p-4 bg-gray-50/50 rounded-lg space-y-2 border">
                         <p><strong>Measure:</strong> {kpi.kpiMeasure}</p>
                         <p><strong>Weight:</strong> {kpi.weight}%</p>
-                        <p><strong>Target:</strong> {kpi.type === 'cascaded' ? kpi.target : '5-level scale'}</p>
+                        <p><strong>Target:</strong> {kpi.type === 'cascaded' ? kpi.target : "5-level scale"}</p>
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="actual-value">Actual Value</Label>
@@ -145,7 +145,7 @@ export default function SubmitPage() {
     return query(
       collection(firestore, 'individual_kpis'), 
       where('employeeId', '==', user.uid),
-      where('status', 'in', ['In-Progress', 'Employee Acknowledged'])
+      where('status', '==', 'In-Progress')
     );
   }, [firestore, user]);
   
@@ -310,3 +310,5 @@ export default function SubmitPage() {
     </div>
   );
 }
+
+    
