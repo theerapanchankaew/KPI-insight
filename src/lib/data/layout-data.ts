@@ -1,3 +1,4 @@
+
 import {
   LayoutGrid,
   Network,
@@ -7,7 +8,8 @@ import {
   Settings,
   FileUp,
   User,
-  Users
+  Users,
+  Target // Added Target icon
 } from 'lucide-react';
 
 export const appConfig = {
@@ -34,7 +36,7 @@ export const navItems = [
     href: '/portfolio',
     label: 'My Portfolio',
     description: 'KPI ของฉัน',
-    icon: User,
+    icon: Target, // Changed from User to Target
   },
   {
     href: '/submit',
