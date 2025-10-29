@@ -7,7 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Dialog, 
   DialogContent, 
@@ -28,10 +27,10 @@ import {
   MessageSquare,
   Award,
   Target,
-  TrendingUp,
   Eye,
-  Users,
-  ChevronsUpDown
+  ChevronsUpDown,
+  TrendingUp,
+  TrendingDown
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useUser, useCollection, useMemoFirebase, WithId, useDoc } from '@/firebase';
@@ -64,6 +63,7 @@ interface IndividualKpiBase {
 interface AssignedCascadedKpi extends IndividualKpiBase {
   type: 'cascaded';
   target: string;
+  unit: string;
 }
 
 interface CommittedKpi extends IndividualKpiBase {
@@ -79,6 +79,13 @@ interface CommittedKpi extends IndividualKpiBase {
 }
 
 type IndividualKpi = (AssignedCascadedKpi | CommittedKpi) & { id: string };
+
+interface KpiSubmission {
+    kpiId: string;
+    actualValue: string;
+    submissionDate: any;
+    status: string;
+}
 
 interface AppUser {
   role: 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee';
@@ -115,6 +122,10 @@ const getStatusIcon = (status: IndividualKpi['status']) => {
   return icons[status] || icons['Draft'];
 };
 
+const parseValue = (value: string) => {
+    if (typeof value !== 'string') return 0;
+    return parseFloat(value.replace(/[^0-9.-]+/g, "")) || 0;
+};
 
 // ==================== KPI DETAIL/ACTION DIALOG ====================
 
@@ -299,409 +310,95 @@ const KpiDetailDialog = ({
   );
 };
 
-
-// ==================== KPI CARD COMPONENT ====================
-
-const KpiCard = ({ 
-  kpi, 
+// ==================== KPI CARD COMPONENT (WITH PROGRESS) ====================
+const KpiProgressCard = ({ 
+  kpi,
+  submission,
   onViewDetails,
   onAcknowledge,
 }: { 
   kpi: WithId<IndividualKpi>; 
+  submission: WithId<KpiSubmission> | undefined;
   onViewDetails: (kpi: WithId<IndividualKpi>) => void;
   onAcknowledge: (kpiId: string) => void;
 }) => {
 
-  const canAgree = kpi.status === 'Draft' || kpi.status === 'Rejected';
   const canAcknowledge = kpi.status === 'Upper Manager Approval';
+  
+  const { targetValue, actualValue, achievement, isPositive } = useMemo(() => {
+    if (kpi.type !== 'cascaded') {
+      return { targetValue: '5-Level Scale', actualValue: submission?.actualValue ?? 'N/A', achievement: -1, isPositive: true };
+    }
+    const target = parseValue(kpi.target);
+    const actual = submission ? parseValue(submission.actualValue) : 0;
+    const achievement = target > 0 ? (actual / target) * 100 : 0;
+    
+    // Simple logic for trend direction. Can be made more complex.
+    const isPositive = actual >= target;
+
+    return { targetValue: kpi.target, actualValue: submission?.actualValue ?? 'Not Submitted', achievement, isPositive };
+  }, [kpi, submission]);
 
   return (
-    <Card className="hover:shadow-md transition-shadow">
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex-1 pr-2">
-            <h4 className="font-semibold text-gray-900 mb-1">{kpi.kpiMeasure}</h4>
-            <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant="outline" className="text-xs">
-                {kpi.type === 'cascaded' ? 'Cascaded' : 'Committed'}
-              </Badge>
-              <Badge className={cn("text-xs", getStatusColor(kpi.status))}>
-                {getStatusIcon(kpi.status)}
-                <span className="ml-1">{kpi.status}</span>
-              </Badge>
+    <Card className="hover:shadow-lg transition-shadow duration-300 flex flex-col">
+        <CardHeader className="pb-2">
+            <div className="flex justify-between items-start">
+                <h4 className="font-semibold text-gray-900 flex-1 pr-2">{kpi.kpiMeasure}</h4>
+                <Badge className={cn("text-xs", getStatusColor(kpi.status))}>
+                  {getStatusIcon(kpi.status)}
+                  <span className="ml-1">{kpi.status}</span>
+                </Badge>
             </div>
-          </div>
-          <div className="text-right">
-            <div className="text-2xl font-bold text-gray-900">{kpi.weight}%</div>
-            <div className="text-xs text-gray-500">Weight</div>
-          </div>
-        </div>
-
-        {kpi.type === 'cascaded' && (
-          <div className="mb-3">
-            <Label className="text-xs text-gray-500">Target</Label>
-            <p className="text-sm font-semibold">{kpi.target}</p>
-          </div>
-        )}
-
-        {kpi.type === 'committed' && (
-          <div className="mb-3">
-            <Label className="text-xs text-gray-500">Objective</Label>
-            <p className="text-sm">{kpi.task}</p>
-          </div>
-        )}
-
-        <div className="flex justify-end gap-2">
-            <Button 
-                size="sm" 
-                variant="outline" 
-                onClick={() => onViewDetails(kpi)}
-            >
-                <Eye className="mr-2 h-4 w-4" />
-                View Details
-            </Button>
-            {canAgree && (
-                 <Button 
-                    size="sm" 
-                    variant="default"
-                    onClick={() => onViewDetails(kpi)}
-                    className="bg-orange-500 hover:bg-orange-600"
-                >
-                    Review & Agree
-                </Button>
+            <p className="text-xs text-gray-500">Weight: {kpi.weight}% • Type: {kpi.type}</p>
+        </CardHeader>
+        <CardContent className="flex-1 flex flex-col justify-between">
+            {kpi.type === 'cascaded' ? (
+                <div className="space-y-3">
+                    <div className="flex justify-between items-baseline">
+                        <div>
+                            <p className="text-xs text-gray-500">Actual</p>
+                            <p className="text-xl font-bold text-primary">{actualValue}</p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-xs text-gray-500">Target</p>
+                            <p className="font-semibold">{targetValue}</p>
+                        </div>
+                    </div>
+                    <div>
+                        <Progress value={achievement} className="h-2" />
+                        <div className="flex justify-between items-center mt-1">
+                            <p className="text-xs font-semibold text-primary">{achievement.toFixed(1)}% Achieved</p>
+                            <div className={cn("flex items-center text-xs", isPositive ? "text-green-600" : "text-red-600")}>
+                                {isPositive ? <TrendingUp className="h-4 w-4 mr-1"/> : <TrendingDown className="h-4 w-4 mr-1"/>}
+                                {isPositive ? 'On Track' : 'Needs Attention'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                <div className="text-center py-4 bg-gray-50 rounded-md">
+                    <p className="text-sm text-gray-700">Committed Task</p>
+                    <p className="text-xs text-gray-500">Achievement based on 5-level scale</p>
+                    <p className="text-lg font-semibold text-primary mt-1">{submission?.actualValue ?? 'Not Submitted'}</p>
+                </div>
             )}
+        </CardContent>
+        <div className="p-4 pt-2 flex justify-end gap-2">
+            <Button size="sm" variant="outline" onClick={() => onViewDetails(kpi)}>
+                <Eye className="mr-2 h-4 w-4" />
+                Details
+            </Button>
             {canAcknowledge && (
-                <Button 
-                    size="sm" 
-                    variant="secondary"
-                    onClick={() => onAcknowledge(kpi.id)}
-                    className="bg-indigo-600 hover:bg-indigo-700"
-                >
+                <Button size="sm" variant="default" onClick={() => onAcknowledge(kpi.id)}>
                    <Award className="mr-2 h-4 w-4" />
                    Acknowledge
                 </Button>
             )}
         </div>
-      </CardContent>
     </Card>
   );
 };
 
-
-// ==================== EMPLOYEE VIEW COMPONENT ====================
-const EmployeePortfolioView = ({ 
-  kpis, 
-  onViewDetails, 
-  onAcknowledge,
-  onAgreeToKpi
-}: {
-  kpis: WithId<IndividualKpi>[];
-  onViewDetails: (kpi: WithId<IndividualKpi>) => void;
-  onAcknowledge: (kpiId: string) => void;
-  onAgreeToKpi: (kpiId: string, notes: string) => void;
-}) => {
-    // Group KPIs by status
-    const kpisByStatus = useMemo(() => {
-        if (!kpis) return { draft: [], active: [], completed: [], all: [] };
-        
-        return {
-        draft: kpis.filter(k => k.status === 'Draft' || k.status === 'Rejected'),
-        active: kpis.filter(k => ['Agreed', 'In-Progress', 'Manager Review', 'Upper Manager Approval'].includes(k.status)),
-        completed: kpis.filter(k => ['Employee Acknowledged', 'Closed'].includes(k.status)),
-        all: kpis,
-        };
-    }, [kpis]);
-
-    // Calculate total weight
-    const totalWeight = useMemo(() => {
-        if (!kpis) return 0;
-        return kpis.reduce((sum, kpi) => sum + kpi.weight, 0);
-    }, [kpis]);
-
-    // Statistics
-    const stats = useMemo(() => {
-        if (!kpis) return { total: 0, agreed: 0, pending: 0, completed: 0 };
-        
-        return {
-        total: kpis.length,
-        agreed: kpis.filter(k => k.status !== 'Draft' && k.status !== 'Rejected').length,
-        pending: kpisByStatus.draft.length,
-        completed: kpisByStatus.completed.length,
-        };
-    }, [kpis, kpisByStatus]);
-    
-    if (!kpis) {
-        return (
-            <Card>
-                <CardContent className="p-12 text-center">
-                    <Target className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-                    <p className="text-gray-600">No KPIs have been assigned to you yet.</p>
-                    <p className="text-sm text-gray-500 mt-2">
-                        Once your manager assigns KPIs, they will appear here.
-                    </p>
-                </CardContent>
-            </Card>
-        );
-    }
-    
-    return (
-        <div className="space-y-6">
-            {/* Statistics Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <Card>
-                <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                    <div>
-                        <p className="text-sm text-gray-500">Total KPIs</p>
-                        <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
-                    </div>
-                    <Target className="h-8 w-8 text-blue-500" />
-                    </div>
-                </CardContent>
-                </Card>
-
-                <Card>
-                <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                    <div>
-                        <p className="text-sm text-gray-500">Pending Agreement</p>
-                        <p className="text-2xl font-bold text-orange-600">{stats.pending}</p>
-                    </div>
-                    <Clock className="h-8 w-8 text-orange-500" />
-                    </div>
-                </CardContent>
-                </Card>
-
-                <Card>
-                <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                    <div>
-                        <p className="text-sm text-gray-500">Agreed/Active</p>
-                        <p className="text-2xl font-bold text-green-600">{stats.agreed}</p>
-                    </div>
-                    <CheckCircle2 className="h-8 w-8 text-green-500" />
-                    </div>
-                </CardContent>
-                </Card>
-
-                <Card>
-                <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                    <div>
-                        <p className="text-sm text-gray-500">Total Weight</p>
-                        <p className="text-2xl font-bold text-purple-600">{totalWeight}%</p>
-                    </div>
-                    <TrendingUp className="h-8 w-8 text-purple-500" />
-                    </div>
-                    { totalWeight > 100 ? (
-                        <div className='text-xs text-destructive mt-1'>Weight exceeds 100%</div>
-                    ) : (
-                        <Progress value={totalWeight} className="mt-2 h-2" />
-                    )}
-                </CardContent>
-                </Card>
-            </div>
-
-            {/* Action Required Alert */}
-            {kpisByStatus.draft.length > 0 && (
-                <Card className="border-orange-200 bg-orange-50">
-                <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                    <AlertCircle className="h-5 w-5 text-orange-600 flex-shrink-0" />
-                    <div>
-                        <p className="font-semibold text-orange-900">
-                        Action Required: {kpisByStatus.draft.length} KPI(s) pending your agreement
-                        </p>
-                        <p className="text-sm text-orange-700 mt-1">
-                        Review and agree to your assigned KPIs to activate them
-                        </p>
-                    </div>
-                    </div>
-                </CardContent>
-                </Card>
-            )}
-
-            {/* KPI Tabs */}
-            <Tabs defaultValue="pending" className="w-full">
-                <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="pending">
-                    Action Required
-                    {kpisByStatus.draft.length > 0 && (
-                    <Badge className="ml-2 bg-orange-500">{kpisByStatus.draft.length}</Badge>
-                    )}
-                </TabsTrigger>
-                <TabsTrigger value="active">
-                    Active / In Progress
-                    {kpisByStatus.active.length > 0 && (
-                    <Badge className="ml-2 bg-yellow-500">{kpisByStatus.active.length}</Badge>
-                    )}
-                </TabsTrigger>
-                <TabsTrigger value="completed">Completed</TabsTrigger>
-                <TabsTrigger value="all">All KPIs</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="pending" className="mt-6">
-                {kpisByStatus.draft.length === 0 ? (
-                    <Card>
-                    <CardContent className="p-12 text-center">
-                        <CheckCircle2 className="h-12 w-12 mx-auto text-green-500 mb-4" />
-                        <p className="text-gray-600">No pending KPIs</p>
-                        <p className="text-sm text-gray-500 mt-2">KPIs awaiting your review or revision will appear here.</p>
-                    </CardContent>
-                    </Card>
-                ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {kpisByStatus.draft.map(kpi => (
-                        <KpiCard key={kpi.id} kpi={kpi} onViewDetails={onViewDetails} onAcknowledge={onAcknowledge} />
-                    ))}
-                    </div>
-                )}
-                </TabsContent>
-
-                <TabsContent value="active" className="mt-6">
-                {kpisByStatus.active.length === 0 ? (
-                    <Card>
-                    <CardContent className="p-12 text-center">
-                        <Clock className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-                        <p className="text-gray-600">No active KPIs</p>
-                        <p className="text-sm text-gray-500 mt-2">KPIs that are in progress or awaiting your acknowledgment will appear here.</p>
-                    </CardContent>
-                    </Card>
-                ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {kpisByStatus.active.map(kpi => (
-                        <KpiCard key={kpi.id} kpi={kpi} onViewDetails={onViewDetails} onAcknowledge={onAcknowledge} />
-                    ))}
-                    </div>
-                )}
-                </TabsContent>
-
-                <TabsContent value="completed" className="mt-6">
-                {kpisByStatus.completed.length === 0 ? (
-                    <Card>
-                    <CardContent className="p-12 text-center">
-                        <Award className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-                        <p className="text-gray-600">No completed KPIs</p>
-                    </CardContent>
-                    </Card>
-                ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {kpisByStatus.completed.map(kpi => (
-                        <KpiCard key={kpi.id} kpi={kpi} onViewDetails={onViewDetails} onAcknowledge={onAcknowledge} />
-                    ))}
-                    </div>
-                )}
-                </TabsContent>
-
-                <TabsContent value="all" className="mt-6">
-                {!kpis || kpis.length === 0 ? (
-                    <Card>
-                    <CardContent className="p-12 text-center">
-                        <Target className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-                        <p className="text-gray-600">No KPIs assigned yet</p>
-                        <p className="text-sm text-gray-500 mt-2">
-                        Your manager will assign KPIs to you soon
-                        </p>
-                    </CardContent>
-                    </Card>
-                ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {kpis.map(kpi => (
-                        <KpiCard key={kpi.id} kpi={kpi} onViewDetails={onViewDetails} onAcknowledge={onAcknowledge} />
-                    ))}
-                    </div>
-                )}
-                </TabsContent>
-            </Tabs>
-        </div>
-    );
-}
-
-// ==================== MANAGER VIEW COMPONENT ====================
-const ManagerPortfolioView = ({ allKpis, teamMembers, onViewDetails }: {
-    allKpis: WithId<IndividualKpi>[] | null;
-    teamMembers: WithId<any>[] | null;
-    onViewDetails: (kpi: WithId<IndividualKpi>) => void;
-}) => {
-
-    const kpisByEmployee = useMemo(() => {
-        if (!allKpis) return {};
-        return allKpis.reduce((acc, kpi) => {
-            if (!acc[kpi.employeeId]) {
-                acc[kpi.employeeId] = [];
-            }
-            acc[kpi.employeeId].push(kpi);
-            return acc;
-        }, {} as Record<string, WithId<IndividualKpi>[]>);
-    }, [allKpis]);
-
-    if (!teamMembers || teamMembers.length === 0) {
-        return <Card><CardContent className="p-12 text-center text-gray-500">No team members found in your department.</CardContent></Card>;
-    }
-
-    return (
-        <div className="space-y-6">
-            {teamMembers.map(employee => {
-                const employeeKpis = kpisByEmployee[employee.id] || [];
-                const totalWeight = employeeKpis.reduce((sum, kpi) => sum + kpi.weight, 0);
-
-                return (
-                    <Collapsible key={employee.id} defaultOpen className="border rounded-lg">
-                        <CollapsibleTrigger asChild>
-                            <div className="flex items-center justify-between p-4 cursor-pointer bg-gray-50 rounded-t-lg">
-                                <div className="flex items-center gap-3">
-                                    <Avatar>
-                                        <AvatarFallback>{employee.name.charAt(0)}</AvatarFallback>
-                                    </Avatar>
-                                    <div>
-                                        <p className="font-semibold">{employee.name}</p>
-                                        <p className="text-sm text-muted-foreground">{employee.position}</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-4">
-                                     <div className="text-right">
-                                        <p className="font-semibold">{totalWeight}%</p>
-                                        <p className="text-xs text-muted-foreground">Total Weight</p>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="font-semibold">{employeeKpis.length}</p>
-                                        <p className="text-xs text-muted-foreground">KPIs</p>
-                                    </div>
-                                    <Button variant="ghost" size="sm">
-                                        <ChevronsUpDown className="h-4 w-4" />
-                                    </Button>
-                                </div>
-                            </div>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent className="p-4 space-y-3">
-                            {employeeKpis.length > 0 ? (
-                                employeeKpis.map(kpi => (
-                                    <div key={kpi.id} className="flex items-center justify-between p-3 border rounded-md hover:bg-gray-50/50">
-                                        <div className="flex-1">
-                                            <p className="font-medium text-sm">{kpi.kpiMeasure}</p>
-                                            <div className="flex items-center gap-2 mt-1">
-                                                <Badge className={cn('text-xs', getStatusColor(kpi.status))}>
-                                                    {getStatusIcon(kpi.status)}
-                                                    <span className="ml-1.5">{kpi.status}</span>
-                                                </Badge>
-                                                <span className="text-xs text-gray-500">Weight: {kpi.weight}%</span>
-                                            </div>
-                                        </div>
-                                        <Button size="sm" variant="outline" onClick={() => onViewDetails(kpi)}>
-                                            <Eye className="mr-2 h-4 w-4" /> View
-                                        </Button>
-                                    </div>
-                                ))
-                            ) : (
-                                <p className="text-sm text-center text-gray-500 py-4">No KPIs assigned to this employee.</p>
-                            )}
-                        </CollapsibleContent>
-                    </Collapsible>
-                )
-            })}
-        </div>
-    )
-}
 
 // ==================== MAIN COMPONENT ====================
 
@@ -728,68 +425,77 @@ export default function MyPortfolioPage() {
   }, [setPageTitle]);
 
   const teamMembers = useMemo(() => {
-    if (!isManagerOrAdmin || !allEmployees || !userProfile) return null;
-    if (userProfile.role === 'Admin' || userProfile.role === 'VP') {
-        return allEmployees; // Admins/VPs see everyone
+    if (!allEmployees || !userProfile || !user) return [];
+    if (isManagerOrAdmin) {
+        if (userProfile.role === 'Admin' || userProfile.role === 'VP') {
+            return allEmployees; 
+        }
+        return allEmployees.filter(emp => emp.department === userProfile.department);
     }
-    // Managers/AVPs see their department
-    return allEmployees.filter(emp => emp.department === userProfile.department && emp.id !== user.uid);
+    // For employees, the "team" is just themselves
+    return allEmployees.filter(emp => emp.id === user.uid);
   }, [isManagerOrAdmin, allEmployees, userProfile, user]);
 
   
-  // Get individual KPIs for the current user or their team
-  const kpisQuery = useMemoFirebase(() => {
-    if (!firestore || !user || isProfileLoading) return null;
-    
-    const baseQuery = collection(firestore, 'individual_kpis');
+  const kpiQueryIds = useMemo(() => {
+    if (teamMembers.length === 0) return null;
+    // Firestore 'in' query is limited to 30 items.
+    return teamMembers.map(tm => tm.id).slice(0, 30);
+  }, [teamMembers]);
 
-    if (isManagerOrAdmin) {
-        if (userProfile?.role === 'Admin' || userProfile?.role === 'VP') {
-             return baseQuery; // Admins/VPs see all KPIs
-        }
-        if (teamMembers && teamMembers.length > 0) {
-            const teamIds = teamMembers.map(tm => tm.id);
-            // Firestore 'in' query is limited to 30 elements. For larger teams, this needs pagination or a different approach.
-            return query(baseQuery, where('employeeId', 'in', [...teamIds, user.uid]));
-        }
-    }
-    
-    // Default for employees
-    return query(baseQuery, where('employeeId', '==', user.uid));
-  }, [firestore, user, isProfileLoading, isManagerOrAdmin, userProfile, teamMembers]);
+
+  const kpisQuery = useMemoFirebase(() => {
+    if (!firestore || !kpiQueryIds) return null;
+    return query(collection(firestore, 'individual_kpis'), where('employeeId', 'in', kpiQueryIds));
+  }, [firestore, kpiQueryIds]);
 
   const { data: kpis, isLoading: isKpisLoading } = useCollection<WithId<IndividualKpi>>(kpisQuery);
-  const userKpis = useMemo(() => kpis?.filter(k => k.employeeId === user?.uid) || [], [kpis, user]);
+  
+  // Fetch all submissions related to the fetched KPIs
+  const submissionKpiIds = useMemo(() => {
+    if(!kpis || kpis.length === 0) return null;
+    // Limit to 30 to match 'in' query limit
+    return kpis.map(k => k.id).slice(0, 30);
+  }, [kpis]);
+
+  const submissionsQuery = useMemoFirebase(() => {
+    if (!firestore || !submissionKpiIds) return null;
+    return query(collection(firestore, 'submissions'), where('kpiId', 'in', submissionKpiIds));
+  }, [firestore, submissionKpiIds]);
+
+  const { data: submissions, isLoading: isSubmissionsLoading } = useCollection<WithId<KpiSubmission>>(submissionsQuery);
+
+  const submissionsMap = useMemo(() => {
+      const map = new Map<string, WithId<KpiSubmission>>();
+      if (submissions) {
+          // Get the most recent submission for each KPI
+          submissions.forEach(s => {
+              if (!map.has(s.kpiId) || s.submissionDate > map.get(s.kpiId)!.submissionDate) {
+                  map.set(s.kpiId, s);
+              }
+          });
+      }
+      return map;
+  }, [submissions]);
 
   // ==================== HANDLERS ====================
 
   const handleAgreeToKpi = async (kpiId: string, notes: string) => {
-    if (!firestore || !user) {
-      toast({ title: "Error", description: "Unable to agree to KPI", variant: 'destructive' });
-      return;
-    }
-
+    if (!firestore || !user) return;
     try {
       const kpiRef = doc(firestore, 'individual_kpis', kpiId);
       setDocumentNonBlocking(kpiRef, {
         status: 'Agreed',
         employeeNotes: notes,
-        rejectionReason: '', // Clear previous rejection reason
+        rejectionReason: '', 
         agreedAt: serverTimestamp(),
       }, { merge: true });
-
       toast({
         title: "KPI Submitted for Approval! ✓",
         description: "Your manager has been notified and will review your commitment.",
-        duration: 5000,
       });
     } catch (error) {
-      console.error('Error agreeing to KPI:', error);
-      toast({
-        title: "Error",
-        description: "Failed to update KPI status",
-        variant: 'destructive',
-      });
+      toast({ title: "Error", description: "Failed to update KPI status", variant: 'destructive' });
     }
   };
 
@@ -797,21 +503,10 @@ export default function MyPortfolioPage() {
     if (!firestore) return;
     try {
       const kpiRef = doc(firestore, 'individual_kpis', kpiId);
-      setDocumentNonBlocking(kpiRef, {
-        status: 'In-Progress',
-        acknowledgedAt: serverTimestamp(),
-      }, { merge: true });
-      toast({
-        title: "KPI Acknowledged!",
-        description: "The KPI is now active in your portfolio.",
-      });
+      setDocumentNonBlocking(kpiRef, { status: 'In-Progress', acknowledgedAt: serverTimestamp() }, { merge: true });
+      toast({ title: "KPI Acknowledged!", description: "The KPI is now active in your portfolio." });
     } catch (error) {
-       console.error('Error acknowledging to KPI:', error);
-       toast({
-        title: "Error",
-        description: "Failed to acknowledge KPI",
-        variant: 'destructive',
-      });
+       toast({ title: "Error", description: "Failed to acknowledge KPI", variant: 'destructive' });
     }
   };
 
@@ -822,13 +517,17 @@ export default function MyPortfolioPage() {
   
   // ==================== RENDER ====================
 
-  const isLoading = isUserLoading || isKpisLoading || isProfileLoading || isEmployeesLoading;
+  const isLoading = isUserLoading || isKpisLoading || isProfileLoading || isEmployeesLoading || isSubmissionsLoading;
 
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-32" />
-        <Skeleton className="h-64" />
+        <Skeleton className="h-8 w-1/3" />
+        <Skeleton className="h-6 w-1/2" />
+        <div className="space-y-4 pt-4">
+            <Skeleton className="h-40" />
+            <Skeleton className="h-40" />
+        </div>
       </div>
     );
   }
@@ -846,31 +545,70 @@ export default function MyPortfolioPage() {
 
   return (
     <div className="fade-in space-y-6">
-      {/* Header Section */}
       <div>
-        <h3 className="text-2xl font-bold text-gray-900 mb-2">Portfolio</h3>
+        <h3 className="text-2xl font-bold text-gray-900 mb-2">KPI Portfolio</h3>
         <p className="text-gray-600">
-          {isManagerOrAdmin ? "Review and manage your team's KPI portfolio." : "Review and manage your Key Performance Indicators"}
+          Track and report results against your performance targets.
         </p>
       </div>
       
-      {isManagerOrAdmin ? (
-        <ManagerPortfolioView 
-            allKpis={kpis}
-            teamMembers={teamMembers}
-            onViewDetails={handleViewDetails}
-        />
-      ) : (
-        <EmployeePortfolioView 
-            kpis={userKpis}
-            onViewDetails={handleViewDetails}
-            onAcknowledge={handleAcknowledgeKpi}
-            onAgreeToKpi={handleAgreeToKpi}
-        />
-      )}
+      <div className="space-y-8">
+        {(teamMembers || []).map(employee => {
+            const employeeKpis = kpis?.filter(k => k.employeeId === employee.id) || [];
+            const needsActionCount = employeeKpis.filter(k => ['Draft', 'Rejected', 'Upper Manager Approval'].includes(k.status)).length;
+            if (employeeKpis.length === 0) {
+              return null; // Don't show employees with no KPIs for a cleaner view
+            }
 
+            return (
+              <Collapsible key={employee.id} defaultOpen className="border rounded-lg">
+                  <CollapsibleTrigger asChild>
+                      <div className="flex items-center justify-between p-4 cursor-pointer bg-gray-50 rounded-t-lg">
+                          <div className="flex items-center gap-3">
+                              <Avatar>
+                                  <AvatarFallback>{employee.name.charAt(0)}</AvatarFallback>
+                              </Avatar>
+                              <div>
+                                  <p className="font-semibold">{employee.name}</p>
+                                  <p className="text-sm text-muted-foreground">{employee.position}</p>
+                              </div>
+                          </div>
+                          <div className="flex items-center gap-4">
+                              {needsActionCount > 0 && (
+                                  <Badge variant="destructive">{needsActionCount} Action(s) Required</Badge>
+                              )}
+                              <div className="text-right hidden sm:block">
+                                  <p className="font-semibold">{employeeKpis.length}</p>
+                                  <p className="text-xs text-muted-foreground">Total KPIs</p>
+                              </div>
+                              <Button variant="ghost" size="sm" className="shrink-0">
+                                  <ChevronsUpDown className="h-4 w-4" />
+                              </Button>
+                          </div>
+                      </div>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="p-4">
+                      {employeeKpis.length > 0 ? (
+                          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                              {employeeKpis.map(kpi => (
+                                  <KpiProgressCard
+                                      key={kpi.id}
+                                      kpi={kpi}
+                                      submission={submissionsMap.get(kpi.id)}
+                                      onViewDetails={handleViewDetails}
+                                      onAcknowledge={handleAcknowledgeKpi}
+                                  />
+                              ))}
+                          </div>
+                      ) : (
+                          <p className="text-sm text-center text-gray-500 py-8">No KPIs assigned to this employee.</p>
+                      )}
+                  </CollapsibleContent>
+              </Collapsible>
+            )
+        })}
+      </div>
 
-      {/* Detail/Action Dialog */}
       <KpiDetailDialog
         kpi={selectedKpi}
         isOpen={isDetailDialogOpen}
@@ -879,8 +617,10 @@ export default function MyPortfolioPage() {
           setSelectedKpi(null);
         }}
         onAgree={handleAgreeToKpi}
-        canAgree={!!selectedKpi && (selectedKpi.status === 'Draft' || selectedKpi.status === 'Rejected') && selectedKpi.employeeId === user.uid}
+        canAgree={!!selectedKpi && ['Draft', 'Rejected'].includes(selectedKpi.status) && selectedKpi.employeeId === user.uid}
       />
     </div>
   );
 }
+
+    
