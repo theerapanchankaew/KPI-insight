@@ -29,14 +29,20 @@ import {
   Award,
   Target,
   TrendingUp,
-  Eye
+  Eye,
+  Users,
+  ChevronsUpDown
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useUser, useCollection, useMemoFirebase, WithId } from '@/firebase';
-import { collection, query, where, doc, serverTimestamp } from 'firebase/firestore';
+import { useFirestore, useUser, useCollection, useMemoFirebase, WithId, useDoc } from '@/firebase';
+import { collection, query, where, doc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { useKpiData } from '@/context/KpiDataContext';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+
 
 // ==================== TYPE DEFINITIONS ====================
 
@@ -73,6 +79,11 @@ interface CommittedKpi extends IndividualKpiBase {
 }
 
 type IndividualKpi = (AssignedCascadedKpi | CommittedKpi) & { id: string };
+
+interface AppUser {
+  role: 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee';
+  department: string;
+}
 
 // ==================== UTILITY FUNCTIONS ====================
 
@@ -377,6 +388,321 @@ const KpiCard = ({
 };
 
 
+// ==================== EMPLOYEE VIEW COMPONENT ====================
+const EmployeePortfolioView = ({ 
+  kpis, 
+  onViewDetails, 
+  onAcknowledge,
+  onAgreeToKpi
+}: {
+  kpis: WithId<IndividualKpi>[];
+  onViewDetails: (kpi: WithId<IndividualKpi>) => void;
+  onAcknowledge: (kpiId: string) => void;
+  onAgreeToKpi: (kpiId: string, notes: string) => void;
+}) => {
+    // Group KPIs by status
+    const kpisByStatus = useMemo(() => {
+        if (!kpis) return { draft: [], active: [], completed: [], all: [] };
+        
+        return {
+        draft: kpis.filter(k => k.status === 'Draft' || k.status === 'Rejected'),
+        active: kpis.filter(k => ['Agreed', 'In-Progress', 'Manager Review', 'Upper Manager Approval'].includes(k.status)),
+        completed: kpis.filter(k => ['Employee Acknowledged', 'Closed'].includes(k.status)),
+        all: kpis,
+        };
+    }, [kpis]);
+
+    // Calculate total weight
+    const totalWeight = useMemo(() => {
+        if (!kpis) return 0;
+        return kpis.reduce((sum, kpi) => sum + kpi.weight, 0);
+    }, [kpis]);
+
+    // Statistics
+    const stats = useMemo(() => {
+        if (!kpis) return { total: 0, agreed: 0, pending: 0, completed: 0 };
+        
+        return {
+        total: kpis.length,
+        agreed: kpis.filter(k => k.status !== 'Draft' && k.status !== 'Rejected').length,
+        pending: kpisByStatus.draft.length,
+        completed: kpisByStatus.completed.length,
+        };
+    }, [kpis, kpisByStatus]);
+    
+    if (!kpis) {
+        return (
+            <Card>
+                <CardContent className="p-12 text-center">
+                    <Target className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+                    <p className="text-gray-600">No KPIs have been assigned to you yet.</p>
+                    <p className="text-sm text-gray-500 mt-2">
+                        Once your manager assigns KPIs, they will appear here.
+                    </p>
+                </CardContent>
+            </Card>
+        );
+    }
+    
+    return (
+        <div className="space-y-6">
+            {/* Statistics Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Card>
+                <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                    <div>
+                        <p className="text-sm text-gray-500">Total KPIs</p>
+                        <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
+                    </div>
+                    <Target className="h-8 w-8 text-blue-500" />
+                    </div>
+                </CardContent>
+                </Card>
+
+                <Card>
+                <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                    <div>
+                        <p className="text-sm text-gray-500">Pending Agreement</p>
+                        <p className="text-2xl font-bold text-orange-600">{stats.pending}</p>
+                    </div>
+                    <Clock className="h-8 w-8 text-orange-500" />
+                    </div>
+                </CardContent>
+                </Card>
+
+                <Card>
+                <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                    <div>
+                        <p className="text-sm text-gray-500">Agreed/Active</p>
+                        <p className="text-2xl font-bold text-green-600">{stats.agreed}</p>
+                    </div>
+                    <CheckCircle2 className="h-8 w-8 text-green-500" />
+                    </div>
+                </CardContent>
+                </Card>
+
+                <Card>
+                <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                    <div>
+                        <p className="text-sm text-gray-500">Total Weight</p>
+                        <p className="text-2xl font-bold text-purple-600">{totalWeight}%</p>
+                    </div>
+                    <TrendingUp className="h-8 w-8 text-purple-500" />
+                    </div>
+                    { totalWeight > 100 ? (
+                        <div className='text-xs text-destructive mt-1'>Weight exceeds 100%</div>
+                    ) : (
+                        <Progress value={totalWeight} className="mt-2 h-2" />
+                    )}
+                </CardContent>
+                </Card>
+            </div>
+
+            {/* Action Required Alert */}
+            {kpisByStatus.draft.length > 0 && (
+                <Card className="border-orange-200 bg-orange-50">
+                <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                    <AlertCircle className="h-5 w-5 text-orange-600 flex-shrink-0" />
+                    <div>
+                        <p className="font-semibold text-orange-900">
+                        Action Required: {kpisByStatus.draft.length} KPI(s) pending your agreement
+                        </p>
+                        <p className="text-sm text-orange-700 mt-1">
+                        Review and agree to your assigned KPIs to activate them
+                        </p>
+                    </div>
+                    </div>
+                </CardContent>
+                </Card>
+            )}
+
+            {/* KPI Tabs */}
+            <Tabs defaultValue="pending" className="w-full">
+                <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="pending">
+                    Action Required
+                    {kpisByStatus.draft.length > 0 && (
+                    <Badge className="ml-2 bg-orange-500">{kpisByStatus.draft.length}</Badge>
+                    )}
+                </TabsTrigger>
+                <TabsTrigger value="active">
+                    Active / In Progress
+                    {kpisByStatus.active.length > 0 && (
+                    <Badge className="ml-2 bg-yellow-500">{kpisByStatus.active.length}</Badge>
+                    )}
+                </TabsTrigger>
+                <TabsTrigger value="completed">Completed</TabsTrigger>
+                <TabsTrigger value="all">All KPIs</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="pending" className="mt-6">
+                {kpisByStatus.draft.length === 0 ? (
+                    <Card>
+                    <CardContent className="p-12 text-center">
+                        <CheckCircle2 className="h-12 w-12 mx-auto text-green-500 mb-4" />
+                        <p className="text-gray-600">No pending KPIs</p>
+                        <p className="text-sm text-gray-500 mt-2">KPIs awaiting your review or revision will appear here.</p>
+                    </CardContent>
+                    </Card>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {kpisByStatus.draft.map(kpi => (
+                        <KpiCard key={kpi.id} kpi={kpi} onViewDetails={onViewDetails} onAcknowledge={onAcknowledge} />
+                    ))}
+                    </div>
+                )}
+                </TabsContent>
+
+                <TabsContent value="active" className="mt-6">
+                {kpisByStatus.active.length === 0 ? (
+                    <Card>
+                    <CardContent className="p-12 text-center">
+                        <Clock className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+                        <p className="text-gray-600">No active KPIs</p>
+                        <p className="text-sm text-gray-500 mt-2">KPIs that are in progress or awaiting your acknowledgment will appear here.</p>
+                    </CardContent>
+                    </Card>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {kpisByStatus.active.map(kpi => (
+                        <KpiCard key={kpi.id} kpi={kpi} onViewDetails={onViewDetails} onAcknowledge={onAcknowledge} />
+                    ))}
+                    </div>
+                )}
+                </TabsContent>
+
+                <TabsContent value="completed" className="mt-6">
+                {kpisByStatus.completed.length === 0 ? (
+                    <Card>
+                    <CardContent className="p-12 text-center">
+                        <Award className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+                        <p className="text-gray-600">No completed KPIs</p>
+                    </CardContent>
+                    </Card>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {kpisByStatus.completed.map(kpi => (
+                        <KpiCard key={kpi.id} kpi={kpi} onViewDetails={onViewDetails} onAcknowledge={onAcknowledge} />
+                    ))}
+                    </div>
+                )}
+                </TabsContent>
+
+                <TabsContent value="all" className="mt-6">
+                {!kpis || kpis.length === 0 ? (
+                    <Card>
+                    <CardContent className="p-12 text-center">
+                        <Target className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+                        <p className="text-gray-600">No KPIs assigned yet</p>
+                        <p className="text-sm text-gray-500 mt-2">
+                        Your manager will assign KPIs to you soon
+                        </p>
+                    </CardContent>
+                    </Card>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {kpis.map(kpi => (
+                        <KpiCard key={kpi.id} kpi={kpi} onViewDetails={onViewDetails} onAcknowledge={onAcknowledge} />
+                    ))}
+                    </div>
+                )}
+                </TabsContent>
+            </Tabs>
+        </div>
+    );
+}
+
+// ==================== MANAGER VIEW COMPONENT ====================
+const ManagerPortfolioView = ({ allKpis, teamMembers, onViewDetails }: {
+    allKpis: WithId<IndividualKpi>[] | null;
+    teamMembers: WithId<any>[] | null;
+    onViewDetails: (kpi: WithId<IndividualKpi>) => void;
+}) => {
+
+    const kpisByEmployee = useMemo(() => {
+        if (!allKpis) return {};
+        return allKpis.reduce((acc, kpi) => {
+            if (!acc[kpi.employeeId]) {
+                acc[kpi.employeeId] = [];
+            }
+            acc[kpi.employeeId].push(kpi);
+            return acc;
+        }, {} as Record<string, WithId<IndividualKpi>[]>);
+    }, [allKpis]);
+
+    if (!teamMembers || teamMembers.length === 0) {
+        return <Card><CardContent className="p-12 text-center text-gray-500">No team members found in your department.</CardContent></Card>;
+    }
+
+    return (
+        <div className="space-y-6">
+            {teamMembers.map(employee => {
+                const employeeKpis = kpisByEmployee[employee.id] || [];
+                const totalWeight = employeeKpis.reduce((sum, kpi) => sum + kpi.weight, 0);
+
+                return (
+                    <Collapsible key={employee.id} defaultOpen className="border rounded-lg">
+                        <CollapsibleTrigger asChild>
+                            <div className="flex items-center justify-between p-4 cursor-pointer bg-gray-50 rounded-t-lg">
+                                <div className="flex items-center gap-3">
+                                    <Avatar>
+                                        <AvatarFallback>{employee.name.charAt(0)}</AvatarFallback>
+                                    </Avatar>
+                                    <div>
+                                        <p className="font-semibold">{employee.name}</p>
+                                        <p className="text-sm text-muted-foreground">{employee.position}</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                     <div className="text-right">
+                                        <p className="font-semibold">{totalWeight}%</p>
+                                        <p className="text-xs text-muted-foreground">Total Weight</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="font-semibold">{employeeKpis.length}</p>
+                                        <p className="text-xs text-muted-foreground">KPIs</p>
+                                    </div>
+                                    <Button variant="ghost" size="sm">
+                                        <ChevronsUpDown className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </div>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="p-4 space-y-3">
+                            {employeeKpis.length > 0 ? (
+                                employeeKpis.map(kpi => (
+                                    <div key={kpi.id} className="flex items-center justify-between p-3 border rounded-md hover:bg-gray-50/50">
+                                        <div className="flex-1">
+                                            <p className="font-medium text-sm">{kpi.kpiMeasure}</p>
+                                            <div className="flex items-center gap-2 mt-1">
+                                                <Badge className={cn('text-xs', getStatusColor(kpi.status))}>
+                                                    {getStatusIcon(kpi.status)}
+                                                    <span className="ml-1.5">{kpi.status}</span>
+                                                </Badge>
+                                                <span className="text-xs text-gray-500">Weight: {kpi.weight}%</span>
+                                            </div>
+                                        </div>
+                                        <Button size="sm" variant="outline" onClick={() => onViewDetails(kpi)}>
+                                            <Eye className="mr-2 h-4 w-4" /> View
+                                        </Button>
+                                    </div>
+                                ))
+                            ) : (
+                                <p className="text-sm text-center text-gray-500 py-4">No KPIs assigned to this employee.</p>
+                            )}
+                        </CollapsibleContent>
+                    </Collapsible>
+                )
+            })}
+        </div>
+    )
+}
+
 // ==================== MAIN COMPONENT ====================
 
 export default function MyPortfolioPage() {
@@ -384,54 +710,56 @@ export default function MyPortfolioPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
+  const { orgData: allEmployees, isOrgDataLoading: isEmployeesLoading } = useKpiData();
 
   const [selectedKpi, setSelectedKpi] = useState<WithId<IndividualKpi> | null>(null);
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
 
+  const userProfileRef = useMemoFirebase(() => {
+    if (!user || !firestore) return null;
+    return doc(firestore, 'users', user.uid);
+  }, [firestore, user]);
+
+  const { data: userProfile, isLoading: isProfileLoading } = useDoc<AppUser>(userProfileRef);
+  const isManagerOrAdmin = useMemo(() => userProfile?.role && ['Admin', 'VP', 'AVP', 'Manager'].includes(userProfile.role), [userProfile]);
+  
   useEffect(() => {
     setPageTitle("My Portfolio");
   }, [setPageTitle]);
 
-  // Get individual KPIs for the current user
+  const teamMembers = useMemo(() => {
+    if (!isManagerOrAdmin || !allEmployees || !userProfile) return null;
+    if (userProfile.role === 'Admin' || userProfile.role === 'VP') {
+        return allEmployees; // Admins/VPs see everyone
+    }
+    // Managers/AVPs see their department
+    return allEmployees.filter(emp => emp.department === userProfile.department && emp.id !== user.uid);
+  }, [isManagerOrAdmin, allEmployees, userProfile, user]);
+
+  
+  // Get individual KPIs for the current user or their team
   const kpisQuery = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
-    return query(
-      collection(firestore, 'individual_kpis'),
-      where('employeeId', '==', user.uid)
-    );
-  }, [firestore, user]);
+    if (!firestore || !user || isProfileLoading) return null;
+    
+    const baseQuery = collection(firestore, 'individual_kpis');
+
+    if (isManagerOrAdmin) {
+        if (userProfile?.role === 'Admin' || userProfile?.role === 'VP') {
+             return baseQuery; // Admins/VPs see all KPIs
+        }
+        if (teamMembers && teamMembers.length > 0) {
+            const teamIds = teamMembers.map(tm => tm.id);
+            // Firestore 'in' query is limited to 30 elements. For larger teams, this needs pagination or a different approach.
+            return query(baseQuery, where('employeeId', 'in', [...teamIds, user.uid]));
+        }
+    }
+    
+    // Default for employees
+    return query(baseQuery, where('employeeId', '==', user.uid));
+  }, [firestore, user, isProfileLoading, isManagerOrAdmin, userProfile, teamMembers]);
 
   const { data: kpis, isLoading: isKpisLoading } = useCollection<WithId<IndividualKpi>>(kpisQuery);
-
-  // Group KPIs by status
-  const kpisByStatus = useMemo(() => {
-    if (!kpis) return { draft: [], active: [], completed: [], all: [] };
-    
-    return {
-      draft: kpis.filter(k => k.status === 'Draft' || k.status === 'Rejected'),
-      active: kpis.filter(k => ['Agreed', 'In-Progress', 'Manager Review', 'Upper Manager Approval'].includes(k.status)),
-      completed: kpis.filter(k => ['Employee Acknowledged', 'Closed'].includes(k.status)),
-      all: kpis,
-    };
-  }, [kpis]);
-
-  // Calculate total weight
-  const totalWeight = useMemo(() => {
-    if (!kpis) return 0;
-    return kpis.reduce((sum, kpi) => sum + kpi.weight, 0);
-  }, [kpis]);
-
-  // Statistics
-  const stats = useMemo(() => {
-    if (!kpis) return { total: 0, agreed: 0, pending: 0, completed: 0 };
-    
-    return {
-      total: kpis.length,
-      agreed: kpis.filter(k => k.status !== 'Draft' && k.status !== 'Rejected').length,
-      pending: kpisByStatus.draft.length,
-      completed: kpisByStatus.completed.length,
-    };
-  }, [kpis, kpisByStatus]);
+  const userKpis = useMemo(() => kpis?.filter(k => k.employeeId === user?.uid) || [], [kpis, user]);
 
   // ==================== HANDLERS ====================
 
@@ -470,7 +798,7 @@ export default function MyPortfolioPage() {
     try {
       const kpiRef = doc(firestore, 'individual_kpis', kpiId);
       setDocumentNonBlocking(kpiRef, {
-        status: 'In-Progress', // Acknowledging moves it to 'In-Progress'
+        status: 'In-Progress',
         acknowledgedAt: serverTimestamp(),
       }, { merge: true });
       toast({
@@ -491,10 +819,12 @@ export default function MyPortfolioPage() {
     setSelectedKpi(kpi);
     setIsDetailDialogOpen(true);
   };
-
+  
   // ==================== RENDER ====================
 
-  if (isUserLoading || isKpisLoading) {
+  const isLoading = isUserLoading || isKpisLoading || isProfileLoading || isEmployeesLoading;
+
+  if (isLoading) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-32" />
@@ -513,199 +843,32 @@ export default function MyPortfolioPage() {
       </Card>
     );
   }
-  
-  if (!kpis && !isKpisLoading) {
-    return (
-      <Card>
-        <CardContent className="p-12 text-center">
-          <Target className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-          <p className="text-gray-600">No KPIs have been assigned to you yet.</p>
-          <p className="text-sm text-gray-500 mt-2">
-            Once your manager assigns KPIs, they will appear here.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
 
   return (
     <div className="fade-in space-y-6">
       {/* Header Section */}
       <div>
-        <h3 className="text-2xl font-bold text-gray-900 mb-2">My Portfolio</h3>
+        <h3 className="text-2xl font-bold text-gray-900 mb-2">Portfolio</h3>
         <p className="text-gray-600">
-          Review and manage your Key Performance Indicators
+          {isManagerOrAdmin ? "Review and manage your team's KPI portfolio." : "Review and manage your Key Performance Indicators"}
         </p>
       </div>
-
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Total KPIs</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
-              </div>
-              <Target className="h-8 w-8 text-blue-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Pending Agreement</p>
-                <p className="text-2xl font-bold text-orange-600">{stats.pending}</p>
-              </div>
-              <Clock className="h-8 w-8 text-orange-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Agreed/Active</p>
-                <p className="text-2xl font-bold text-green-600">{stats.agreed}</p>
-              </div>
-              <CheckCircle2 className="h-8 w-8 text-green-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Total Weight</p>
-                <p className="text-2xl font-bold text-purple-600">{totalWeight}%</p>
-              </div>
-              <TrendingUp className="h-8 w-8 text-purple-500" />
-            </div>
-            { totalWeight > 100 ? (
-                <div className='text-xs text-destructive mt-1'>Weight exceeds 100%</div>
-            ) : (
-                <Progress value={totalWeight} className="mt-2 h-2" />
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Action Required Alert */}
-      {kpisByStatus.draft.length > 0 && (
-        <Card className="border-orange-200 bg-orange-50">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 text-orange-600 flex-shrink-0" />
-              <div>
-                <p className="font-semibold text-orange-900">
-                  Action Required: {kpisByStatus.draft.length} KPI(s) pending your agreement
-                </p>
-                <p className="text-sm text-orange-700 mt-1">
-                  Review and agree to your assigned KPIs to activate them
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      
+      {isManagerOrAdmin ? (
+        <ManagerPortfolioView 
+            allKpis={kpis}
+            teamMembers={teamMembers}
+            onViewDetails={handleViewDetails}
+        />
+      ) : (
+        <EmployeePortfolioView 
+            kpis={userKpis}
+            onViewDetails={handleViewDetails}
+            onAcknowledge={handleAcknowledgeKpi}
+            onAgreeToKpi={handleAgreeToKpi}
+        />
       )}
 
-      {/* KPI Tabs */}
-      <Tabs defaultValue="pending" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="pending">
-            Action Required
-            {kpisByStatus.draft.length > 0 && (
-              <Badge className="ml-2 bg-orange-500">{kpisByStatus.draft.length}</Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="active">
-            Active / In Progress
-            {kpisByStatus.active.length > 0 && (
-              <Badge className="ml-2 bg-yellow-500">{kpisByStatus.active.length}</Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="completed">Completed</TabsTrigger>
-          <TabsTrigger value="all">All KPIs</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="pending" className="mt-6">
-          {kpisByStatus.draft.length === 0 ? (
-            <Card>
-              <CardContent className="p-12 text-center">
-                <CheckCircle2 className="h-12 w-12 mx-auto text-green-500 mb-4" />
-                <p className="text-gray-600">No pending KPIs</p>
-                <p className="text-sm text-gray-500 mt-2">KPIs awaiting your review or revision will appear here.</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {kpisByStatus.draft.map(kpi => (
-                <KpiCard key={kpi.id} kpi={kpi} onViewDetails={handleViewDetails} onAcknowledge={handleAcknowledgeKpi} />
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="active" className="mt-6">
-          {kpisByStatus.active.length === 0 ? (
-            <Card>
-              <CardContent className="p-12 text-center">
-                <Clock className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-                <p className="text-gray-600">No active KPIs</p>
-                <p className="text-sm text-gray-500 mt-2">KPIs that are in progress or awaiting your acknowledgment will appear here.</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {kpisByStatus.active.map(kpi => (
-                <KpiCard key={kpi.id} kpi={kpi} onViewDetails={handleViewDetails} onAcknowledge={handleAcknowledgeKpi} />
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="completed" className="mt-6">
-          {kpisByStatus.completed.length === 0 ? (
-            <Card>
-              <CardContent className="p-12 text-center">
-                <Award className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-                <p className="text-gray-600">No completed KPIs</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {kpisByStatus.completed.map(kpi => (
-                <KpiCard key={kpi.id} kpi={kpi} onViewDetails={handleViewDetails} onAcknowledge={handleAcknowledgeKpi} />
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="all" className="mt-6">
-          {!kpis || kpis.length === 0 ? (
-            <Card>
-              <CardContent className="p-12 text-center">
-                <Target className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-                <p className="text-gray-600">No KPIs assigned yet</p>
-                <p className="text-sm text-gray-500 mt-2">
-                  Your manager will assign KPIs to you soon
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {kpis.map(kpi => (
-                <KpiCard key={kpi.id} kpi={kpi} onViewDetails={handleViewDetails} onAcknowledge={handleAcknowledgeKpi} />
-              ))}
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
 
       {/* Detail/Action Dialog */}
       <KpiDetailDialog
@@ -716,13 +879,8 @@ export default function MyPortfolioPage() {
           setSelectedKpi(null);
         }}
         onAgree={handleAgreeToKpi}
-        canAgree={!!selectedKpi && (selectedKpi.status === 'Draft' || selectedKpi.status === 'Rejected')}
+        canAgree={!!selectedKpi && (selectedKpi.status === 'Draft' || selectedKpi.status === 'Rejected') && selectedKpi.employeeId === user.uid}
       />
     </div>
   );
 }
-    
-
-    
-
-    
