@@ -12,8 +12,8 @@ import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from "@/components/ui/dialog";
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useUser, useFirestore, useCollection, useMemoFirebase, WithId, addDocumentNonBlocking } from '@/firebase';
-import { collection, query, where, serverTimestamp } from 'firebase/firestore';
+import { useUser, useFirestore, useCollection, useMemoFirebase, WithId, addDocumentNonBlocking, useDoc } from '@/firebase';
+import { collection, query, where, serverTimestamp, doc } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Textarea } from '@/components/ui/textarea';
@@ -44,6 +44,16 @@ interface KpiSubmission {
     notes: string;
     submissionDate: any; // Server timestamp
     status: 'Manager Review' | 'Upper Manager Approval' | 'Closed' | 'Rejected';
+}
+
+interface AppUser {
+  role: 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee';
+}
+
+interface Employee {
+    id: string;
+    name: string;
+    department: string;
 }
 
 
@@ -130,54 +140,71 @@ export default function SubmitPage() {
   const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { orgData, isOrgDataLoading } = useKpiData();
+  const { orgData: allEmployees, isOrgDataLoading: isEmployeesLoading } = useKpiData();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedKpi, setSelectedKpi] = useState<WithId<IndividualKpi> | null>(null);
+
+  const userProfileRef = useMemoFirebase(() => {
+    if (!user || !firestore) return null;
+    return doc(firestore, 'users', user.uid);
+  }, [user, firestore]);
+  const { data: userProfile, isLoading: isProfileLoading } = useDoc<AppUser>(userProfileRef);
 
   useEffect(() => {
     setPageTitle('Submit KPI');
   }, [setPageTitle]);
 
-  // Per SRS, only KPIs with status 'In-Progress' are available for data submission
-  const kpisForSubmissionQuery = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
-    return query(
-      collection(firestore, 'individual_kpis'), 
-      where('employeeId', '==', user.uid),
-      where('status', '==', 'In-Progress')
-    );
-  }, [firestore, user]);
+  const isManagerOrAdmin = useMemo(() => 
+    userProfile?.role && ['Admin', 'VP', 'AVP', 'Manager'].includes(userProfile.role),
+    [userProfile]
+  );
   
-  const userSubmissionsQuery = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
-    // This could be refined to only fetch submissions for the current period
-    return query(
-      collection(firestore, 'submissions'),
-      where('submittedBy', '==', user.uid)
-    );
-  }, [firestore, user]);
+  const kpisQuery = useMemoFirebase(() => {
+    if (!firestore || isProfileLoading) return null;
+    
+    const baseQuery = collection(firestore, 'individual_kpis');
+    
+    if (isManagerOrAdmin) {
+      // Managers/Admins see all KPIs that are in a submittable state
+      return query(baseQuery, where('status', 'in', ['Draft', 'In-Progress']));
+    } else if (user) {
+      // Employees only see their own
+      return query(baseQuery, 
+        where('employeeId', '==', user.uid), 
+        where('status', 'in', ['Draft', 'In-Progress'])
+      );
+    }
+    return null;
+  }, [firestore, user, isProfileLoading, isManagerOrAdmin]);
+  
+  const submissionsQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    // Fetch all submissions to check which KPIs have been submitted
+    return collection(firestore, 'submissions');
+  }, [firestore]);
 
 
-  const { data: kpisForSubmission, isLoading: isKpisLoading } = useCollection<WithId<IndividualKpi>>(kpisForSubmissionQuery);
-  const { data: userSubmissions, isLoading: isSubmissionsLoading } = useCollection<WithId<KpiSubmission>>(userSubmissionsQuery);
+  const { data: allKpis, isLoading: isKpisLoading } = useCollection<WithId<IndividualKpi>>(kpisQuery);
+  const { data: allSubmissions, isLoading: isSubmissionsLoading } = useCollection<WithId<KpiSubmission>>(submissionsQuery);
   
   const submittedKpiIds = useMemo(() => {
-    return new Set(userSubmissions?.map(s => s.kpiId) || []);
-  }, [userSubmissions]);
+    return new Set(allSubmissions?.map(s => s.kpiId) || []);
+  }, [allSubmissions]);
   
-  const kpisNeedingSubmission = useMemo(() => {
-    if (!kpisForSubmission) return [];
-    return kpisForSubmission.filter(kpi => !submittedKpiIds.has(kpi.id));
-  }, [kpisForSubmission, submittedKpiIds]);
+  const employeeMap = useMemo(() => {
+    if (!allEmployees) return new Map();
+    return new Map(allEmployees.map(e => [e.id, e]));
+  }, [allEmployees]);
+  
 
   const summaryStats = useMemo(() => {
     return {
-        totalInProgress: kpisForSubmission?.length || 0,
-        needsSubmission: kpisNeedingSubmission.length,
+        totalInProgress: allKpis?.length || 0,
+        needsSubmission: allKpis?.filter(k => k.status === 'In-Progress' && !submittedKpiIds.has(k.id)).length || 0,
         submitted: submittedKpiIds.size,
     };
-  }, [kpisForSubmission, kpisNeedingSubmission, submittedKpiIds]);
+  }, [allKpis, submittedKpiIds]);
   
   const handleOpenSubmitDialog = (kpi: WithId<IndividualKpi>) => {
     setSelectedKpi(kpi);
@@ -190,12 +217,14 @@ export default function SubmitPage() {
         return;
     }
     
-    const employeeData = orgData?.find(e => e.id === user.uid);
+    // Find the employee submitting the data
+    const kpiOwner = allKpis?.find(k => k.id === submission.kpiId);
+    const employeeData = allEmployees?.find(e => e.id === kpiOwner?.employeeId);
 
     const submissionData: KpiSubmission = {
         ...submission,
-        submittedBy: user.uid,
-        submitterName: user.displayName || 'Unknown User',
+        submittedBy: employeeData?.id || 'unknown',
+        submitterName: employeeData?.name || 'Unknown User',
         department: employeeData?.department || 'Unassigned',
         submissionDate: serverTimestamp(),
         status: 'Manager Review', // Per SRS, first step is Manager Review
@@ -210,12 +239,12 @@ export default function SubmitPage() {
     });
   };
 
-  const isLoading = isUserLoading || isKpisLoading || isSubmissionsLoading || isOrgDataLoading;
+  const isLoading = isUserLoading || isKpisLoading || isSubmissionsLoading || isEmployeesLoading || isProfileLoading;
 
   const statCards = [
-    { label: 'In-Progress KPIs', value: summaryStats.totalInProgress, icon: BadgeCheck, color: 'text-success' },
-    { label: 'Needs Submission', value: summaryStats.needsSubmission, icon: FileText, color: 'text-accent' },
-    { label: 'Submitted (This Period)', value: summaryStats.submitted, icon: Upload, color: 'text-primary' },
+    { label: 'Awaiting Action', value: summaryStats.totalInProgress, icon: Briefcase, color: 'text-primary' },
+    { label: 'Needs Data Submission', value: summaryStats.needsSubmission, icon: FileText, color: 'text-accent' },
+    { label: 'Submitted (This Period)', value: summaryStats.submitted, icon: Upload, color: 'text-success' },
   ];
 
   return (
@@ -248,10 +277,12 @@ export default function SubmitPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  {isManagerOrAdmin && <TableHead>Employee</TableHead>}
                   <TableHead>KPI / Task</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Target</TableHead>
                   <TableHead>Weight</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -259,30 +290,46 @@ export default function SubmitPage() {
                 {isLoading ? (
                     [...Array(3)].map((_, i) => (
                         <TableRow key={i}>
+                            {isManagerOrAdmin && <TableCell><Skeleton className="h-5 w-24" /></TableCell>}
                             <TableCell><Skeleton className="h-5 w-48" /></TableCell>
                             <TableCell><Skeleton className="h-5 w-20" /></TableCell>
                             <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                             <TableCell><Skeleton className="h-5 w-10" /></TableCell>
+                            <TableCell><Skeleton className="h-6 w-24" /></TableCell>
                             <TableCell className="text-right"><Skeleton className="h-8 w-24 ml-auto" /></TableCell>
                         </TableRow>
                     ))
-                ) : kpisForSubmission && kpisForSubmission.length > 0 ? (
-                  kpisForSubmission.map((kpi) => {
+                ) : allKpis && allKpis.length > 0 ? (
+                  allKpis.map((kpi) => {
                     const isSubmitted = submittedKpiIds.has(kpi.id);
+                    const employee = employeeMap.get(kpi.employeeId);
                     return (
                         <TableRow key={kpi.id} className={cn(isSubmitted && "bg-green-50/60")}>
+                        {isManagerOrAdmin && (
+                            <TableCell>
+                                <div className="font-medium">{employee?.name || kpi.employeeId}</div>
+                                <div className="text-xs text-muted-foreground">{employee?.department}</div>
+                            </TableCell>
+                        )}
                         <TableCell className="font-medium">{kpi.kpiMeasure}</TableCell>
                         <TableCell><Badge variant={kpi.type === 'cascaded' ? 'secondary' : 'default'}>{kpi.type}</Badge></TableCell>
                         <TableCell>{kpi.type === 'cascaded' ? kpi.target : "5-level scale"}</TableCell>
                         <TableCell>{kpi.weight}%</TableCell>
+                        <TableCell>
+                            <Badge variant="outline">{kpi.status}</Badge>
+                        </TableCell>
                         <TableCell className="text-right">
                             {isSubmitted ? (
                                 <Button variant="outline" size="sm" disabled>
                                     <BadgeCheck className="w-4 h-4 mr-2"/> Submitted
                                 </Button>
-                            ) : (
+                            ) : kpi.status === 'In-Progress' ? (
                                 <Button variant="default" size="sm" onClick={() => handleOpenSubmitDialog(kpi)}>
                                     Submit Data
+                                </Button>
+                            ) : (
+                                <Button variant="outline" size="sm" disabled>
+                                    Awaiting Agreement
                                 </Button>
                             )}
                         </TableCell>
@@ -291,11 +338,11 @@ export default function SubmitPage() {
                   })
                 ) : (
                    <TableRow>
-                        <TableCell colSpan={5} className="h-48 text-center text-gray-500">
+                        <TableCell colSpan={isManagerOrAdmin ? 7 : 6} className="h-48 text-center text-gray-500">
                             <div className="flex flex-col items-center justify-center space-y-2">
                                 <Briefcase className="h-10 w-10 text-gray-300" />
-                                <p className="font-medium">No KPIs ready for submission.</p>
-                                <p className="text-sm">KPIs with a status of 'In-Progress' will appear here.</p>
+                                <p className="font-medium">No KPIs awaiting action.</p>
+                                <p className="text-sm">KPIs in 'Draft' or 'In-Progress' status will appear here.</p>
                             </div>
                         </TableCell>
                     </TableRow>
