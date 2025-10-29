@@ -358,7 +358,7 @@ export default function ActionCenterPage() {
   const handleRejectCommitment = async (kpiId: string, reason: string) => {
     if (!firestore) return;
     const kpiRef = doc(firestore, 'individual_kpis', kpiId);
-    setDocumentNonBlocking(kpiRef, { status: 'Rejected', rejectionReason: reason, reviewedAt: serverTimestamp() }, { merge: true });
+    setDocumentNonBlocking(kpiRef, { status: 'Rejected', rejectionReason: reason, managerNotes: reason, reviewedAt: serverTimestamp() }, { merge: true });
     toast({ title: "Commitment Rejected", description: "The employee has been notified to revise their commitment.", variant: "destructive" });
   };
   

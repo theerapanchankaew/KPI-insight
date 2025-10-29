@@ -43,7 +43,7 @@ interface KpiSubmission {
     targetValue: string;
     notes: string;
     submissionDate: any; // Server timestamp
-    status: 'Manager Review' | 'Upper Manager Approval' | 'Closed';
+    status: 'Manager Review' | 'Upper Manager Approval' | 'Closed' | 'Rejected';
 }
 
 
@@ -51,7 +51,7 @@ const SubmitDataDialog = ({ isOpen, onOpenChange, kpi, onSubmit }: {
     isOpen: boolean; 
     onOpenChange: (open: boolean) => void;
     kpi: WithId<IndividualKpi> | null;
-    onSubmit: (submission: Omit<KpiSubmission, 'submissionDate' | 'status' | 'submittedBy' | 'submitterName' | 'department'>) => void;
+    onSubmit: (submission: Omit<KpiSubmission, 'submissionDate' | 'status' | 'submittedBy' | 'submitterName' | 'department' | 'rejectionReason'>) => void;
 }) => {
     const [actualValue, setActualValue] = useState('');
     const [notes, setNotes] = useState('');
@@ -179,7 +179,7 @@ export default function SubmitPage() {
     setIsModalOpen(true);
   };
   
-  const handleDataSubmit = async (submission: Omit<KpiSubmission, 'submissionDate' | 'status' | 'submittedBy' | 'submitterName' | 'department'>) => {
+  const handleDataSubmit = async (submission: Omit<KpiSubmission, 'submissionDate' | 'status' | 'submittedBy' | 'submitterName' | 'department' | 'rejectionReason'>) => {
     if (!firestore || !user) {
         toast({ title: "Error", description: "Could not connect to the database.", variant: "destructive"});
         return;
@@ -310,5 +310,3 @@ export default function SubmitPage() {
     </div>
   );
 }
-
-    
