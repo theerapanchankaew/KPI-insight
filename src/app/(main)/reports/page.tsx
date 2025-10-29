@@ -43,16 +43,16 @@ const MonthlyReport = () => {
                     <CardContent className="space-y-3">
                          {isLoading ? (
                             [...Array(3)].map((_, i) => <Skeleton key={i} className="h-16 w-full" />)
-                         ) : orgData && [...new Set(orgData.map(e => e.department))].slice(0, 3).map((dept, index) => (
+                         ) : orgData && [...new Set(orgData.map(e => e.department))].filter(Boolean).slice(0, 3).map((dept, index) => (
                             <div key={dept} className={cn("flex items-center justify-between p-3 rounded-lg", 
-                                index === 0 ? 'bg-success/10' : index === 1 ? 'bg-secondary/10' : 'bg-primary/10'
+                                index === 0 ? 'bg-success/10' : index === 1 ? 'bg-blue-50' : 'bg-orange-50'
                             )}>
                                 <div>
                                     <p className="font-medium text-gray-800">{dept}</p>
                                     <p className="text-sm text-gray-600">Department</p>
                                 </div>
                                 <span className={cn("text-lg font-bold", 
-                                    index === 0 ? 'text-success' : index === 1 ? 'text-secondary' : 'text-primary'
+                                    index === 0 ? 'text-success' : index === 1 ? 'text-blue-600' : 'text-orange-600'
                                 )}>
                                     {/* Placeholder performance */}
                                     {95 - index * 5}% 
@@ -99,7 +99,7 @@ const MonthlyReport = () => {
                                             <TableCell className="font-medium">{kpi.measure}</TableCell>
                                             <TableCell>{kpi.department}</TableCell>
                                             <TableCell>{kpi.weight}%</TableCell>
-                                            <TableCell>{kpi.departmentTarget}</TableCell>
+                                            <TableCell>{kpi.target}</TableCell>
                                             <TableCell>...</TableCell>
                                             <TableCell>
                                                 <Badge variant={achievement >= 100 ? 'success' : achievement >= 80 ? 'warning' : 'destructive'}>
@@ -128,21 +128,21 @@ const QuarterlyReport = () => {
     const { quarterly } = kpiReportData;
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <Card className="bg-gradient-to-r from-primary to-secondary text-white">
+            <Card className="bg-gradient-to-r from-primary to-blue-600 text-white">
                 <CardContent className="p-6">
                     <h4 className="text-lg font-semibold mb-2">Q4 2024 Performance</h4>
                     <p className="text-3xl font-bold">{quarterly.overall}</p>
                     <p className="text-sm opacity-90">Overall Achievement</p>
                 </CardContent>
             </Card>
-            <Card className="bg-gradient-to-r from-success to-primary text-white">
+            <Card className="bg-gradient-to-r from-green-600 to-green-700 text-white">
                 <CardContent className="p-6">
                     <h4 className="text-lg font-semibold mb-2">KPIs Achieved</h4>
                     <p className="text-3xl font-bold">{quarterly.achieved}</p>
                     <p className="text-sm opacity-90">Total KPIs</p>
                 </CardContent>
             </Card>
-            <Card className="bg-gradient-to-r from-secondary to-purple-600 text-white">
+            <Card className="bg-gradient-to-r from-orange-500 to-amber-600 text-white">
                 <CardContent className="p-6">
                     <h4 className="text-lg font-semibold mb-2">Growth Rate</h4>
                     <p className="text-3xl font-bold">{quarterly.growth}</p>
@@ -201,3 +201,5 @@ export default function ReportsPage() {
     </div>
   );
 }
+
+    
