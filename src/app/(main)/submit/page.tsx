@@ -4,7 +4,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useAppLayout } from '../layout';
 import { Button } from '@/components/ui/button';
-import { FileText, BadgeCheck, Briefcase, Upload, Send, Eye } from 'lucide-react';
+import { FileText, BadgeCheck, Briefcase, Upload, Send, Eye, MessageSquare, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -13,11 +13,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUser, useFirestore, useCollection, useMemoFirebase, WithId, addDocumentNonBlocking, useDoc, setDocumentNonBlocking } from '@/firebase';
-import { collection, query, where, serverTimestamp, doc } from 'firebase/firestore';
+import { collection, query, where, serverTimestamp, doc, Timestamp } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Textarea } from '@/components/ui/textarea';
 import { useKpiData } from '@/context/KpiDataContext';
+import { format } from 'date-fns';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 // Consistent type definition with portfolio and cascade pages
 interface IndividualKpiBase {
@@ -27,6 +29,12 @@ interface IndividualKpiBase {
     weight: number;
     status: 'Draft' | 'Agreed' | 'In-Progress' | 'Manager Review' | 'Upper Manager Approval' | 'Employee Acknowledged' | 'Closed' | 'Rejected';
     notes?: string;
+    employeeNotes?: string;
+    managerNotes?: string;
+    rejectionReason?: string;
+    agreedAt?: any;
+    reviewedAt?: any;
+    acknowledgedAt?: any;
 }
 interface AssignedCascadedKpi extends IndividualKpiBase { type: 'cascaded'; target: string; }
 interface CommittedKpi extends IndividualKpiBase { type: 'committed'; task: string; targets: { [key: string]: string }; }
@@ -142,48 +150,105 @@ const ViewCommitmentDialog = ({ isOpen, onOpenChange, kpi }: {
     kpi: WithId<IndividualKpi> | null;
 }) => {
     if (!kpi) return null;
+    
+    const formatDate = (timestamp: any) => {
+        if (!timestamp) return 'N/A';
+        const date = timestamp instanceof Timestamp ? timestamp.toDate() : new Date(timestamp);
+        return format(date, 'MMM dd, yyyy, hh:mm a');
+    };
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent>
+            <DialogContent className="max-w-2xl">
                 <DialogHeader>
                     <DialogTitle>Approved Commitment Details</DialogTitle>
                     <DialogDescription>{kpi.kpiMeasure}</DialogDescription>
                 </DialogHeader>
-                <div className="py-4 space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                            <Label className="text-sm text-muted-foreground">Weight</Label>
-                            <p className="font-semibold">{kpi.weight}%</p>
-                        </div>
-                        <div className="space-y-1">
-                            <Label className="text-sm text-muted-foreground">Type</Label>
-                            <p className="font-semibold">{kpi.type}</p>
-                        </div>
-                    </div>
-                    {kpi.type === 'cascaded' && (
-                         <div className="space-y-1">
-                            <Label className="text-sm text-muted-foreground">Target</Label>
-                            <p className="font-semibold">{kpi.target}</p>
-                        </div>
-                    )}
-                     {kpi.type === 'committed' && (
-                        <>
-                             <div className="space-y-1">
-                                <Label className="text-sm text-muted-foreground">Task</Label>
-                                <p className="font-semibold">{kpi.task}</p>
+                <ScrollArea className="max-h-[70vh] pr-4">
+                <div className="py-4 space-y-6">
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <Label className="text-sm text-muted-foreground">Weight</Label>
+                                <p className="font-semibold">{kpi.weight}%</p>
                             </div>
                             <div className="space-y-1">
-                                <Label className="text-sm text-muted-foreground">5-Level Targets</Label>
-                                <div className="space-y-1 text-sm p-3 bg-gray-50 rounded-md border">
-                                    {Object.entries(kpi.targets).map(([level, target]) => (
-                                        <p key={level}><strong>{level}:</strong> {target}</p>
-                                    ))}
-                                </div>
+                                <Label className="text-sm text-muted-foreground">Type</Label>
+                                <p className="font-semibold">{kpi.type}</p>
                             </div>
-                        </>
-                    )}
+                        </div>
+                        {kpi.type === 'cascaded' && (
+                             <div className="space-y-1">
+                                <Label className="text-sm text-muted-foreground">Target</Label>
+                                <p className="font-semibold">{kpi.target}</p>
+                            </div>
+                        )}
+                         {kpi.type === 'committed' && (
+                            <>
+                                 <div className="space-y-1">
+                                    <Label className="text-sm text-muted-foreground">Task</Label>
+                                    <p className="font-semibold">{kpi.task}</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <Label className="text-sm text-muted-foreground">5-Level Targets</Label>
+                                    <div className="space-y-1 text-sm p-3 bg-gray-50 rounded-md border">
+                                        {Object.entries(kpi.targets).map(([level, target]) => (
+                                            <p key={level}><strong>{level}:</strong> {target}</p>
+                                        ))}
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                     <div className="border-t pt-4 space-y-4">
+                        <h4 className="font-semibold text-gray-900">Communication & History Trail</h4>
+                         {kpi.notes && (
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                <Label className="text-xs text-blue-700 font-semibold flex items-center gap-1">
+                                    <MessageSquare className="h-3 w-3" />
+                                    Manager's Initial Notes
+                                </Label>
+                                <p className="text-sm text-gray-700 mt-1">{kpi.notes}</p>
+                            </div>
+                         )}
+                         {kpi.employeeNotes && kpi.agreedAt && (
+                            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                                <Label className="text-xs text-green-700 font-semibold flex items-center justify-between">
+                                    <span className="flex items-center gap-1"><MessageSquare className="h-3 w-3" />Employee Agreement Notes</span>
+                                    <span>{formatDate(kpi.agreedAt)}</span>
+                                </Label>
+                                <p className="text-sm text-gray-700 mt-1">{kpi.employeeNotes}</p>
+                            </div>
+                         )}
+                         {kpi.rejectionReason && (
+                            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                                <Label className="text-xs text-red-700 font-semibold flex items-center justify-between">
+                                    <span className="flex items-center gap-1"><AlertCircle className="h-3 w-3" />Manager's Rejection Reason</span>
+                                    <span>{formatDate(kpi.reviewedAt)}</span>
+                                </Label>
+                                <p className="text-sm text-gray-700 mt-1">{kpi.rejectionReason}</p>
+                            </div>
+                         )}
+                         {kpi.managerNotes && (
+                            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                                <Label className="text-xs text-purple-700 font-semibold flex items-center justify-between">
+                                    <span className="flex items-center gap-1"><MessageSquare className="h-3 w-3" />Manager's Review Notes</span>
+                                     <span>{formatDate(kpi.reviewedAt)}</span>
+                                </Label>
+                                <p className="text-sm text-gray-700 mt-1">{kpi.managerNotes}</p>
+                            </div>
+                         )}
+                         {kpi.acknowledgedAt && (
+                            <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+                                <Label className="text-xs text-indigo-700 font-semibold flex items-center justify-between">
+                                    <span className="flex items-center gap-1"><BadgeCheck className="h-3 w-3" />Employee Acknowledged</span>
+                                     <span>{formatDate(kpi.acknowledgedAt)}</span>
+                                </Label>
+                            </div>
+                         )}
+                    </div>
                 </div>
+                </ScrollArea>
                 <DialogFooter>
                     <DialogClose asChild>
                         <Button>Close</Button>
@@ -394,10 +459,10 @@ export default function SubmitPage() {
                     const isSubmitted = !!submissionStatus;
                     const employee = employeeMap.get(kpi.employeeId);
                     
-                    const canResubmit = submissionStatus === 'Rejected';
+                    const canResubmitData = submissionStatus === 'Rejected';
 
                     return (
-                        <TableRow key={kpi.id} className={cn(isSubmitted && !canResubmit && kpi.status !== 'Rejected' && "bg-green-50/60")}>
+                        <TableRow key={kpi.id} className={cn(isSubmitted && !canResubmitData && kpi.status !== 'Rejected' && "bg-green-50/60")}>
                         {isManagerOrAdmin && (
                             <TableCell>
                                 <div className="font-medium">{employee?.name || kpi.employeeId}</div>
@@ -417,14 +482,14 @@ export default function SubmitPage() {
                         </TableCell>
                         <TableCell className="text-right">
                            {(() => {
-                                if (isSubmitted && !canResubmit) {
+                                if (isSubmitted && !canResubmitData) {
                                     return (
                                         <Button variant="outline" size="sm" disabled>
                                             <BadgeCheck className="w-4 h-4 mr-2"/> Submitted
                                         </Button>
                                     );
                                 }
-                                if (canResubmit) {
+                                if (canResubmitData) {
                                     return (
                                         <Button variant="destructive" size="sm" onClick={() => handleOpenSubmitDialog(kpi)}>
                                             Resubmit Data
