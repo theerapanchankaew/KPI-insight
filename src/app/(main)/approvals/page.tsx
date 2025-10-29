@@ -42,6 +42,7 @@ interface IndividualKpiBase {
   agreedAt?: any;
   reviewedAt?: any;
   acknowledgedAt?: any;
+  rejectionReason?: string;
 }
 
 interface AssignedCascadedKpi extends IndividualKpiBase {
@@ -450,5 +451,3 @@ export default function ActionCenterPage() {
     </div>
   );
 }
-
-    
