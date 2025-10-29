@@ -9,7 +9,7 @@ import { Check, X, UserCheck, AlertCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useCollection, useFirestore, useMemoFirebase, WithId, setDocumentNonBlocking, useUser, useDoc } from '@/firebase';
+import { useCollection, useFirestore, useMemoFirebase, WithId, setDocumentNonBlocking, useUser, useDoc, deleteDocumentNonBlocking } from '@/firebase';
 import { collection, query, where, doc } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
@@ -51,6 +51,12 @@ interface AppUser {
 const RejectDialog = ({ isOpen, onClose, onConfirm, kpiName }: { isOpen: boolean, onClose: () => void, onConfirm: (reason: string) => void, kpiName: string }) => {
     const [reason, setReason] = useState('');
 
+    useEffect(() => {
+        if (isOpen) {
+            setReason('');
+        }
+    }, [isOpen]);
+
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent>
@@ -81,9 +87,9 @@ const RejectDialog = ({ isOpen, onClose, onConfirm, kpiName }: { isOpen: boolean
 const KpiApprovalsTab = ({ isAdmin, isProfileLoading }: { isAdmin: boolean, isProfileLoading: boolean }) => {
   const { toast } = useToast();
   const firestore = useFirestore();
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
+  const [selectedSubmission, setSelectedSubmission] = useState<WithId<KpiSubmission> | null>(null);
 
-  // As per SRS, we have Manager Review and Upper Manager Approval stages
-  // IMPORTANT: The query is now gated by isProfileLoading AND isAdmin status to prevent permission errors.
   const submissionsQuery = useMemoFirebase(() => {
     if (!firestore || isProfileLoading || !isAdmin) return null; 
     return query(collection(firestore, 'submissions'), where('status', 'in', ['Manager Review', 'Upper Manager Approval']));
@@ -101,6 +107,7 @@ const KpiApprovalsTab = ({ isAdmin, isProfileLoading }: { isAdmin: boolean, isPr
     
     if (item.status === 'Manager Review') {
         nextStatus = 'Upper Manager Approval';
+        individualKpiNextStatus = 'Upper Manager Approval'; // Align statuses
         toast({ title: 'Approved by Manager', description: 'KPI sent for upper management approval.'});
     } else { // Upper Manager Approval
         nextStatus = 'Closed';
@@ -115,30 +122,41 @@ const KpiApprovalsTab = ({ isAdmin, isProfileLoading }: { isAdmin: boolean, isPr
     }
   };
 
-  const handleReject = (item: WithId<KpiSubmission>) => {
-      if(!firestore) return;
-      const submissionRef = doc(firestore, 'submissions', item.id);
-      
-      // Rejecting a submission sends it back to the employee by changing the status of the *individual kpi*
-      const individualKpiRef = doc(firestore, 'individual_kpis', item.kpiId);
-      
-      // We delete the submission, as it's rejected. The employee must submit a new one.
-      setDocumentNonBlocking(individualKpiRef, { status: 'In-Progress' }, { merge: true }); // Re-open for submission
-      // Firebase doesn't have a non-blocking delete, but we can delete the submission here.
-      // For now, we will just update the status to closed to remove it from the queue
-       setDocumentNonBlocking(submissionRef, { status: "Closed", notes: "Rejected by manager" }, { merge: true });
+  const handleOpenRejectDialog = (item: WithId<KpiSubmission>) => {
+    setSelectedSubmission(item);
+    setIsRejectModalOpen(true);
+  };
+  
+  const handleConfirmRejection = (reason: string) => {
+      if(!firestore || !selectedSubmission) return;
 
+      const submissionRef = doc(firestore, 'submissions', selectedSubmission.id);
+      const individualKpiRef = doc(firestore, 'individual_kpis', selectedSubmission.kpiId);
+      
+      // Update individual kpi to 'Rejected' with the reason
+      const updatedData: Partial<IndividualKpi> = {
+          status: 'Rejected',
+          rejectionReason: reason,
+      };
+      setDocumentNonBlocking(individualKpiRef, updatedData, { merge: true });
+
+      // Delete the rejected submission document from the queue
+      deleteDocumentNonBlocking(submissionRef);
 
       toast({
           title: "Submission Rejected",
-          description: `The submission for "${item.kpiMeasure}" has been rejected. The employee has been notified.`,
+          description: `The submission for "${selectedSubmission.kpiMeasure}" has been rejected. The employee has been notified.`,
           variant: 'destructive',
       });
+      
+      setIsRejectModalOpen(false);
+      setSelectedSubmission(null);
   };
 
   const isLoading = isProfileLoading || isSubmissionsLoading;
 
   return (
+    <>
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Pending KPI Submissions for Review</CardTitle>
@@ -184,10 +202,10 @@ const KpiApprovalsTab = ({ isAdmin, isProfileLoading }: { isAdmin: boolean, isPr
                   )}
                 </div>
                 <div className="flex space-x-2 ml-0 sm:ml-4 mt-4 sm:mt-0">
-                  <Button onClick={() => handleApprove(item)} className="bg-success/90 hover:bg-success/100 text-white">
+                  <Button onClick={() => handleApprove(item)} className="bg-success/90 hover:bg-success text-white">
                     <Check className="w-4 h-4 mr-1" /> Approve
                   </Button>
-                  <Button onClick={() => handleReject(item)} variant="destructive">
+                  <Button onClick={() => handleOpenRejectDialog(item)} variant="destructive">
                     <X className="w-4 h-4 mr-1" /> Reject
                   </Button>
                 </div>
@@ -200,6 +218,13 @@ const KpiApprovalsTab = ({ isAdmin, isProfileLoading }: { isAdmin: boolean, isPr
         </div>
       </CardContent>
     </Card>
+     <RejectDialog 
+        isOpen={isRejectModalOpen}
+        onClose={() => setIsRejectModalOpen(false)}
+        onConfirm={handleConfirmRejection}
+        kpiName={selectedSubmission?.kpiMeasure || ''}
+    />
+    </>
   );
 };
 
@@ -209,8 +234,6 @@ const CommitmentRequestsTab = ({ isAdmin, isProfileLoading }: { isAdmin: boolean
   const [isRejectModalOpen, setRejectModalOpen] = useState(false);
   const [selectedKpi, setSelectedKpi] = useState<WithId<IndividualKpi> | null>(null);
 
-  // Per SRS: Manager reviews what the employee has 'Agreed' to
-  // IMPORTANT: The query is now gated by isProfileLoading AND isAdmin status to prevent permission errors.
   const commitmentsQuery = useMemoFirebase(() => {
       if (!firestore || isProfileLoading || !isAdmin) return null;
       return query(collection(firestore, 'individual_kpis'), where('status', '==', 'Agreed'));
@@ -221,7 +244,6 @@ const CommitmentRequestsTab = ({ isAdmin, isProfileLoading }: { isAdmin: boolean
   const handleAgreement = (kpi: WithId<IndividualKpi>) => {
     if (!firestore) return;
     const kpiRef = doc(firestore, 'individual_kpis', kpi.id);
-    // As per SRS, Manager agreement sends to Upper Manager for final sign-off
     const updatedData = { ...kpi, status: 'Upper Manager Approval' as const };
     setDocumentNonBlocking(kpiRef, updatedData, { merge: true });
 
@@ -236,7 +258,6 @@ const CommitmentRequestsTab = ({ isAdmin, isProfileLoading }: { isAdmin: boolean
   const handleConfirmRejection = (reason: string) => {
     if (!firestore || !selectedKpi) return;
     const kpiRef = doc(firestore, 'individual_kpis', selectedKpi.id);
-    // Rejecting sends it back to the employee with 'Rejected' status
     const updatedData: Partial<IndividualKpi> = {
         status: 'Rejected',
         rejectionReason: reason,
@@ -332,7 +353,6 @@ export default function ApprovalsPage() {
   const { data: userProfile, isLoading: isUserProfileLoading } = useDoc<AppUser>(userProfileRef);
   const isAdmin = useMemo(() => userProfile?.role === 'Admin', [userProfile]);
   
-  // These hooks are used to get the count for the tabs.
   const submissionsQuery = useMemoFirebase(() => {
     if (!firestore || isUserProfileLoading || !isAdmin) return null;
     return query(collection(firestore, 'submissions'), where('status', 'in', ['Manager Review', 'Upper Manager Approval']))
@@ -370,3 +390,5 @@ export default function ApprovalsPage() {
     </div>
   );
 }
+
+    
