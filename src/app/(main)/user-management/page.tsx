@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { PlusCircle, Trash2, AlertTriangle } from 'lucide-react';
+import { PlusCircle, Trash2, AlertTriangle, Send } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { navItems } from '@/lib/data/layout-data';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -17,7 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, WithId } from '@/firebase';
-import { collection, doc } from 'firebase/firestore';
+import { collection, doc, query, where, limit, getDocs, serverTimestamp } from 'firebase/firestore';
 import { addDocumentNonBlocking, deleteDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -42,6 +42,18 @@ export interface AppUser {
   position?: string;
   manager?: string;
 }
+interface IndividualKpiBase {
+    employeeId: string;
+    kpiId: string;
+    kpiMeasure: string;
+    weight: number;
+    status: 'Draft' | 'Agreed' | 'In-Progress' | 'Manager Review' | 'Upper Manager Approval' | 'Employee Acknowledged' | 'Closed' | 'Rejected';
+    notes?: string;
+}
+interface AssignedCascadedKpi extends IndividualKpiBase { type: 'cascaded'; target: string; }
+interface CommittedKpi extends IndividualKpiBase { type: 'committed'; task: string; targets: { [key: string]: string }; }
+type IndividualKpi = AssignedCascadedKpi | CommittedKpi;
+
 
 // Represents the merged data from employees and users collections
 type ManagedUser = WithId<Employee & Partial<AppUser>>;
@@ -287,6 +299,57 @@ export default function UserManagementPage() {
       toast({ title: 'User Removed', description: 'The user has been removed.', variant: 'destructive' });
   };
 
+  const handleForceSubmit = async (employee: ManagedUser) => {
+    if (!firestore || !isAdmin) {
+        toast({ title: 'Permission Denied', variant: 'destructive'});
+        return;
+    }
+    
+    // 1. Find a 'Draft' KPI for this user
+    const q = query(
+        collection(firestore, 'individual_kpis'), 
+        where('employeeId', '==', employee.id),
+        where('status', '==', 'Draft'),
+        limit(1)
+    );
+
+    const kpiSnapshot = await getDocs(q);
+
+    if (kpiSnapshot.empty) {
+        toast({ title: 'No Draft KPI Found', description: `${employee.name} has no available KPIs in 'Draft' status to fast-track.`, variant: 'destructive' });
+        return;
+    }
+
+    const kpiDoc = kpiSnapshot.docs[0];
+    const kpiData = kpiDoc.data() as IndividualKpi;
+
+    // 2. Update KPI status to 'In-Progress'
+    const kpiRef = doc(firestore, 'individual_kpis', kpiDoc.id);
+    setDocumentNonBlocking(kpiRef, { status: 'In-Progress' }, { merge: true });
+
+    // 3. Create a mock submission
+    const submissionData = {
+        kpiId: kpiDoc.id,
+        kpiMeasure: kpiData.kpiMeasure,
+        submittedBy: employee.id,
+        submitterName: employee.name,
+        department: employee.department,
+        actualValue: `95%`, // Mock data
+        targetValue: kpiData.type === 'cascaded' ? kpiData.target : '5-level scale',
+        notes: 'This is an admin-forced submission for testing purposes.',
+        submissionDate: serverTimestamp(),
+        status: 'Manager Review' as const,
+    };
+    
+    addDocumentNonBlocking(collection(firestore, 'submissions'), submissionData);
+
+    toast({
+        title: 'KPI Fast-Tracked!',
+        description: `A mock submission for "${kpiData.kpiMeasure}" has been created for ${employee.name} and is now in the Action Center.`,
+        duration: 7000
+    });
+  };
+
   const isLoading = isAuthLoading || isProfileLoading || (isAdmin && (isUsersLoading || isEmployeesLoading));
   const error = usersError || employeesError;
 
@@ -388,25 +451,31 @@ export default function UserManagementPage() {
           </TableCell>
         ))}
         <TableCell className="text-center">
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-               <Button variant="ghost" size="icon" disabled={employee.id === user?.uid}>
-                  <Trash2 className="h-4 w-4 text-destructive" />
-               </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This will permanently delete the employee/user document. This action cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={() => handleDeleteUser(employee.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+           <div className='flex items-center justify-center gap-1'>
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleForceSubmit(employee)}>
+                <Send className="h-4 w-4" />
+                <span className="sr-only">Force Submit</span>
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                 <Button variant="ghost" size="icon" className="h-8 w-8" disabled={employee.id === user?.uid}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                 </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently delete the employee/user document. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => handleDeleteUser(employee.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+           </div>
         </TableCell>
       </TableRow>
     ))
