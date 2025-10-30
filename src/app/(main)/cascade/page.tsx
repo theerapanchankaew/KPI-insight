@@ -32,6 +32,7 @@ interface IndividualKpiBase {
     weight: number;
     status: 'Draft' | 'Agreed' | 'In-Progress' | 'Manager Review' | 'Upper Manager Approval' | 'Employee Acknowledged' | 'Closed' | 'Rejected';
     notes?: string;
+    type: 'cascaded' | 'committed';
 }
 
 interface AssignedCascadedKpi extends IndividualKpiBase {
@@ -546,7 +547,7 @@ const CorporateKpiRow = ({
                     ) : (
                         <TableRow>
                             <TableCell colSpan={6} className="text-center text-sm text-gray-500 py-4 pl-12">
-                                This KPI has not been cascaded to any departments yet. Click the <Share2 className="inline h-4 w-4 mx-1" /> icon to start.
+                                This KPI has not been cascaded to any departments yet. Click the <Share2 className="inline h-4 w-4 mx-1 text-blue-600" /> icon to start.
                             </TableCell>
                         </TableRow>
                     )}
@@ -714,3 +715,5 @@ export default function KPICascadeManagement() {
     </>
   );
 }
+
+    
