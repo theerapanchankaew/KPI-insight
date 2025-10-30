@@ -27,6 +27,7 @@ import { useFirestore, useUser, useCollection, useMemoFirebase, useDoc, WithId }
 import { collection, query, where, doc, serverTimestamp } from 'firebase/firestore';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 
 // ==================== TYPE DEFINITIONS ====================
 
