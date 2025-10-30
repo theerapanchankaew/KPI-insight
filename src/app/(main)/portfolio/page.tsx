@@ -453,6 +453,16 @@ const KpiDetailDialog = ({
     }
   }, [isOpen, kpi]);
 
+  const sortedTargetEntries = useMemo(() => {
+    if (!kpi || kpi.type !== 'committed') return [];
+    // Sort keys like 'level1', 'level2' numerically
+    return Object.entries(kpi.targets).sort(([keyA], [keyB]) => {
+        const numA = parseInt(keyA.replace('level', ''), 10);
+        const numB = parseInt(keyB.replace('level', ''), 10);
+        return numA - numB;
+    });
+  }, [kpi]);
+
   if (!kpi) return null;
 
   const handleAgree = () => {
@@ -466,24 +476,12 @@ const KpiDetailDialog = ({
   };
   
   const isRejected = kpi.status === 'Rejected';
-  let dialogTitle = "KPI Details";
-  
+
   const formatDate = (timestamp: any) => {
     if (!timestamp) return 'N/A';
     const date = timestamp instanceof Timestamp ? timestamp.toDate() : new Date(timestamp);
     return format(date, 'MMM dd, yyyy, hh:mm a');
   };
-
-  const sortedTargetEntries = useMemo(() => {
-    if (kpi.type !== 'committed') return [];
-    // Sort keys like 'level1', 'level2' numerically
-    return Object.entries(kpi.targets).sort(([keyA], [keyB]) => {
-        const numA = parseInt(keyA.replace('level', ''), 10);
-        const numB = parseInt(keyB.replace('level', ''), 10);
-        return numA - numB;
-    });
-  }, [kpi]);
-
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -1084,3 +1082,5 @@ export default function MyPortfolioPage() {
     </div>
   );
 }
+
+    
