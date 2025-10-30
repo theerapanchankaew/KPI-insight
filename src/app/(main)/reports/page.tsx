@@ -16,9 +16,9 @@ import { kpiReportData } from '@/lib/data/report-data'; // Keep for quarterly
 import { Skeleton } from '@/components/ui/skeleton';
 
 const MonthlyReport = () => {
-    const { orgData, isOrgDataLoading, cascadedKpis, isCascadedKpisLoading } = useKpiData();
+    const { orgData, isOrgDataLoading, cascadedKpis, isCascadedKpisLoading, monthlyKpisData, isMonthlyKpisLoading } = useKpiData();
 
-    const isLoading = isOrgDataLoading || isCascadedKpisLoading;
+    const isLoading = isOrgDataLoading || isCascadedKpisLoading || isMonthlyKpisLoading;
 
     // Memoize the data for the AI summary to prevent re-generating on every render
     const aiInputData = useMemo(() => {
@@ -32,6 +32,47 @@ const MonthlyReport = () => {
         return JSON.stringify(dataForAI, null, 2);
     }, [orgData, cascadedKpis, isLoading]);
 
+    const departmentPerformance = useMemo(() => {
+        if (!cascadedKpis || !monthlyKpisData || !orgData) return [];
+
+        const departments = [...new Set(orgData.map(e => e.department).filter(Boolean))];
+        
+        const performance = departments.map(dept => {
+            const deptKpis = cascadedKpis.filter(kpi => kpi.department === dept);
+            if (deptKpis.length === 0) {
+                return { department: dept, achievement: 0 };
+            }
+            
+            let totalTarget = 0;
+            let totalActual = 0;
+
+            deptKpis.forEach(kpi => {
+                const monthlyForThisKpi = monthlyKpisData.filter(m => m.parentKpiId === kpi.corporateKpiId);
+                const kpiTotalTarget = monthlyForThisKpi.reduce((sum, m) => sum + m.target, 0);
+                const kpiTotalActual = monthlyForThisKpi.reduce((sum, m) => sum + m.actual, 0);
+                
+                // Weight the KPI's contribution
+                const weightPercentage = kpi.weight / 100;
+                totalTarget += kpiTotalTarget * weightPercentage;
+                totalActual += kpiTotalActual * weightPercentage;
+            });
+            
+            const achievement = totalTarget > 0 ? (totalActual / totalTarget) * 100 : 0;
+            return { department: dept, achievement };
+        });
+
+        // Sort by achievement descending and take top 3
+        return performance.sort((a, b) => b.achievement - a.achievement).slice(0, 3);
+
+    }, [cascadedKpis, monthlyKpisData, orgData]);
+
+    const getAchievementBadgeVariant = (achievement: number): "success" | "warning" | "destructive" => {
+        if (achievement >= 100) return 'success';
+        if (achievement >= 80) return 'warning';
+        return 'destructive';
+    }
+
+
     return (
         <div className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -43,19 +84,18 @@ const MonthlyReport = () => {
                     <CardContent className="space-y-3">
                          {isLoading ? (
                             [...Array(3)].map((_, i) => <Skeleton key={i} className="h-16 w-full" />)
-                         ) : orgData && [...new Set(orgData.map(e => e.department))].filter(Boolean).slice(0, 3).map((dept, index) => (
-                            <div key={dept} className={cn("flex items-center justify-between p-3 rounded-lg", 
+                         ) : departmentPerformance.map((dept, index) => (
+                            <div key={dept.department} className={cn("flex items-center justify-between p-3 rounded-lg", 
                                 index === 0 ? 'bg-success/10' : index === 1 ? 'bg-blue-50' : 'bg-orange-50'
                             )}>
                                 <div>
-                                    <p className="font-medium text-gray-800">{dept}</p>
+                                    <p className="font-medium text-gray-800">{dept.department}</p>
                                     <p className="text-sm text-gray-600">Department</p>
                                 </div>
                                 <span className={cn("text-lg font-bold", 
                                     index === 0 ? 'text-success' : index === 1 ? 'text-blue-600' : 'text-orange-600'
                                 )}>
-                                    {/* Placeholder performance */}
-                                    {95 - index * 5}% 
+                                    {dept.achievement.toFixed(1)}% 
                                 </span>
                             </div>
                         ))}
@@ -74,7 +114,7 @@ const MonthlyReport = () => {
                                 <TableHead>Department</TableHead>
                                 <TableHead>Weight</TableHead>
                                 <TableHead>Target</TableHead>
-                                <TableHead>Actual (Placeholder)</TableHead>
+                                <TableHead>Actual (YTD)</TableHead>
                                 <TableHead>Achievement</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -92,18 +132,21 @@ const MonthlyReport = () => {
                                 ))
                             ) : cascadedKpis && cascadedKpis.length > 0 ? (
                                 cascadedKpis.map(kpi => {
-                                    // Placeholder for achievement calculation
-                                    const achievement = Math.floor(Math.random() * 40) + 70; // 70-110%
+                                    const monthlyForKpi = monthlyKpisData?.filter(m => m.parentKpiId === kpi.corporateKpiId) || [];
+                                    const totalTarget = monthlyForKpi.reduce((sum, m) => sum + m.target, 0);
+                                    const totalActual = monthlyForKpi.reduce((sum, m) => sum + m.actual, 0);
+                                    const achievement = totalTarget > 0 ? (totalActual / totalTarget) * 100 : 0;
+                                    
                                     return (
                                         <TableRow key={kpi.id}>
                                             <TableCell className="font-medium">{kpi.measure}</TableCell>
                                             <TableCell>{kpi.department}</TableCell>
                                             <TableCell>{kpi.weight}%</TableCell>
                                             <TableCell>{kpi.target}</TableCell>
-                                            <TableCell>...</TableCell>
+                                            <TableCell>{totalActual.toLocaleString()}</TableCell>
                                             <TableCell>
-                                                <Badge variant={achievement >= 100 ? 'success' : achievement >= 80 ? 'warning' : 'destructive'}>
-                                                    {achievement}%
+                                                <Badge variant={getAchievementBadgeVariant(achievement)}>
+                                                    {achievement.toFixed(1)}%
                                                 </Badge>
                                             </TableCell>
                                         </TableRow>
@@ -201,5 +244,3 @@ export default function ReportsPage() {
     </div>
   );
 }
-
-    
