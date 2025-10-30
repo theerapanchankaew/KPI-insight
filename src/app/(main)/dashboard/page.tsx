@@ -182,7 +182,7 @@ const KpiCard = ({ kpi, monthlyData }: { kpi: WithId<CorporateKpi>, monthlyData:
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="flex-1 flex">
-                    <div className="h-40 w-full">
+                    <ChartContainer config={chartConfig} className="h-40 w-full">
                         <ResponsiveContainer>
                             <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }} onClick={handlePointClick}>
                                 <CartesianGrid vertical={false} strokeDasharray="3 3" />
@@ -219,7 +219,7 @@ const KpiCard = ({ kpi, monthlyData }: { kpi: WithId<CorporateKpi>, monthlyData:
                                 <Line type="monotone" dataKey="Target" stroke="hsl(var(--accent))" strokeWidth={2} strokeDasharray="3 3" dot={false} />
                             </LineChart>
                         </ResponsiveContainer>
-                    </div>
+                    </ChartContainer>
                 </CardContent>
             </Card>
             <EditDataDialog 
@@ -375,3 +375,5 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+    
