@@ -6,13 +6,12 @@ import { useAppLayout } from '../layout';
 import { Button } from '@/components/ui/button';
 import { FileText, BadgeCheck, Briefcase, Upload, Send, Eye, MessageSquare, AlertCircle, ChevronsUpDown } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from "@/components/ui/dialog";
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useUser, useFirestore, useCollection, useMemoFirebase, WithId, addDocumentNonBlocking, useDoc, setDocumentNonBlocking } from '@/firebase';
+import { useUser, useFirestore, useCollection, useMemoFirebase, WithId, addDocumentNonBlocking, useDoc } from '@/firebase';
 import { collection, query, where, serverTimestamp, doc, Timestamp } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
@@ -39,7 +38,6 @@ interface IndividualKpiBase {
     agreedAt?: any;
     reviewedAt?: any;
     acknowledgedAt?: any;
-    category?: string; // Adding category for filtering
 }
 interface AssignedCascadedKpi extends IndividualKpiBase { type: 'cascaded'; target: string; corporateKpiId: string;}
 interface CommittedKpi extends IndividualKpiBase { type: 'committed'; task: string; targets: { [key: string]: string }; }
@@ -103,6 +101,8 @@ const SubmitDataDialog = ({ isOpen, onOpenChange, kpi, onSubmit }: {
     
     if (!kpi) return null;
 
+    const isCommitted = kpi.type === 'committed';
+
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-lg">
@@ -116,18 +116,38 @@ const SubmitDataDialog = ({ isOpen, onOpenChange, kpi, onSubmit }: {
                     <div className="p-4 bg-gray-50/50 rounded-lg space-y-2 border">
                         <p><strong>Measure:</strong> {kpi.kpiMeasure}</p>
                         <p><strong>Weight:</strong> {kpi.weight}%</p>
-                        <p><strong>Target:</strong> {kpi.type === 'cascaded' ? kpi.target : "5-level scale"}</p>
+                        <p><strong>Target:</strong> {isCommitted ? "5-level scale" : kpi.target}</p>
                     </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="actual-value">Actual Value</Label>
-                        <Input 
-                            id="actual-value" 
-                            value={actualValue} 
-                            onChange={(e) => setActualValue(e.target.value)} 
-                            placeholder="e.g., 1,200,000 or 95%"
-                            required 
-                        />
-                    </div>
+
+                    {isCommitted ? (
+                        <div className="space-y-2">
+                             <Label htmlFor="actual-value">Achieved Level</Label>
+                             <Select value={actualValue} onValueChange={setActualValue}>
+                                <SelectTrigger id="actual-value">
+                                    <SelectValue placeholder="Select the level you achieved" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {Object.entries(kpi.targets).map(([level, desc]) => (
+                                        <SelectItem key={level} value={`Level ${level.slice(-1)}`}>
+                                            Level {level.slice(-1)}: {desc}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                             </Select>
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            <Label htmlFor="actual-value">Actual Value</Label>
+                            <Input 
+                                id="actual-value" 
+                                value={actualValue} 
+                                onChange={(e) => setActualValue(e.target.value)} 
+                                placeholder="e.g., 1,200,000 or 95%"
+                                required 
+                            />
+                        </div>
+                    )}
+
                     <div className="space-y-2">
                         <Label htmlFor="submission-notes">Notes</Label>
                         <Textarea 
@@ -456,7 +476,8 @@ export default function SubmitPage() {
         const departmentMatch = departmentFilter === 'all' || employee?.department === departmentFilter;
         
         const kpiInfo = kpi.type === 'cascaded' ? kpiCatalog?.find(k => k.id === kpi.corporateKpiId) : null;
-        const categoryMatch = categoryFilter === 'all' || (kpiInfo && kpiInfo.category === categoryFilter);
+        const category = kpiInfo?.category ?? (kpi as any).category;
+        const categoryMatch = categoryFilter === 'all' || category === categoryFilter;
 
         const employeeMatch = employeeFilter === 'all' || kpi.employeeId === employeeFilter;
 
@@ -648,5 +669,3 @@ export default function SubmitPage() {
     </div>
   );
 }
-
-    

@@ -33,10 +33,11 @@ import {
   TrendingDown,
   CalendarDays,
   RefreshCw,
-  Edit
+  Edit,
+  PlusCircle
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useUser, useCollection, useMemoFirebase, WithId, useDoc } from '@/firebase';
+import { useFirestore, useUser, useCollection, useMemoFirebase, WithId, useDoc, addDocumentNonBlocking } from '@/firebase';
 import { collection, query, where, doc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -46,6 +47,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 
 // ==================== TYPE DEFINITIONS ====================
 
@@ -107,6 +109,13 @@ interface AppUser {
   department: string;
 }
 
+interface Employee {
+    id: string;
+    name: string;
+    position: string;
+    department: string;
+}
+
 // ==================== UTILITY FUNCTIONS ====================
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -145,6 +154,120 @@ const parseValue = (value: string | number) => {
 };
 
 // ==================== DIALOGS ====================
+
+const CreateCommittedKpiDialog = ({
+    isOpen,
+    onClose,
+    onCreate,
+    teamMembers,
+    currentUserId,
+    isManager
+}: {
+    isOpen: boolean,
+    onClose: () => void,
+    onCreate: (kpi: Omit<CommittedKpi, 'id' | 'status' | 'kpiId'>) => void,
+    teamMembers: Employee[],
+    currentUserId: string,
+    isManager: boolean
+}) => {
+    const [employeeId, setEmployeeId] = useState(currentUserId);
+    const [task, setTask] = useState('');
+    const [weight, setWeight] = useState('');
+    const [targets, setTargets] = useState({ level1: '', level2: '', level3: '', level4: '', level5: '' });
+
+    useEffect(() => {
+        if (!isManager) {
+            setEmployeeId(currentUserId);
+        }
+    }, [isManager, currentUserId]);
+    
+    useEffect(() => {
+        if (!isOpen) {
+            setTask('');
+            setWeight('');
+            setTargets({ level1: '', level2_note: '', level3_good: '', level4_vgood: '', level5_excel: '' });
+        }
+    }, [isOpen]);
+
+    const handleCreate = () => {
+        if (!task || !weight || !employeeId) {
+            alert('Please fill all fields');
+            return;
+        }
+        
+        onCreate({
+            employeeId,
+            kpiMeasure: task,
+            weight: Number(weight),
+            type: 'committed',
+            task,
+            targets: {
+                level1: targets.level1,
+                level2: targets.level2,
+                level3: targets.level3,
+                level4: targets.level4,
+                level5: targets.level5,
+            }
+        });
+        onClose();
+    };
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                    <DialogTitle>Create New Committed KPI</DialogTitle>
+                    <DialogDescription>Define a new individual or department-specific KPI with a 5-level performance scale.</DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-4">
+                    {isManager && (
+                        <div className="space-y-2">
+                            <Label htmlFor="employee-select">Assign To</Label>
+                            <Select value={employeeId} onValueChange={setEmployeeId}>
+                                <SelectTrigger id="employee-select">
+                                    <SelectValue placeholder="Select an employee" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {teamMembers.map(emp => <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
+                    <div className="grid grid-cols-5 gap-4">
+                        <div className="space-y-2 col-span-4">
+                            <Label htmlFor="task">Task / KPI Measure</Label>
+                            <Input id="task" value={task} onChange={e => setTask(e.target.value)} placeholder="e.g., Improve internal process for X" />
+                        </div>
+                         <div className="space-y-2 col-span-1">
+                            <Label htmlFor="weight">Weight (%)</Label>
+                            <Input id="weight" type="number" value={weight} onChange={e => setWeight(e.target.value)} placeholder="e.g., 15" />
+                        </div>
+                    </div>
+                    <div>
+                        <Label>5-Level Performance Targets</Label>
+                        <div className="space-y-2 mt-2">
+                            {Object.keys(targets).map((level, i) => (
+                                <div key={level} className="flex items-center gap-3">
+                                    <Label className="w-24 text-sm text-right">Level {i+1}</Label>
+                                    <Input 
+                                        value={targets[level as keyof typeof targets]}
+                                        onChange={e => setTargets(prev => ({...prev, [level]: e.target.value}))}
+                                        placeholder={`Description for level ${i+1} performance...`}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                    <Button onClick={handleCreate}>Create Draft KPI</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 
 const EditKpiDialog = ({
     isOpen,
@@ -628,6 +751,7 @@ export default function MyPortfolioPage() {
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
   const [isMonthlyReportOpen, setMonthlyReportOpen] = useState(false);
   const [isEditDialogOpen, setEditDialogOpen] = useState(false);
+  const [isCreateDialogOpen, setCreateDialogOpen] = useState(false);
 
   const userProfileRef = useMemoFirebase(() => {
     if (!user || !firestore) return null;
@@ -695,6 +819,23 @@ export default function MyPortfolioPage() {
 
   // ==================== HANDLERS ====================
 
+  const handleCreateCommittedKpi = (kpiData: Omit<CommittedKpi, 'id' | 'status' | 'kpiId'>) => {
+    if (!firestore) return;
+    
+    const newKpi: Omit<IndividualKpi, 'id'> = {
+        ...kpiData,
+        kpiId: `committed_${Date.now()}`, // Unique ID for this committed KPI
+        status: 'Draft',
+    };
+    
+    addDocumentNonBlocking(collection(firestore, 'individual_kpis'), newKpi);
+    
+    toast({
+        title: "Committed KPI Created",
+        description: `A new draft KPI "${kpiData.task}" has been created.`,
+    });
+  };
+
   const handleAgreeToKpi = async (kpiId: string, notes: string) => {
     if (!firestore || !user) return;
     try {
@@ -757,8 +898,13 @@ export default function MyPortfolioPage() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-8 w-1/3" />
-        <Skeleton className="h-6 w-1/2" />
+        <div className="flex justify-between items-center">
+            <div className="space-y-2">
+                <Skeleton className="h-8 w-48" />
+                <Skeleton className="h-6 w-72" />
+            </div>
+            <Skeleton className="h-10 w-36" />
+        </div>
         <div className="space-y-4 pt-4">
             <Skeleton className="h-40" />
             <Skeleton className="h-40" />
@@ -780,11 +926,17 @@ export default function MyPortfolioPage() {
 
   return (
     <div className="fade-in space-y-6">
-      <div>
-        <h3 className="text-2xl font-bold text-gray-900 mb-2">Portfolio</h3>
-        <p className="text-gray-600">
-          Review and manage your team's KPI portfolio.
-        </p>
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+        <div>
+            <h3 className="text-2xl font-bold text-gray-900 mb-1">Portfolio</h3>
+            <p className="text-gray-600">
+              {isManagerOrAdmin ? "Review and manage your team's KPI portfolio." : "Review and manage your personal KPIs for this period."}
+            </p>
+        </div>
+        <Button onClick={() => setCreateDialogOpen(true)}>
+            <PlusCircle className="mr-2 h-4 w-4" />
+            Create Committed KPI
+        </Button>
       </div>
       
       <div className="space-y-8">
@@ -843,8 +995,8 @@ export default function MyPortfolioPage() {
                       ) : (
                          <div className="text-center py-10">
                             <Target className="h-12 w-12 text-gray-300 mx-auto mb-4"/>
-                            <h4 className="font-semibold">No KPIs assigned yet</h4>
-                            <p className="text-sm text-muted-foreground">Your manager will assign KPIs to you soon.</p>
+                            <h4 className="font-semibold">{isManagerOrAdmin ? 'No KPIs assigned to this employee' : 'No KPIs assigned yet'}</h4>
+                            <p className="text-sm text-muted-foreground">{isManagerOrAdmin ? 'Use the "Cascade" page to assign KPIs.' : 'Your manager will assign KPIs to you soon.'}</p>
                          </div>
                       )}
                   </CollapsibleContent>
@@ -852,6 +1004,15 @@ export default function MyPortfolioPage() {
             )
         })}
       </div>
+      
+      <CreateCommittedKpiDialog 
+        isOpen={isCreateDialogOpen}
+        onClose={() => setCreateDialogOpen(false)}
+        onCreate={handleCreateCommittedKpi}
+        teamMembers={teamMembers}
+        currentUserId={user.uid}
+        isManager={isManagerOrAdmin || false}
+      />
 
       <KpiDetailDialog
         kpi={selectedKpi}
