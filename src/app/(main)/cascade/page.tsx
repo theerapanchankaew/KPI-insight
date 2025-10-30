@@ -10,21 +10,33 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { cn } from '@/lib/utils';
 import { useKpiData } from '@/context/KpiDataContext';
 import { Button } from '@/components/ui/button';
-import { ChevronDown, ChevronRight, Share2, Edit, Trash2 } from 'lucide-react';
-import { useFirestore, useUser, useCollection, useMemoFirebase, WithId } from '@/firebase';
-import { collection } from 'firebase/firestore';
+import { ChevronDown, ChevronRight, Share2, Edit, Trash2, PlusCircle, Save } from 'lucide-react';
+import { useFirestore, useUser, useCollection, useMemoFirebase, WithId, addDocumentNonBlocking, setDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
+import { collection, doc, writeBatch } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
 
 // ==================== TYPE DEFINITIONS ====================
-import type { Employee, Kpi as CorporateKpi, CascadedKpi, MonthlyKpi, IndividualKpi } from '@/context/KpiDataContext';
+import type { Employee, Kpi as CorporateKpi, CascadedKpi, MonthlyKpi } from '@/context/KpiDataContext';
+
+// This was missing from the context, let's define it here for this page's purpose
+interface IndividualKpi {
+    id: string;
+    employeeId: string;
+    kpiId: string; // This would link to a cascadedKpi ID
+    kpiMeasure: string;
+    weight: number;
+    status: 'Draft' | 'Agreed' | 'In-Progress' | 'Manager Review' | 'Upper Manager Approval' | 'Employee Acknowledged' | 'Closed' | 'Rejected';
+    type: 'cascaded' | 'committed';
+    target?: string;
+}
+
 
 // ==================== UTILITY FUNCTIONS ====================
-const parseValue = (value: string | number) => {
-    if (typeof value === 'number') return value;
-    if (typeof value !== 'string') return 0;
-    return parseFloat(value.replace(/[^0-9.-]+/g, "")) || 0;
-};
-
 const getStatusColor = (status: IndividualKpi['status']) => {
     const colors: Record<IndividualKpi['status'], string> = {
       'Draft': 'bg-gray-100 text-gray-800 border-gray-300',
@@ -38,6 +50,171 @@ const getStatusColor = (status: IndividualKpi['status']) => {
     };
     return colors[status] || colors['Draft'];
 };
+
+
+// ==================== DIALOGS ====================
+
+const DeployAndCascadeDialog = ({
+    isOpen,
+    onClose,
+    corporateKpi,
+    departments,
+    existingCascades,
+}: {
+    isOpen: boolean;
+    onClose: () => void;
+    corporateKpi: WithId<CorporateKpi> | null;
+    departments: string[];
+    existingCascades: WithId<CascadedKpi>[];
+}) => {
+    const firestore = useFirestore();
+    const { toast } = useToast();
+    const [cascades, setCascades] = useState<Partial<CascadedKpi>[]>([]);
+
+    useEffect(() => {
+        if (corporateKpi) {
+            const initialCascades = existingCascades.length > 0 ? existingCascades : [{ department: '', weight: 0, target: '' }];
+            setCascades(initialCascades);
+        }
+    }, [corporateKpi, existingCascades]);
+
+    if (!corporateKpi) return null;
+    
+    const totalWeight = cascades.reduce((sum, c) => sum + (c.weight || 0), 0);
+    
+    const handleCascadeChange = (index: number, field: keyof CascadedKpi, value: string | number) => {
+        const newCascades = [...cascades];
+        (newCascades[index] as any)[field] = value;
+        setCascades(newCascades);
+    };
+
+    const addCascade = () => {
+        setCascades([...cascades, { department: '', weight: 0, target: '' }]);
+    };
+
+    const removeCascade = (index: number) => {
+        const cascadeToRemove = cascades[index];
+        if (cascadeToRemove && (cascadeToRemove as WithId<CascadedKpi>).id && firestore) {
+            deleteDocumentNonBlocking(doc(firestore, 'cascaded_kpis', (cascadeToRemove as WithId<CascadedKpi>).id));
+            toast({ title: 'Cascade Removed', description: `Removed cascade for ${cascadeToRemove.department}.`, variant: 'destructive'});
+        }
+        setCascades(cascades.filter((_, i) => i !== index));
+    };
+    
+    const handleSave = async () => {
+        if (!firestore || !corporateKpi) return;
+
+        if (totalWeight > 100) {
+            toast({ title: 'Invalid Weight', description: 'Total weight cannot exceed 100%.', variant: 'destructive' });
+            return;
+        }
+
+        try {
+            const batch = writeBatch(firestore);
+            cascades.forEach(c => {
+                if (c.department && c.weight && c.target) {
+                    const cascadeData: Omit<CascadedKpi, 'id'> = {
+                        corporateKpiId: corporateKpi.id,
+                        measure: corporateKpi.measure,
+                        department: c.department!,
+                        weight: Number(c.weight),
+                        target: c.target!,
+                        unit: corporateKpi.unit,
+                        category: corporateKpi.category,
+                    };
+
+                    let docRef;
+                    if ((c as WithId<CascadedKpi>).id) {
+                        // This is an existing cascade, so we update it.
+                        docRef = doc(firestore, 'cascaded_kpis', (c as WithId<CascadedKpi>).id);
+                        batch.set(docRef, cascadeData, { merge: true });
+                    } else {
+                        // This is a new cascade, so we create it.
+                        docRef = doc(collection(firestore, 'cascaded_kpis'));
+                        batch.set(docRef, cascadeData);
+                    }
+                }
+            });
+            await batch.commit();
+            toast({ title: 'Success', description: 'KPI cascade has been saved.' });
+            onClose();
+        } catch (error) {
+            console.error("Error saving cascades:", error);
+            toast({ title: 'Error', description: 'Could not save KPI cascade.', variant: 'destructive' });
+        }
+    };
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="max-w-4xl">
+                <DialogHeader>
+                    <DialogTitle>Deploy & Cascade KPI</DialogTitle>
+                    <DialogDescription>
+                        Cascade '<span className="font-semibold text-primary">{corporateKpi.measure}</span>' to departments. The total weight must not exceed 100%.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="py-4 max-h-[60vh] overflow-y-auto pr-2">
+                    <div className="space-y-4">
+                        {cascades.map((cascade, index) => (
+                            <div key={index} className="grid grid-cols-12 gap-x-4 items-center p-3 border rounded-lg">
+                                <div className="col-span-5">
+                                    <Label>Department</Label>
+                                    <Select 
+                                        value={cascade.department} 
+                                        onValueChange={(val) => handleCascadeChange(index, 'department', val)}
+                                    >
+                                        <SelectTrigger><SelectValue placeholder="Select Department" /></SelectTrigger>
+                                        <SelectContent>
+                                            {departments.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="col-span-2">
+                                    <Label>Weight (%)</Label>
+                                    <Input 
+                                        type="number" 
+                                        value={cascade.weight}
+                                        onChange={(e) => handleCascadeChange(index, 'weight', Number(e.target.value))}
+                                    />
+                                </div>
+                                <div className="col-span-4">
+                                    <Label>Target</Label>
+                                    <Input 
+                                        value={cascade.target}
+                                        onChange={(e) => handleCascadeChange(index, 'target', e.target.value)}
+                                        placeholder="e.g., ≥ 20M"
+                                    />
+                                </div>
+                                <div className="col-span-1 self-end">
+                                    <Button variant="ghost" size="icon" onClick={() => removeCascade(index)} disabled={cascades.length <= 1 && !(cascade as WithId<CascadedKpi>).id}>
+                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                    </Button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                     <Button variant="outline" size="sm" onClick={addCascade} className="mt-4">
+                        <PlusCircle className="mr-2 h-4 w-4" /> Add Department
+                    </Button>
+                </div>
+                <DialogFooter>
+                    <div className="w-full flex justify-between items-center">
+                        <div>
+                            <p className="text-sm font-medium">Total Weight: <span className={cn(totalWeight > 100 ? "text-destructive" : "text-primary")}>{totalWeight}%</span> / 100%</p>
+                        </div>
+                        <div>
+                           <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                           <Button onClick={handleSave} className="ml-2">
+                                <Save className="mr-2 h-4 w-4" /> Save Cascade
+                           </Button>
+                        </div>
+                    </div>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 
 // ==================== ROW COMPONENTS FOR HIERARCHICAL TABLE ====================
 
@@ -134,13 +311,15 @@ const CorporateKpiRow = ({
     cascadedKpis, 
     individualKpis, 
     employees, 
-    monthlyKpis 
+    monthlyKpis,
+    onOpenCascade,
 }: { 
     kpi: WithId<CorporateKpi>, 
     cascadedKpis: WithId<CascadedKpi>[], 
     individualKpis: WithId<IndividualKpi>[], 
     employees: Map<string, WithId<Employee>>,
-    monthlyKpis: WithId<MonthlyKpi>[]
+    monthlyKpis: WithId<MonthlyKpi>[],
+    onOpenCascade: (kpi: WithId<CorporateKpi>) => void,
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const relevantCascadedKpis = cascadedKpis.filter(cascaded => cascaded.corporateKpiId === kpi.id);
@@ -156,11 +335,24 @@ const CorporateKpiRow = ({
 
     return (
         <>
-            <TableRow className="border-b-2 border-gray-300 hover:bg-gray-50" onClick={() => setIsOpen(!isOpen)}>
-                <TableCell className="font-bold text-gray-900 py-4 cursor-pointer">
-                    <div className="flex items-center gap-2">
-                        {isOpen ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
-                        {kpi.measure}
+            <TableRow className="border-b-2 border-gray-300 hover:bg-gray-50">
+                <TableCell className="font-bold text-gray-900 py-4">
+                     <div className="flex items-center gap-2">
+                        <span onClick={() => setIsOpen(!isOpen)} className="flex items-center gap-2 cursor-pointer flex-grow">
+                            {isOpen ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
+                            {kpi.measure}
+                        </span>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onOpenCascade(kpi)}>
+                                <Share2 className="h-4 w-4 text-blue-600" />
+                           </Button>
+                           <Button variant="ghost" size="icon" className="h-7 w-7">
+                                <Edit className="h-4 w-4 text-gray-600" />
+                           </Button>
+                           <Button variant="ghost" size="icon" className="h-7 w-7">
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                           </Button>
+                        </div>
                     </div>
                 </TableCell>
                 <TableCell className="font-bold text-gray-900 py-4 text-center">
@@ -191,7 +383,7 @@ const CorporateKpiRow = ({
                     ) : (
                         <TableRow>
                             <TableCell colSpan={6} className="text-center text-sm text-gray-500 py-4 pl-12">
-                                This KPI has not been cascaded to any departments yet.
+                                This KPI has not been cascaded to any departments yet. Click the <Share2 className="inline h-4 w-4 mx-1" /> icon to start.
                             </TableCell>
                         </TableRow>
                     )}
@@ -212,6 +404,9 @@ export default function KPICascadeManagement() {
 
   const firestore = useFirestore();
   const { user } = useUser();
+
+  const [isCascadeDialogOpen, setCascadeDialogOpen] = useState(false);
+  const [selectedKpi, setSelectedKpi] = useState<WithId<CorporateKpi> | null>(null);
 
   // Unified data fetching
   const { 
@@ -234,8 +429,24 @@ export default function KPICascadeManagement() {
     }
     return map;
   }, [employeesData]);
+  
+  const departmentsList = useMemo(() => {
+    if(!employeesData) return [];
+    return [...new Set(employeesData.map(e => e.department))].filter(Boolean);
+  }, [employeesData]);
+
+  const existingCascadesForSelectedKpi = useMemo(() => {
+      if (!selectedKpi || !cascadedKpis) return [];
+      return cascadedKpis.filter(c => c.corporateKpiId === selectedKpi.id);
+  }, [selectedKpi, cascadedKpis]);
+
 
   const isLoading = isKpiDataLoading || isCascadedKpisLoading || isOrgDataLoading || isIndividualKpisLoading || isMonthlyKpisLoading;
+  
+  const handleOpenCascadeDialog = (kpi: WithId<CorporateKpi>) => {
+      setSelectedKpi(kpi);
+      setCascadeDialogOpen(true);
+  };
 
   const renderContent = () => {
     if (isLoading) {
@@ -272,6 +483,7 @@ export default function KPICascadeManagement() {
             individualKpis={individualKpis || []}
             employees={employeesMap}
             monthlyKpis={monthlyKpisData || []}
+            onOpenCascade={handleOpenCascadeDialog}
           />
         ))}
       </TableBody>
@@ -279,6 +491,7 @@ export default function KPICascadeManagement() {
   };
 
   return (
+    <>
     <div className="fade-in space-y-6">
       <Card>
         <CardHeader>
@@ -306,5 +519,15 @@ export default function KPICascadeManagement() {
         </CardContent>
       </Card>
     </div>
+    
+    <DeployAndCascadeDialog 
+        isOpen={isCascadeDialogOpen}
+        onClose={() => setCascadeDialogOpen(false)}
+        corporateKpi={selectedKpi}
+        departments={departmentsList}
+        existingCascades={existingCascadesForSelectedKpi}
+    />
+    </>
   );
 }
+
