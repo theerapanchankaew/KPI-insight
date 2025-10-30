@@ -12,7 +12,7 @@ import { useKpiData } from '@/context/KpiDataContext';
 import { Button } from '@/components/ui/button';
 import { ChevronDown, ChevronRight, Share2, Edit, Trash2, PlusCircle, Save, UserPlus } from 'lucide-react';
 import { useFirestore, useUser, useCollection, useMemoFirebase, WithId, addDocumentNonBlocking, setDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
-import { collection, doc, writeBatch } from 'firebase/firestore';
+import { collection, doc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -275,7 +275,7 @@ const DeployAndCascadeDialog = ({
                     unit: corporateKpi.unit,
                     status: 'Active',
                     distributionStrategy: 'equal',
-                    createdAt: new Date(),
+                    createdAt: serverTimestamp(),
                     createdBy: user.uid,
                  };
                  const monthlyDocRef = doc(collection(firestore, 'monthly_kpis'), `${corporateKpi.id}_${currentYear}_${i}`);
