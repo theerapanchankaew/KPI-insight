@@ -20,6 +20,8 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Textarea } from '@/components/ui/textarea';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+
 
 // ==================== TYPE DEFINITIONS ====================
 import type { Employee, Kpi as CorporateKpi, CascadedKpi, MonthlyKpi } from '@/context/KpiDataContext';
@@ -572,6 +574,7 @@ const CorporateKpiRow = ({
     monthlyKpis,
     onOpenCascade,
     onOpenAssign,
+    onDelete,
 }: { 
     kpi: WithId<CorporateKpi>, 
     cascadedKpis: WithId<CascadedKpi>[], 
@@ -580,6 +583,7 @@ const CorporateKpiRow = ({
     monthlyKpis: WithId<MonthlyKpi>[],
     onOpenCascade: (kpi: WithId<CorporateKpi>) => void,
     onOpenAssign: (kpi: WithId<CascadedKpi>) => void,
+    onDelete: (kpiId: string) => void,
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const relevantCascadedKpis = cascadedKpis.filter(cascaded => cascaded.corporateKpiId === kpi.id);
@@ -608,13 +612,29 @@ const CorporateKpiRow = ({
                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onOpenCascade(kpi)}>
                                 <Share2 className="h-4 w-4 text-blue-600" />
                            </Button>
-                           <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                               <Button variant="ghost" size="icon" className="h-7 w-7">
+                           <div className="flex items-center gap-1">
+                               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onOpenCascade(kpi)}>
                                     <Edit className="h-4 w-4 text-gray-600" />
                                </Button>
-                               <Button variant="ghost" size="icon" className="h-7 w-7">
-                                    <Trash2 className="h-4 w-4 text-destructive" />
-                               </Button>
+                               <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                        <Button variant="ghost" size="icon" className="h-7 w-7">
+                                            <Trash2 className="h-4 w-4 text-destructive" />
+                                        </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                                This will permanently delete the corporate KPI '{kpi.measure}'. This action cannot be undone. Associated cascaded and individual KPIs will not be deleted automatically.
+                                            </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                            <AlertDialogAction onClick={() => onDelete(kpi.id)} className="bg-destructive hover:bg-destructive/90">Delete KPI</AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
                            </div>
                         </div>
                     </div>
@@ -662,7 +682,8 @@ const CorporateKpiRow = ({
 
 export default function KPICascadeManagement() {
   const { setPageTitle } = useAppLayout();
-  
+  const { toast } = useToast();
+
   useEffect(() => {
     setPageTitle("Consolidated KPI View");
   }, [setPageTitle]);
@@ -726,6 +747,16 @@ export default function KPICascadeManagement() {
       setAssignDialogOpen(true);
   };
 
+  const handleDeleteCorporateKpi = (kpiId: string) => {
+    if (!firestore) return;
+    deleteDocumentNonBlocking(doc(firestore, 'kpi_catalog', kpiId));
+    toast({
+        title: "KPI Deleted",
+        description: "The corporate KPI has been removed.",
+        variant: "destructive"
+    });
+  }
+
   const renderContent = () => {
     if (isLoading) {
       return (
@@ -763,6 +794,7 @@ export default function KPICascadeManagement() {
             monthlyKpis={monthlyKpisData || []}
             onOpenCascade={handleOpenCascadeDialog}
             onOpenAssign={handleOpenAssignDialog}
+            onDelete={handleDeleteCorporateKpi}
           />
         ))}
       </TableBody>
