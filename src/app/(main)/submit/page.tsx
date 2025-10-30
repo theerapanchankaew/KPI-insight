@@ -23,6 +23,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { useRouter } from 'next/navigation';
 
 // Consistent type definition with portfolio and cascade pages
 interface IndividualKpiBase {
@@ -92,7 +93,7 @@ const SubmitDataDialog = ({ isOpen, onOpenChange, kpi, onSubmit }: {
                 kpiId: kpi.id,
                 kpiMeasure: kpi.type === 'committed' ? kpi.task : kpi.kpiMeasure,
                 actualValue,
-                targetValue: kpi.type === 'cascaded' ? kpi.target : '5-level scale',
+                targetValue: kpi.type === 'cascaded' ? kpi.target : "5-level scale",
                 notes,
                 status: 'Manager Review'
             });
@@ -292,17 +293,17 @@ const getStatusIcon = (status: IndividualKpi['status'] | KpiSubmission['status']
 };
 
 
-const KpiActionCard = ({ kpi, submissionStatus, employee, onOpenSubmit, onForceSubmit, onViewCommitment, isManager }: {
+const KpiActionCard = ({ kpi, submissionStatus, employee, onOpenSubmit, onViewCommitment, isManager }: {
     kpi: WithId<IndividualKpi>;
     submissionStatus?: KpiSubmission['status'];
     employee?: Employee;
     onOpenSubmit: (kpi: WithId<IndividualKpi>) => void;
-    onForceSubmit: (kpiId: string) => void;
     onViewCommitment: (kpi: WithId<IndividualKpi>) => void;
     isManager: boolean;
 }) => {
     const isSubmitted = !!submissionStatus;
     const canResubmitData = submissionStatus === 'Rejected';
+    const router = useRouter();
 
     const getAction = () => {
         if (isSubmitted && !canResubmitData && kpi.status !== 'Rejected') {
@@ -315,10 +316,10 @@ const KpiActionCard = ({ kpi, submissionStatus, employee, onOpenSubmit, onForceS
             return <Button variant="default" size="sm" onClick={() => onOpenSubmit(kpi)}>Submit Data</Button>;
         }
         if (kpi.status === 'Draft' && isManager) {
-            return <Button variant="secondary" size="sm" onClick={() => onForceSubmit(kpi.id)}><Send className="w-4 h-4 mr-2" />Submit to Action Center</Button>;
+            return <Button variant="secondary" size="sm" onClick={() => router.push('/cascade')}><Send className="w-4 h-4 mr-2" />Edit in Cascade</Button>;
         }
         if (kpi.status === 'Rejected' && isManager) {
-            return <Button variant="destructive" size="sm" onClick={() => onForceSubmit(kpi.id)}><Send className="w-4 h-4 mr-2" />Resubmit to Action Center</Button>;
+            return <Button variant="destructive" size="sm" onClick={() => router.push('/cascade')}><Send className="w-4 h-4 mr-2" />Edit in Cascade</Button>;
         }
         if (kpi.status === 'Upper Manager Approval') {
             return <Button variant="outline" size="sm" onClick={() => onViewCommitment(kpi)}><Eye className="w-4 h-4 mr-2"/> View Commitment</Button>;
@@ -526,16 +527,6 @@ export default function SubmitPage() {
     });
   };
 
-  const handleForceToAgreed = (kpiId: string) => {
-      if(!firestore || !isManagerOrAdmin) {
-          toast({ title: 'Permission Denied', variant: 'destructive'});
-          return;
-      }
-      const kpiRef = doc(firestore, 'individual_kpis', kpiId);
-      setDocumentNonBlocking(kpiRef, { status: 'Agreed', agreedAt: serverTimestamp() }, { merge: true });
-      toast({ title: 'KPI Submitted to Action Center', description: 'The KPI is now awaiting manager approval.' });
-  }
-
   const isLoading = isUserLoading || isKpisLoading || isSubmissionsLoading || isEmployeesLoading || isProfileLoading;
 
   const statCards = [
@@ -625,7 +616,6 @@ export default function SubmitPage() {
                              submissionStatus={submissionStatusMap.get(kpi.id)}
                              employee={isManagerOrAdmin ? employeeMap.get(kpi.employeeId) : undefined}
                              onOpenSubmit={handleOpenSubmitDialog}
-                             onForceSubmit={handleForceToAgreed}
                              onViewCommitment={handleOpenViewCommitmentDialog}
                              isManager={isManagerOrAdmin || false}
                            />
