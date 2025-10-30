@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { cn } from '@/lib/utils';
 import { useKpiData } from '@/context/KpiDataContext';
 import { Button } from '@/components/ui/button';
-import { ChevronDown, ChevronRight, Share2, Edit, Trash2, PlusCircle, Save } from 'lucide-react';
+import { ChevronDown, ChevronRight, Share2, Edit, Trash2, PlusCircle, Save, UserPlus } from 'lucide-react';
 import { useFirestore, useUser, useCollection, useMemoFirebase, WithId, addDocumentNonBlocking, setDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
 import { collection, doc, writeBatch } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -19,6 +19,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { Textarea } from '@/components/ui/textarea';
 
 // ==================== TYPE DEFINITIONS ====================
 import type { Employee, Kpi as CorporateKpi, CascadedKpi, MonthlyKpi } from '@/context/KpiDataContext';
@@ -33,6 +34,9 @@ interface IndividualKpi {
     status: 'Draft' | 'Agreed' | 'In-Progress' | 'Manager Review' | 'Upper Manager Approval' | 'Employee Acknowledged' | 'Closed' | 'Rejected';
     type: 'cascaded' | 'committed';
     target?: string;
+    corporateKpiId: string;
+    unit?: string;
+    notes?: string;
 }
 
 
@@ -53,6 +57,105 @@ const getStatusColor = (status: IndividualKpi['status']) => {
 
 
 // ==================== DIALOGS ====================
+const AssignKpiDialog = ({
+    isOpen,
+    onClose,
+    departmentKpi,
+    teamMembers,
+}: {
+    isOpen: boolean;
+    onClose: () => void;
+    departmentKpi: WithId<CascadedKpi> | null;
+    teamMembers: WithId<Employee>[];
+}) => {
+    const firestore = useFirestore();
+    const { toast } = useToast();
+    const [employeeId, setEmployeeId] = useState('');
+    const [weight, setWeight] = useState(0);
+    const [target, setTarget] = useState('');
+    const [notes, setNotes] = useState('');
+
+    useEffect(() => {
+        if (!isOpen) {
+            setEmployeeId('');
+            setWeight(0);
+            setTarget('');
+            setNotes('');
+        }
+    }, [isOpen]);
+
+    const handleSaveAssignment = () => {
+        if (!firestore || !departmentKpi || !employeeId) {
+            toast({ title: "Missing Information", description: "Please select an employee.", variant: 'destructive'});
+            return;
+        }
+
+        const individualKpi: Omit<IndividualKpi, 'id'> = {
+            employeeId,
+            kpiId: departmentKpi.id, // Link to the department KPI
+            corporateKpiId: departmentKpi.corporateKpiId,
+            kpiMeasure: departmentKpi.measure,
+            weight: Number(weight),
+            target: target,
+            unit: departmentKpi.unit,
+            status: 'Draft',
+            type: 'cascaded',
+            notes, // Manager's initial notes
+        };
+        
+        addDocumentNonBlocking(collection(firestore, 'individual_kpis'), individualKpi);
+
+        toast({ title: 'KPI Assigned', description: `KPI has been assigned to the employee for agreement.`});
+        onClose();
+    };
+
+    if (!departmentKpi) return null;
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Assign KPI to Employee</DialogTitle>
+                    <DialogDescription>
+                        Assign '<span className="font-semibold">{departmentKpi.measure}</span>' to an employee in the {departmentKpi.department} department.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-4">
+                    <div className="space-y-2">
+                        <Label>Employee</Label>
+                        <Select value={employeeId} onValueChange={setEmployeeId}>
+                            <SelectTrigger><SelectValue placeholder="Select an employee" /></SelectTrigger>
+                            <SelectContent>
+                                {teamMembers.map(emp => (
+                                    <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                         <div className="space-y-2">
+                            <Label>Weight (%)</Label>
+                            <Input type="number" value={weight} onChange={(e) => setWeight(Number(e.target.value))} placeholder="e.g., 20" />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Individual Target</Label>
+                            <Input value={target} onChange={(e) => setTarget(e.target.value)} placeholder="e.g., ≥ 5M" />
+                        </div>
+                    </div>
+                     <div className="space-y-2">
+                        <Label>Initial Notes (Optional)</Label>
+                        <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Add instructions or context for the employee" />
+                    </div>
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                    <Button onClick={handleSaveAssignment}>Save Assignment</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 
 const DeployAndCascadeDialog = ({
     isOpen,
@@ -240,12 +343,14 @@ const DepartmentKpiRow = ({
     kpi, 
     individualKpis, 
     employees, 
-    monthlyKpis 
+    monthlyKpis,
+    onOpenAssign,
 }: { 
     kpi: WithId<CascadedKpi>, 
     individualKpis: WithId<IndividualKpi>[], 
     employees: Map<string, WithId<Employee>>,
-    monthlyKpis: WithId<MonthlyKpi>[]
+    monthlyKpis: WithId<MonthlyKpi>[],
+    onOpenAssign: (kpi: WithId<CascadedKpi>) => void,
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const relevantIndividualKpis = individualKpis.filter(indKpi => indKpi.kpiId === kpi.id);
@@ -269,11 +374,17 @@ const DepartmentKpiRow = ({
 
     return (
         <>
-            <TableRow className="bg-blue-50 hover:bg-blue-100/60" onClick={() => setIsOpen(!isOpen)}>
-                <TableCell className="pl-12 py-3 cursor-pointer">
-                    <div className="flex items-center gap-2">
-                        {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                        <span className="font-semibold text-blue-900">{kpi.department}</span>
+            <TableRow className="bg-blue-50 hover:bg-blue-100/60 group">
+                <TableCell className="pl-12 py-3">
+                    <div className="flex items-center justify-between">
+                         <div className="flex items-center gap-2 cursor-pointer" onClick={() => setIsOpen(!isOpen)}>
+                            {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                            <span className="font-semibold text-blue-900">{kpi.department}</span>
+                        </div>
+                        <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => onOpenAssign(kpi)}>
+                            <UserPlus className="h-4 w-4 mr-2" />
+                            Assign
+                        </Button>
                     </div>
                 </TableCell>
                 <TableCell className="py-3 text-center">-</TableCell>
@@ -296,7 +407,8 @@ const DepartmentKpiRow = ({
                     ) : (
                         <TableRow>
                             <TableCell colSpan={6} className="text-center text-sm text-gray-500 py-4 pl-24">
-                                No individual KPIs assigned under this department KPI.
+                                No individual KPIs assigned under this department KPI. 
+                                <Button variant="link" size="sm" className="p-0 h-auto ml-1" onClick={() => onOpenAssign(kpi)}>Assign one now.</Button>
                             </TableCell>
                         </TableRow>
                     )}
@@ -313,6 +425,7 @@ const CorporateKpiRow = ({
     employees, 
     monthlyKpis,
     onOpenCascade,
+    onOpenAssign,
 }: { 
     kpi: WithId<CorporateKpi>, 
     cascadedKpis: WithId<CascadedKpi>[], 
@@ -320,6 +433,7 @@ const CorporateKpiRow = ({
     employees: Map<string, WithId<Employee>>,
     monthlyKpis: WithId<MonthlyKpi>[],
     onOpenCascade: (kpi: WithId<CorporateKpi>) => void,
+    onOpenAssign: (kpi: WithId<CascadedKpi>) => void,
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const relevantCascadedKpis = cascadedKpis.filter(cascaded => cascaded.corporateKpiId === kpi.id);
@@ -380,6 +494,7 @@ const CorporateKpiRow = ({
                                 individualKpis={individualKpis} 
                                 employees={employees}
                                 monthlyKpis={monthlyKpis}
+                                onOpenAssign={onOpenAssign}
                             />
                        ))
                     ) : (
@@ -408,7 +523,10 @@ export default function KPICascadeManagement() {
   const { user } = useUser();
 
   const [isCascadeDialogOpen, setCascadeDialogOpen] = useState(false);
-  const [selectedKpi, setSelectedKpi] = useState<WithId<CorporateKpi> | null>(null);
+  const [selectedCorporateKpi, setSelectedCorporateKpi] = useState<WithId<CorporateKpi> | null>(null);
+
+  const [isAssignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [selectedDepartmentKpi, setSelectedDepartmentKpi] = useState<WithId<CascadedKpi> | null>(null);
 
   // Unified data fetching
   const { 
@@ -438,16 +556,26 @@ export default function KPICascadeManagement() {
   }, [employeesData]);
 
   const existingCascadesForSelectedKpi = useMemo(() => {
-      if (!selectedKpi || !cascadedKpis) return [];
-      return cascadedKpis.filter(c => c.corporateKpiId === selectedKpi.id);
-  }, [selectedKpi, cascadedKpis]);
+      if (!selectedCorporateKpi || !cascadedKpis) return [];
+      return cascadedKpis.filter(c => c.corporateKpiId === selectedCorporateKpi.id);
+  }, [selectedCorporateKpi, cascadedKpis]);
+
+  const teamMembersForSelectedDept = useMemo(() => {
+      if (!selectedDepartmentKpi || !employeesData) return [];
+      return employeesData.filter(emp => emp.department === selectedDepartmentKpi.department);
+  }, [selectedDepartmentKpi, employeesData]);
 
 
   const isLoading = isKpiDataLoading || isCascadedKpisLoading || isOrgDataLoading || isIndividualKpisLoading || isMonthlyKpisLoading;
   
   const handleOpenCascadeDialog = (kpi: WithId<CorporateKpi>) => {
-      setSelectedKpi(kpi);
+      setSelectedCorporateKpi(kpi);
       setCascadeDialogOpen(true);
+  };
+  
+  const handleOpenAssignDialog = (kpi: WithId<CascadedKpi>) => {
+      setSelectedDepartmentKpi(kpi);
+      setAssignDialogOpen(true);
   };
 
   const renderContent = () => {
@@ -486,6 +614,7 @@ export default function KPICascadeManagement() {
             employees={employeesMap}
             monthlyKpis={monthlyKpisData || []}
             onOpenCascade={handleOpenCascadeDialog}
+            onOpenAssign={handleOpenAssignDialog}
           />
         ))}
       </TableBody>
@@ -525,9 +654,16 @@ export default function KPICascadeManagement() {
     <DeployAndCascadeDialog 
         isOpen={isCascadeDialogOpen}
         onClose={() => setCascadeDialogOpen(false)}
-        corporateKpi={selectedKpi}
+        corporateKpi={selectedCorporateKpi}
         departments={departmentsList}
         existingCascades={existingCascadesForSelectedKpi}
+    />
+    
+    <AssignKpiDialog
+        isOpen={isAssignDialogOpen}
+        onClose={() => setAssignDialogOpen(false)}
+        departmentKpi={selectedDepartmentKpi}
+        teamMembers={teamMembersForSelectedDept}
     />
     </>
   );
