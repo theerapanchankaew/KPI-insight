@@ -522,6 +522,14 @@
               "employeeId": {
                 "type": "string"
               },
+              "employeeName": {
+                "type": "string",
+                "description": "Denormalized employee name for easier display."
+              },
+              "department": {
+                "type": "string",
+                "description": "Denormalized employee department for easier filtering."
+              },
               "kpiId": {
                 "type": "string"
               },
@@ -580,6 +588,8 @@
             },
             "required": [
               "employeeId",
+              "employeeName",
+              "department",
               "kpiId",
               "kpiMeasure",
               "weight",
@@ -685,5 +695,3 @@
     "reasoning": "The permission errors indicate the default-deny security rules are working as intended. The fix is to define the intended access patterns. This updated structure declares that 'employees' and 'kpi_catalog' should be readable by any authenticated user, which is necessary for the UI to function. It also specifies that only Admins can list the sensitive '/users' collection, securing user data while allowing the User Management page to work for authorized personnel. Custom claims for 'role' are also defined to enable role-based access control in the security rules."
   }
 }
-
-    

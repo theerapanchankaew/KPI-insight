@@ -29,6 +29,8 @@ import type { Employee, Kpi as CorporateKpi, CascadedKpi, MonthlyKpi } from '@/c
 // This was missing from the context, let's define it here for this page's purpose
 interface IndividualKpiBase {
     employeeId: string;
+    employeeName: string;
+    department: string;
     kpiId: string; // This would link to a cascadedKpi ID for cascaded, or be its own for committed
     kpiMeasure: string;
     weight: number;
@@ -114,8 +116,16 @@ const AssignKpiDialog = ({
             return;
         }
 
+        const selectedEmployee = teamMembers.find(e => e.id === employeeId);
+        if (!selectedEmployee) {
+            toast({ title: "Employee not found", description: "The selected employee could not be found.", variant: 'destructive'});
+            return;
+        }
+
         const individualKpi: Omit<AssignedCascadedKpi, 'id'> = {
             employeeId,
+            employeeName: selectedEmployee.name,
+            department: selectedEmployee.department,
             kpiId: departmentKpi.id, // Link to the department KPI
             corporateKpiId: departmentKpi.corporateKpiId,
             kpiMeasure: departmentKpi.measure,
@@ -129,7 +139,7 @@ const AssignKpiDialog = ({
         
         addDocumentNonBlocking(collection(firestore, 'individual_kpis'), individualKpi);
 
-        toast({ title: 'KPI Assigned', description: `KPI has been assigned to the employee for agreement.`});
+        toast({ title: 'KPI Assigned', description: `KPI has been assigned to ${selectedEmployee.name} for agreement.`});
         onClose();
     };
 
@@ -469,10 +479,10 @@ const DeployAndCascadeDialog = ({
 
 // ==================== ROW COMPONENTS FOR HIERARCHICAL TABLE ====================
 
-const IndividualKpiRow = ({ kpi, employee }: { kpi: WithId<IndividualKpi>, employee?: WithId<Employee> }) => (
+const IndividualKpiRow = ({ kpi }: { kpi: WithId<IndividualKpi> }) => (
     <TableRow className="bg-gray-50/50 hover:bg-gray-100/50">
         <TableCell className="pl-24 py-2">
-            <div className="font-medium text-gray-800">{employee?.name || kpi.employeeId}</div>
+            <div className="font-medium text-gray-800">{kpi.employeeName}</div>
             <div className="text-xs text-gray-500">{kpi.kpiMeasure}</div>
         </TableCell>
         <TableCell className="py-2 text-center">
@@ -490,13 +500,11 @@ const IndividualKpiRow = ({ kpi, employee }: { kpi: WithId<IndividualKpi>, emplo
 const DepartmentKpiRow = ({ 
     kpi, 
     individualKpis, 
-    employees, 
     monthlyKpis,
     onOpenAssign,
 }: { 
     kpi: WithId<CascadedKpi>, 
     individualKpis: WithId<IndividualKpi>[], 
-    employees: Map<string, WithId<Employee>>,
     monthlyKpis: WithId<MonthlyKpi>[],
     onOpenAssign: (kpi: WithId<CascadedKpi>) => void,
 }) => {
@@ -550,7 +558,7 @@ const DepartmentKpiRow = ({
                 <>
                     {relevantIndividualKpis.length > 0 ? (
                        relevantIndividualKpis.map(indKpi => (
-                           <IndividualKpiRow key={indKpi.id} kpi={indKpi} employee={employees.get(indKpi.employeeId)} />
+                           <IndividualKpiRow key={indKpi.id} kpi={indKpi} />
                        ))
                     ) : (
                         <TableRow>
@@ -570,7 +578,6 @@ const CorporateKpiRow = ({
     kpi, 
     cascadedKpis, 
     individualKpis, 
-    employees, 
     monthlyKpis,
     onOpenCascade,
     onOpenAssign,
@@ -579,7 +586,6 @@ const CorporateKpiRow = ({
     kpi: WithId<CorporateKpi>, 
     cascadedKpis: WithId<CascadedKpi>[], 
     individualKpis: WithId<IndividualKpi>[], 
-    employees: Map<string, WithId<Employee>>,
     monthlyKpis: WithId<MonthlyKpi>[],
     onOpenCascade: (kpi: WithId<CorporateKpi>) => void,
     onOpenAssign: (kpi: WithId<CascadedKpi>) => void,
@@ -608,7 +614,7 @@ const CorporateKpiRow = ({
                             {isOpen ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
                             {kpi.measure}
                         </span>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onOpenCascade(kpi)}>
                                 <Share2 className="h-4 w-4 text-blue-600" />
                            </Button>
@@ -660,7 +666,6 @@ const CorporateKpiRow = ({
                                 key={cascadedKpi.id} 
                                 kpi={cascadedKpi} 
                                 individualKpis={individualKpis} 
-                                employees={employees}
                                 monthlyKpis={monthlyKpis}
                                 onOpenAssign={onOpenAssign}
                             />
@@ -710,14 +715,6 @@ export default function KPICascadeManagement() {
     [firestore, user]
   );
   const { data: individualKpis, isLoading: isIndividualKpisLoading } = useCollection<WithId<IndividualKpi>>(individualKpisQuery);
-  
-  const employeesMap = useMemo(() => {
-    const map = new Map<string, WithId<Employee>>();
-    if (employeesData) {
-        employeesData.forEach(e => map.set(e.id, e));
-    }
-    return map;
-  }, [employeesData]);
   
   const departmentsList = useMemo(() => {
     if(!employeesData) return [];
@@ -790,7 +787,6 @@ export default function KPICascadeManagement() {
             kpi={corpKpi}
             cascadedKpis={cascadedKpis || []}
             individualKpis={individualKpis || []}
-            employees={employeesMap}
             monthlyKpis={monthlyKpisData || []}
             onOpenCascade={handleOpenCascadeDialog}
             onOpenAssign={handleOpenAssignDialog}

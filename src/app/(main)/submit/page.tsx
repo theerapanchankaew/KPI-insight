@@ -27,6 +27,8 @@ import { useRouter } from 'next/navigation';
 // Consistent type definition with portfolio and cascade pages
 interface IndividualKpiBase {
     employeeId: string;
+    employeeName: string;
+    department: string;
     kpiId: string;
     kpiMeasure: string;
     weight: number;
@@ -313,10 +315,9 @@ const getStatusIcon = (status: IndividualKpi['status'] | KpiSubmission['status']
 };
 
 
-const KpiActionCard = ({ kpi, submissionStatus, employee, onOpenSubmit, onViewCommitment, isManager }: {
+const KpiActionCard = ({ kpi, submissionStatus, onOpenSubmit, onViewCommitment, isManager }: {
     kpi: WithId<IndividualKpi>;
     submissionStatus?: KpiSubmission['status'];
-    employee?: Employee;
     onOpenSubmit: (kpi: WithId<IndividualKpi>) => void;
     onViewCommitment: (kpi: WithId<IndividualKpi>) => void;
     isManager: boolean;
@@ -357,7 +358,7 @@ const KpiActionCard = ({ kpi, submissionStatus, employee, onOpenSubmit, onViewCo
                       <span className="ml-1.5">{isSubmitted ? submissionStatus : kpi.status}</span>
                     </Badge>
                 </div>
-                {employee && <p className="text-sm text-muted-foreground">{employee.name}</p>}
+                {isManager && <p className="text-sm text-muted-foreground">{kpi.employeeName}</p>}
             </CardHeader>
             <CardContent className="flex-1 space-y-3">
                 <div className="flex justify-between text-sm">
@@ -453,11 +454,6 @@ export default function SubmitPage() {
     return map;
   }, [allSubmissions]);
   
-  const employeeMap = useMemo(() => {
-    if (!allEmployees) return new Map();
-    return new Map(allEmployees.map(e => [e.id, e]));
-  }, [allEmployees]);
-  
   const departments = useMemo(() => {
     if (!allEmployees) return [];
     return [...new Set(allEmployees.map(e => e.department))].filter(Boolean).sort();
@@ -472,8 +468,7 @@ export default function SubmitPage() {
   const filteredKpis = useMemo(() => {
     if (!allKpis) return [];
     return allKpis.filter(kpi => {
-        const employee = employeeMap.get(kpi.employeeId);
-        const departmentMatch = departmentFilter === 'all' || employee?.department === departmentFilter;
+        const departmentMatch = departmentFilter === 'all' || kpi.department === departmentFilter;
         
         const kpiInfo = kpi.type === 'cascaded' ? kpiCatalog?.find(k => k.id === kpi.corporateKpiId) : null;
         const category = kpiInfo?.category ?? (kpi as any).category;
@@ -483,20 +478,19 @@ export default function SubmitPage() {
 
         return departmentMatch && categoryMatch && employeeMatch;
     });
-  }, [allKpis, departmentFilter, categoryFilter, employeeFilter, employeeMap, kpiCatalog]);
+  }, [allKpis, departmentFilter, categoryFilter, employeeFilter, kpiCatalog]);
 
   const kpisByDepartment = useMemo(() => {
       if (!filteredKpis) return {};
       return filteredKpis.reduce((acc, kpi) => {
-          const employee = employeeMap.get(kpi.employeeId);
-          const dept = employee?.department || 'Unassigned';
+          const dept = kpi.department || 'Unassigned';
           if (!acc[dept]) {
               acc[dept] = [];
           }
           acc[dept].push(kpi);
           return acc;
       }, {} as { [key: string]: WithId<IndividualKpi>[] });
-  }, [filteredKpis, employeeMap]);
+  }, [filteredKpis]);
 
 
   const summaryStats = useMemo(() => {
@@ -529,13 +523,16 @@ export default function SubmitPage() {
     }
     
     const kpiOwner = allKpis?.find(k => k.id === submission.kpiId);
-    const employeeData = allEmployees?.find(e => e.id === kpiOwner?.employeeId);
+    if (!kpiOwner) {
+        toast({ title: "Error", description: "Could not find owner for this KPI.", variant: "destructive"});
+        return;
+    }
 
     const submissionData: KpiSubmission = {
         ...submission,
-        submittedBy: employeeData?.id || 'unknown',
-        submitterName: employeeData?.name || 'Unknown User',
-        department: employeeData?.department || 'Unassigned',
+        submittedBy: kpiOwner.employeeId,
+        submitterName: kpiOwner.employeeName,
+        department: kpiOwner.department,
         submissionDate: serverTimestamp(),
     };
     
@@ -635,7 +632,6 @@ export default function SubmitPage() {
                              key={kpi.id}
                              kpi={kpi}
                              submissionStatus={submissionStatusMap.get(kpi.id)}
-                             employee={isManagerOrAdmin ? employeeMap.get(kpi.employeeId) : undefined}
                              onOpenSubmit={handleOpenSubmitDialog}
                              onViewCommitment={handleOpenViewCommitmentDialog}
                              isManager={isManagerOrAdmin || false}

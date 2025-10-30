@@ -55,6 +55,8 @@ import { format } from 'date-fns';
 
 interface IndividualKpiBase {
   employeeId: string;
+  employeeName: string;
+  department: string;
   kpiId: string;
   kpiMeasure: string;
   weight: number;
@@ -177,6 +179,7 @@ const CreateCommittedKpiDialog = ({
     const [weight, setWeight] = useState('');
     const [targets, setTargets] = useState({ level1: '', level2: '', level3: '', level4: '', level5: '' });
     const { toast } = useToast();
+    const { orgData } = useKpiData();
 
     useEffect(() => {
         if (!isManager) {
@@ -207,9 +210,17 @@ const CreateCommittedKpiDialog = ({
             });
             return;
         }
+
+        const employee = orgData?.find(e => e.id === employeeId);
+        if (!employee) {
+             toast({ title: "Employee not found", variant: "destructive"});
+             return;
+        }
         
         onCreate({
             employeeId,
+            employeeName: employee.name,
+            department: employee.department,
             kpiMeasure: task,
             weight: Number(weight),
             type: 'committed',
@@ -447,6 +458,7 @@ const KpiDetailDialog = ({
 }) => {
   const [employeeNotes, setEmployeeNotes] = useState('');
   
+  // This hook needs to be at the top level
   const sortedTargetEntries = useMemo(() => {
     if (!kpi || kpi.type !== 'committed' || !kpi.targets) return [];
     // Sort keys like 'level1', 'level2' numerically
@@ -1002,8 +1014,7 @@ export default function MyPortfolioPage() {
                               </div>
                                <div className="text-right hidden sm:block">
                                   <p className="font-semibold">{employeeKpis.length}</p>
-                                  <p className="text-xs text-muted-foreground">Total KPIs</p>
-                              </div>
+                                  <p className="text-xs text-muted-foreground">Total KPIs</p>                              </div>
                               <Button variant="ghost" size="sm" className="shrink-0">
                                   <ChevronsUpDown className="h-4 w-4" />
                               </Button>
