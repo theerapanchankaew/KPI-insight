@@ -150,30 +150,38 @@ const EditKpiDialog = ({
     isOpen,
     onClose,
     kpi,
+    onSave
 }: {
     isOpen: boolean;
     onClose: () => void;
     kpi: WithId<IndividualKpi> | null;
+    onSave: (kpiId: string, updates: Partial<IndividualKpi>) => void;
 }) => {
-    const {toast} = useToast();
-    // Simplified state for demonstration. A real implementation would be more robust.
-    const [target, setTarget] = useState('');
     const [weight, setWeight] = useState('');
+    const [cascadedTarget, setCascadedTarget] = useState('');
+    // Add state for other editable fields if needed, e.g., committed task or targets
 
     useEffect(() => {
-        if(kpi) {
-            setWeight(String(kpi.weight));
-            if(kpi.type === 'cascaded'){
-                setTarget(kpi.target);
+        if (kpi) {
+            setWeight(String(kpi.weight || ''));
+            if (kpi.type === 'cascaded') {
+                setCascadedTarget(kpi.target);
             }
         }
     }, [kpi]);
 
     const handleSave = () => {
-        // In a real scenario, this would call a Firestore update function
-        toast({ title: "Note: Save action is not implemented", description: "This is a placeholder for the edit functionality."});
+        if (!kpi) return;
+        const updates: Partial<IndividualKpi> = {
+            weight: Number(weight)
+        };
+        if (kpi.type === 'cascaded') {
+            updates.target = cascadedTarget;
+        }
+        // Add logic to update other fields for committed KPIs if necessary
+        onSave(kpi.id, updates);
         onClose();
-    }
+    };
 
     if (!kpi) return null;
 
@@ -191,7 +199,7 @@ const EditKpiDialog = ({
                      {kpi.type === 'cascaded' && (
                          <div className="space-y-2">
                             <Label>Target</Label>
-                            <Input value={target} onChange={e => setTarget(e.target.value)} />
+                            <Input value={cascadedTarget} onChange={e => setCascadedTarget(e.target.value)} />
                         </div>
                      )}
                      {kpi.type === 'committed' && (
@@ -732,6 +740,16 @@ export default function MyPortfolioPage() {
     setEditDialogOpen(true);
   };
 
+  const handleSaveKpi = (kpiId: string, updates: Partial<IndividualKpi>) => {
+      if (!firestore) {
+          toast({ title: "Error", description: "Firestore not available", variant: 'destructive' });
+          return;
+      }
+      const kpiRef = doc(firestore, 'individual_kpis', kpiId);
+      setDocumentNonBlocking(kpiRef, updates, { merge: true });
+      toast({ title: "KPI Updated", description: "The KPI details have been saved."});
+  };
+
   // ==================== RENDER ====================
 
   const isLoading = isUserLoading || isKpisLoading || isProfileLoading || isEmployeesLoading || isSubmissionsLoading || isMonthlyKpisLoading;
@@ -863,6 +881,7 @@ export default function MyPortfolioPage() {
             setSelectedKpi(null);
         }}
         kpi={selectedKpi}
+        onSave={handleSaveKpi}
       />
 
     </div>
