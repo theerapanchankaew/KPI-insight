@@ -376,7 +376,7 @@ export default function ActionCenterPage() {
   // Fetch individual KPIs needing manager agreement
   const commitmentRequestsQuery = useMemoFirebase(() => {
     if (!firestore || !isManagerOrAdmin) return null;
-    return query(collection(firestore, 'individual_kpis'), where('status', '==', 'Agreed'));
+    return query(collection(firestore, 'individual_kpis'), where('status', '==', 'Manager Review'));
   }, [firestore, isManagerOrAdmin]);
   
   const { data: commitmentRequests, isLoading: isCommitmentsLoading } = useCollection<WithId<IndividualKpi>>(commitmentRequestsQuery);

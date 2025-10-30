@@ -852,7 +852,7 @@ export default function MyPortfolioPage() {
     try {
       const kpiRef = doc(firestore, 'individual_kpis', kpiId);
       setDocumentNonBlocking(kpiRef, {
-        status: 'Agreed',
+        status: 'Manager Review',
         employeeNotes: notes,
         rejectionReason: '', 
         agreedAt: serverTimestamp(),
