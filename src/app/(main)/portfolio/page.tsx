@@ -174,6 +174,7 @@ const CreateCommittedKpiDialog = ({
     const [task, setTask] = useState('');
     const [weight, setWeight] = useState('');
     const [targets, setTargets] = useState({ level1: '', level2: '', level3: '', level4: '', level5: '' });
+    const { toast } = useToast();
 
     useEffect(() => {
         if (!isManager) {
@@ -182,16 +183,26 @@ const CreateCommittedKpiDialog = ({
     }, [isManager, currentUserId]);
     
     useEffect(() => {
-        if (!isOpen) {
+        if (isOpen) {
+            // Reset state when dialog opens
             setTask('');
             setWeight('');
-            setTargets({ level1: '', level2_note: '', level3_good: '', level4_vgood: '', level5_excel: '' });
+            setTargets({ level1: '', level2: '', level3: '', level4: '', level5: '' });
+            if (isManager) {
+                setEmployeeId(''); // Force manager to select
+            } else {
+                setEmployeeId(currentUserId);
+            }
         }
-    }, [isOpen]);
+    }, [isOpen, isManager, currentUserId]);
 
     const handleCreate = () => {
         if (!task || !weight || !employeeId) {
-            alert('Please fill all fields');
+            toast({
+              title: "Missing Information",
+              description: "Please fill out the Task, Weight, and assign the KPI to an employee.",
+              variant: "destructive"
+            });
             return;
         }
         
@@ -942,11 +953,10 @@ export default function MyPortfolioPage() {
       <div className="space-y-8">
         {(teamMembers || []).map(employee => {
             const employeeKpis = kpis?.filter(k => k.employeeId === employee.id) || [];
-            const needsActionCount = employeeKpis.filter(k => ['Draft', 'Rejected', 'Upper Manager Approval'].includes(k.status)).length;
             const totalWeight = employeeKpis.reduce((sum, kpi) => sum + kpi.weight, 0);
 
-            if (teamMembers.length > 1 && employeeKpis.length === 0) {
-              return null; // Don't show employees with no KPIs for a cleaner view in manager mode
+            if (teamMembers.length > 1 && employeeKpis.length === 0 && !isManagerOrAdmin) {
+              return null; // Don't show employees with no KPIs for a cleaner view unless it's a manager looking
             }
 
             return (
