@@ -614,7 +614,7 @@ export default function MyPortfolioPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
-  const { orgData: allEmployees, isOrgDataLoading: isEmployeesLoading } = useKpiData();
+  const { orgData: allEmployees, isOrgDataLoading: isEmployeesLoading, monthlyKpisData, isMonthlyKpisLoading } = useKpiData();
 
   const [selectedKpi, setSelectedKpi] = useState<WithId<IndividualKpi> | null>(null);
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
@@ -672,15 +672,6 @@ export default function MyPortfolioPage() {
   }, [firestore, submissionKpiIds]);
 
   const { data: submissions, isLoading: isSubmissionsLoading } = useCollection<WithId<KpiSubmission>>(submissionsQuery);
-
-  const monthlyKpisQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
-    const currentYear = new Date().getFullYear();
-    return query(collection(firestore, 'monthly_kpis'), where('year', '==', currentYear));
-  }, [firestore]);
-
-  const { data: monthlyKpisData, isLoading: isMonthlyKpisLoading } = useCollection<MonthlyKpi>(monthlyKpisQuery);
-
 
   const submissionsMap = useMemo(() => {
       const map = new Map<string, WithId<KpiSubmission>>();
@@ -877,7 +868,3 @@ export default function MyPortfolioPage() {
     </div>
   );
 }
-
-    
-
-    

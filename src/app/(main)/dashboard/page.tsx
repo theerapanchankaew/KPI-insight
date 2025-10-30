@@ -308,16 +308,7 @@ const DepartmentPerformance = () => {
 
 export default function DashboardPage() {
   const { setPageTitle } = useAppLayout();
-  const { kpiData, isKpiDataLoading } = useKpiData();
-  const firestore = useFirestore();
-
-  const monthlyKpisQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
-    const currentYear = new Date().getFullYear();
-    return query(collection(firestore, 'monthly_kpis'), where('year', '==', currentYear));
-  }, [firestore]);
-
-  const { data: monthlyKpisData, isLoading: isMonthlyKpisLoading } = useCollection<MonthlyKpi>(monthlyKpisQuery);
+  const { kpiData, isKpiDataLoading, monthlyKpisData, isMonthlyKpisLoading } = useKpiData();
   
   const groupedKpis = useMemo(() => {
     if (!kpiData) return {};

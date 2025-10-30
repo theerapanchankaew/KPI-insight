@@ -3,7 +3,7 @@
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, doc } from 'firebase/firestore';
+import { collection, doc, query, where } from 'firebase/firestore';
 import { WithId } from '@/firebase/firestore/use-collection';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
@@ -83,6 +83,8 @@ interface KpiDataContextType {
   isOrgDataLoading: boolean;
   cascadedKpis: WithId<CascadedKpi>[] | null;
   isCascadedKpisLoading: boolean;
+  monthlyKpisData: WithId<MonthlyKpi>[] | null;
+  isMonthlyKpisLoading: boolean;
   settings: AppSettings;
   setSettings: (settings: Partial<AppSettings>) => void;
   isSettingsLoading: boolean;
@@ -116,6 +118,13 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   }, [firestore, user]);
   const { data: cascadedKpis, isLoading: isCascadedKpisLoading } = useCollection<CascadedKpi>(cascadedKpisQuery);
   
+  const monthlyKpisQuery = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    const currentYear = new Date().getFullYear();
+    return query(collection(firestore, 'monthly_kpis'), where('year', '==', currentYear));
+  }, [firestore, user]);
+  const { data: monthlyKpisData, isLoading: isMonthlyKpisLoading } = useCollection<MonthlyKpi>(monthlyKpisQuery);
+
   // Settings should be readable by any authenticated user.
   const settingsDocRef = useMemoFirebase(() => {
     if (!firestore || !user) return null; // Only fetch if user is logged in.
@@ -153,6 +162,8 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
     isOrgDataLoading: isLoading || isOrgDataLoading,
     cascadedKpis,
     isCascadedKpisLoading: isLoading || isCascadedKpisLoading,
+    monthlyKpisData,
+    isMonthlyKpisLoading: isLoading || isMonthlyKpisLoading,
     settings: localSettings,
     setSettings,
     isSettingsLoading: isLoading,

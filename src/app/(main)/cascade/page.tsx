@@ -1580,5 +1580,3 @@ export default function KPICascadeManagement() {
     </div>
   );
 }
-
-    
