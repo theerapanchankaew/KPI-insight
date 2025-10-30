@@ -446,13 +446,7 @@ const KpiDetailDialog = ({
   canAcknowledge: boolean;
 }) => {
   const [employeeNotes, setEmployeeNotes] = useState('');
-
-  useEffect(() => {
-    if (isOpen && kpi) {
-      setEmployeeNotes(kpi.employeeNotes || '');
-    }
-  }, [isOpen, kpi]);
-
+  
   const sortedTargetEntries = useMemo(() => {
     if (!kpi || kpi.type !== 'committed') return [];
     // Sort keys like 'level1', 'level2' numerically
@@ -462,6 +456,12 @@ const KpiDetailDialog = ({
         return numA - numB;
     });
   }, [kpi]);
+
+  useEffect(() => {
+    if (isOpen && kpi) {
+      setEmployeeNotes(kpi.employeeNotes || '');
+    }
+  }, [isOpen, kpi]);
 
   if (!kpi) return null;
 
@@ -1082,5 +1082,3 @@ export default function MyPortfolioPage() {
     </div>
   );
 }
-
-    
