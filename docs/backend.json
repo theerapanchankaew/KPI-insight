@@ -491,7 +491,7 @@
               "weight": {
                 "type": "number"
               },
-              "departmentTarget": {
+              "target": {
                 "type": "string"
               }
             },
@@ -500,7 +500,7 @@
               "measure",
               "department",
               "weight",
-              "departmentTarget"
+              "target"
             ]
           },
           "description": "KPIs that have been cascaded to departments. Readable by authenticated users, writable by managers/admins.",
