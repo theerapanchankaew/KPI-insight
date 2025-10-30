@@ -639,7 +639,7 @@ const KpiDetailDialog = ({
           </div>
         </ScrollArea>
 
-        <DialogFooter className="flex gap-2">
+        <DialogFooter className="flex gap-2 pt-4">
           <DialogClose asChild>
             <Button variant="outline">Close</Button>
           </DialogClose>
