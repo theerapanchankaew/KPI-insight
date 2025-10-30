@@ -49,6 +49,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { format } from 'date-fns';
 
 // ==================== TYPE DEFINITIONS ====================
 
@@ -140,7 +141,7 @@ const getStatusIcon = (status: IndividualKpi['status']) => {
     'Agreed': <CheckCircle2 className="h-4 w-4" />,
     'In-Progress': <Clock className="h-4 w-4" />,
     'Manager Review': <Eye className="h-4 w-4" />,
-    'Upper Manager Approval': <CheckCircle2 className="h-4 w-4" />,
+    'Upper Manager Approval': <Eye className="h-4 w-4" />,
     'Employee Acknowledged': <Award className="h-4 w-4" />,
     'Closed': <CheckCircle2 className="h-4 w-4" />,
     'Rejected': <AlertCircle className="h-4 w-4" />,
@@ -686,15 +687,26 @@ const KpiProgressCard = ({
   }, [kpi, submission]);
   
   const getActionButtons = () => {
-    if (['Draft', 'Rejected', 'Upper Manager Approval'].includes(kpi.status)) {
+    // Show 'Acknowledge' button if status is 'Upper Manager Approval'
+    if (kpi.status === 'Upper Manager Approval') {
+        return (
+          <Button size="sm" variant="default" onClick={() => onViewDetails(kpi)} className="bg-blue-600 hover:bg-blue-700">
+              <Award className="mr-2 h-4 w-4" />
+              Acknowledge
+          </Button>
+        );
+    }
+    // Show 'Review' button for Draft and Rejected states
+    if (['Draft', 'Rejected'].includes(kpi.status)) {
         return (
           <Button size="sm" variant="default" onClick={() => onViewDetails(kpi)}>
-              {kpi.status === 'Upper Manager Approval' ? <Award className="mr-2 h-4 w-4" /> : <Eye className="mr-2 h-4 w-4" />}
-              {kpi.status === 'Upper Manager Approval' ? 'Acknowledge' : 'Review'}
+              <Eye className="mr-2 h-4 w-4" />
+              Review
           </Button>
         );
     }
     
+    // For all other statuses, show a generic 'Details' button
     return (
        <Button size="sm" variant="outline" onClick={() => onViewDetails(kpi)}>
           <Eye className="mr-2 h-4 w-4" />
@@ -1070,5 +1082,3 @@ export default function MyPortfolioPage() {
     </div>
   );
 }
-
-    
