@@ -21,17 +21,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
+import type { MonthlyKpi, Kpi as CorporateKpi } from '@/context/KpiDataContext';
 
-
-interface MonthlyKpi {
-  id: string;
-  parentKpiId: string;
-  measure: string;
-  year: number;
-  month: number; // 1-12
-  target: number;
-  actual: number;
-}
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -114,7 +105,7 @@ const EditDataDialog = ({
 };
 
 
-const KpiCard = ({ kpi, monthlyData }: { kpi: WithId<any>, monthlyData: WithId<MonthlyKpi>[] }) => {
+const KpiCard = ({ kpi, monthlyData }: { kpi: WithId<CorporateKpi>, monthlyData: WithId<MonthlyKpi>[] }) => {
     const firestore = useFirestore();
     const { toast } = useToast();
     const [isEditDialogOpen, setEditDialogOpen] = useState(false);
@@ -317,7 +308,7 @@ export default function DashboardPage() {
         if (!acc[perspective]) acc[perspective] = [];
         acc[perspective].push(kpi);
         return acc;
-    }, {} as { [key: string]: WithId<any>[] });
+    }, {} as { [key: string]: WithId<CorporateKpi>[] });
   }, [kpiData]);
 
 

@@ -25,19 +25,35 @@ import { Textarea } from '@/components/ui/textarea';
 import type { Employee, Kpi as CorporateKpi, CascadedKpi, MonthlyKpi } from '@/context/KpiDataContext';
 
 // This was missing from the context, let's define it here for this page's purpose
-interface IndividualKpi {
-    id: string;
+interface IndividualKpiBase {
     employeeId: string;
-    kpiId: string; // This would link to a cascadedKpi ID
+    kpiId: string; // This would link to a cascadedKpi ID for cascaded, or be its own for committed
     kpiMeasure: string;
     weight: number;
     status: 'Draft' | 'Agreed' | 'In-Progress' | 'Manager Review' | 'Upper Manager Approval' | 'Employee Acknowledged' | 'Closed' | 'Rejected';
-    type: 'cascaded' | 'committed';
+    notes?: string;
+}
+
+interface AssignedCascadedKpi extends IndividualKpiBase {
+    type: 'cascaded';
     target?: string;
     corporateKpiId: string;
     unit?: string;
-    notes?: string;
 }
+
+interface CommittedKpi extends IndividualKpiBase {
+    type: 'committed';
+    task: string;
+    targets: {
+        level1: string;
+        level2: string;
+        level3: string;
+        level4: string;
+        level5: string;
+    };
+}
+
+type IndividualKpi = (AssignedCascadedKpi | CommittedKpi) & { id: string };
 
 
 // ==================== UTILITY FUNCTIONS ====================
@@ -172,6 +188,7 @@ const DeployAndCascadeDialog = ({
 }) => {
     const firestore = useFirestore();
     const { toast } = useToast();
+    const { user } = useUser();
     const [cascades, setCascades] = useState<Partial<CascadedKpi>[]>([]);
 
     useEffect(() => {
@@ -205,7 +222,7 @@ const DeployAndCascadeDialog = ({
     };
     
     const handleSave = async () => {
-        if (!firestore || !corporateKpi) return;
+        if (!firestore || !corporateKpi || !user) return;
 
         if (totalWeight > 100) {
             toast({ title: 'Invalid Weight', description: 'Total weight cannot exceed 100%.', variant: 'destructive' });
@@ -214,6 +231,8 @@ const DeployAndCascadeDialog = ({
 
         try {
             const batch = writeBatch(firestore);
+            
+            // Save/Update Cascaded KPIs
             cascades.forEach(c => {
                 if (c.department && c.weight && c.target) {
                     const cascadeData: Omit<CascadedKpi, 'id'> = {
@@ -228,18 +247,43 @@ const DeployAndCascadeDialog = ({
 
                     let docRef;
                     if ((c as WithId<CascadedKpi>).id) {
-                        // This is an existing cascade, so we update it.
                         docRef = doc(firestore, 'cascaded_kpis', (c as WithId<CascadedKpi>).id);
                         batch.set(docRef, cascadeData, { merge: true });
                     } else {
-                        // This is a new cascade, so we create it.
                         docRef = doc(collection(firestore, 'cascaded_kpis'));
                         batch.set(docRef, cascadeData);
                     }
                 }
             });
+
+            // Deploy Monthly KPIs based on Corporate KPI
+            const yearlyTargetValue = parseFloat(corporateKpi.target.replace(/[^0-9.]/g, ''));
+            const currentYear = new Date().getFullYear();
+
+            for (let i = 1; i <= 12; i++) {
+                 const monthlyKpi: Omit<MonthlyKpi, 'id'> = {
+                    parentKpiId: corporateKpi.id,
+                    measure: corporateKpi.measure,
+                    perspective: corporateKpi.perspective,
+                    category: corporateKpi.category,
+                    year: currentYear,
+                    month: i,
+                    target: yearlyTargetValue / 12, // Simple equal distribution for now
+                    actual: 0, // Default actual to 0
+                    progress: 0,
+                    percentage: (1/12) * 100,
+                    unit: corporateKpi.unit,
+                    status: 'Active',
+                    distributionStrategy: 'equal',
+                    createdAt: new Date(),
+                    createdBy: user.uid,
+                 };
+                 const monthlyDocRef = doc(collection(firestore, 'monthly_kpis'), `${corporateKpi.id}_${currentYear}_${i}`);
+                 batch.set(monthlyDocRef, monthlyKpi, { merge: true });
+            }
+
             await batch.commit();
-            toast({ title: 'Success', description: 'KPI cascade has been saved.' });
+            toast({ title: 'Success', description: 'KPI cascade and monthly breakdown have been saved.' });
             onClose();
         } catch (error) {
             console.error("Error saving cascades:", error);
@@ -253,7 +297,7 @@ const DeployAndCascadeDialog = ({
                 <DialogHeader>
                     <DialogTitle>Deploy & Cascade KPI</DialogTitle>
                     <DialogDescription>
-                        Cascade '<span className="font-semibold text-primary">{corporateKpi.measure}</span>' to departments. The total weight must not exceed 100%.
+                        Cascade '<span className="font-semibold text-primary">{corporateKpi.measure}</span>' to departments. The total weight must not exceed 100%. This will also deploy monthly targets.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="py-4 max-h-[60vh] overflow-y-auto pr-2">
