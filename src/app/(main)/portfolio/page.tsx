@@ -448,7 +448,7 @@ const KpiDetailDialog = ({
   const [employeeNotes, setEmployeeNotes] = useState('');
   
   const sortedTargetEntries = useMemo(() => {
-    if (!kpi || kpi.type !== 'committed') return [];
+    if (!kpi || kpi.type !== 'committed' || !kpi.targets) return [];
     // Sort keys like 'level1', 'level2' numerically
     return Object.entries(kpi.targets).sort(([keyA], [keyB]) => {
         const numA = parseInt(keyA.replace('level', ''), 10);
@@ -462,7 +462,7 @@ const KpiDetailDialog = ({
       setEmployeeNotes(kpi.employeeNotes || '');
     }
   }, [isOpen, kpi]);
-
+  
   if (!kpi) return null;
 
   const handleAgree = () => {
