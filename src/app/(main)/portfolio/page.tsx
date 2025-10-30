@@ -34,7 +34,8 @@ import {
   CalendarDays,
   RefreshCw,
   Edit,
-  PlusCircle
+  PlusCircle,
+  BadgeCheck
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useUser, useCollection, useMemoFirebase, WithId, useDoc, addDocumentNonBlocking } from '@/firebase';
@@ -123,7 +124,7 @@ const getStatusColor = (status: IndividualKpi['status']) => {
   const colors = {
     'Draft': 'bg-gray-100 text-gray-800 border-gray-300',
     'Agreed': 'bg-blue-100 text-blue-800 border-blue-300',
-    'In-Progress': 'bg-yellow-100 text-yellow-800 border-yellow-300',
+    'In-Progress': 'bg-green-100 text-green-800 border-green-300',
     'Manager Review': 'bg-purple-100 text-purple-800 border-purple-300',
     'Upper Manager Approval': 'bg-indigo-100 text-indigo-800 border-indigo-300',
     'Employee Acknowledged': 'bg-green-100 text-green-800 border-green-300',
@@ -431,13 +432,17 @@ const KpiDetailDialog = ({
   isOpen,
   onClose,
   onAgree,
+  onAcknowledge,
   canAgree,
+  canAcknowledge,
 }: {
   kpi: IndividualKpi | null;
   isOpen: boolean;
   onClose: () => void;
   onAgree: (kpiId: string, notes: string) => void;
+  onAcknowledge: (kpiId: string) => void;
   canAgree: boolean;
+  canAcknowledge: boolean;
 }) => {
   const [employeeNotes, setEmployeeNotes] = useState('');
 
@@ -453,11 +458,39 @@ const KpiDetailDialog = ({
     onAgree(kpi.id, employeeNotes);
     onClose();
   };
+
+  const handleAcknowledge = () => {
+    onAcknowledge(kpi.id);
+    onClose();
+  };
   
   const isRejected = kpi.status === 'Rejected';
-  const dialogTitle = isRejected ? "Revise & Resubmit KPI" : "Review & Agree to KPI";
-  const buttonText = isRejected ? "Resubmit to Manager" : "Agree & Submit to Manager";
-  const buttonIcon = isRejected ? <RefreshCw className="mr-2 h-4 w-4" /> : <CheckCircle2 className="mr-2 h-4 w-4" />;
+  let dialogTitle = "KPI Details";
+  let button: React.ReactNode = null;
+  
+  if (canAcknowledge) {
+      dialogTitle = "Acknowledge Approved KPI";
+      button = (
+          <Button onClick={handleAcknowledge} className="bg-blue-600 hover:bg-blue-700">
+              <Award className="mr-2 h-4 w-4" />
+              Acknowledge & Start KPI
+          </Button>
+      );
+  } else if (canAgree) {
+      dialogTitle = isRejected ? "Revise & Resubmit KPI" : "Review & Agree to KPI";
+      button = (
+           <Button onClick={handleAgree} className={isRejected ? "bg-orange-500 hover:bg-orange-600" : "bg-green-600 hover:bg-green-700"}>
+              {isRejected ? <RefreshCw className="mr-2 h-4 w-4" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+              {isRejected ? "Resubmit to Manager" : "Agree & Submit to Manager"}
+          </Button>
+      );
+  }
+  
+  const formatDate = (timestamp: any) => {
+    if (!timestamp) return 'N/A';
+    const date = timestamp instanceof Timestamp ? timestamp.toDate() : new Date(timestamp);
+    return format(date, 'MMM dd, yyyy, hh:mm a');
+  };
 
 
   return (
@@ -465,11 +498,11 @@ const KpiDetailDialog = ({
       <DialogContent className="max-w-3xl max-h-[90vh]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            {isRejected ? <RefreshCw className="h-5 w-5" /> : <Target className="h-5 w-5" />}
+            {getStatusIcon(kpi.status)}
             {dialogTitle}
           </DialogTitle>
           <DialogDescription>
-            Review your assigned KPI. Add any notes for your manager before agreeing.
+            Review your assigned KPI and the communication trail.
           </DialogDescription>
         </DialogHeader>
 
@@ -533,7 +566,7 @@ const KpiDetailDialog = ({
 
             {/* Communication Trail */}
             <div className="border-t pt-4 space-y-4">
-              <h4 className="font-semibold text-gray-900">Communication Trail</h4>
+              <h4 className="font-semibold text-gray-900">Communication & History Trail</h4>
               
               {kpi.notes && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
@@ -547,9 +580,9 @@ const KpiDetailDialog = ({
               
               {kpi.rejectionReason && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                    <Label className="text-xs text-red-700 font-semibold flex items-center gap-1">
-                        <AlertCircle className="h-3 w-3" />
-                        Manager's Rejection Reason
+                    <Label className="text-xs text-red-700 font-semibold flex items-center justify-between">
+                        <span className="flex items-center gap-1"><AlertCircle className="h-3 w-3" />Manager's Rejection Reason</span>
+                        <span>{formatDate(kpi.reviewedAt)}</span>
                     </Label>
                     <p className="text-sm text-gray-700 mt-1">{kpi.rejectionReason}</p>
                 </div>
@@ -574,11 +607,11 @@ const KpiDetailDialog = ({
                 </div>
               )}
 
-              {kpi.employeeNotes && !canAgree && (
+              {kpi.employeeNotes && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                  <Label className="text-xs text-green-700 font-semibold flex items-center gap-1">
-                    <MessageSquare className="h-3 w-3" />
-                    Your Notes
+                  <Label className="text-xs text-green-700 font-semibold flex items-center justify-between">
+                    <span className="flex items-center gap-1"><MessageSquare className="h-3 w-3" />Your Agreement Notes</span>
+                    <span>{formatDate(kpi.agreedAt)}</span>
                   </Label>
                   <p className="text-sm text-gray-700 mt-1">{kpi.employeeNotes}</p>
                 </div>
@@ -586,11 +619,19 @@ const KpiDetailDialog = ({
 
               {kpi.managerNotes && (
                 <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-                  <Label className="text-xs text-purple-700 font-semibold flex items-center gap-1">
-                    <MessageSquare className="h-3 w-3" />
-                    Manager's Review Notes
+                  <Label className="text-xs text-purple-700 font-semibold flex items-center justify-between">
+                    <span className="flex items-center gap-1"><MessageSquare className="h-3 w-3" />Manager's Review Notes</span>
+                     <span>{formatDate(kpi.reviewedAt)}</span>
                   </Label>
                   <p className="text-sm text-gray-700 mt-1">{kpi.managerNotes}</p>
+                </div>
+              )}
+               {kpi.acknowledgedAt && (
+                <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+                    <Label className="text-xs text-indigo-700 font-semibold flex items-center justify-between">
+                        <span className="flex items-center gap-1"><BadgeCheck className="h-3 w-3" />Employee Acknowledged</span>
+                        <span>{formatDate(kpi.acknowledgedAt)}</span>
+                    </Label>
                 </div>
               )}
             </div>
@@ -601,12 +642,7 @@ const KpiDetailDialog = ({
           <DialogClose asChild>
             <Button variant="outline">Close</Button>
           </DialogClose>
-          {canAgree && (
-            <Button onClick={handleAgree} className={isRejected ? "bg-orange-500 hover:bg-orange-600" : "bg-green-600 hover:bg-green-700"}>
-              {buttonIcon}
-              {buttonText}
-            </Button>
-          )}
+          {button}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -618,19 +654,15 @@ const KpiProgressCard = ({
   kpi,
   submission,
   onViewDetails,
-  onAcknowledge,
   onViewMonthlyReport,
   onEdit,
 }: { 
   kpi: WithId<IndividualKpi>; 
   submission: WithId<KpiSubmission> | undefined;
   onViewDetails: (kpi: WithId<IndividualKpi>) => void;
-  onAcknowledge: (kpiId: string) => void;
   onViewMonthlyReport: (kpi: WithId<IndividualKpi>) => void;
   onEdit: (kpi: WithId<IndividualKpi>) => void;
 }) => {
-
-  const canAcknowledge = kpi.status === 'Upper Manager Approval';
   
   const { targetValue, actualValue, achievement, isPositive } = useMemo(() => {
     let targetNum = 0;
@@ -654,36 +686,15 @@ const KpiProgressCard = ({
   }, [kpi, submission]);
   
   const getActionButtons = () => {
-    if (canAcknowledge) {
-      return (
-        <Button size="sm" variant="default" onClick={() => onAcknowledge(kpi.id)}>
-          <Award className="mr-2 h-4 w-4" />
-          Acknowledge
-        </Button>
-      );
-    }
-    if (kpi.status === 'Rejected') {
-      return (
-        <>
-          <Button size="sm" variant="outline" onClick={() => onEdit(kpi)}>
-            <Edit className="mr-2 h-4 w-4" />
-            Edit
+    if (['Draft', 'Rejected', 'Upper Manager Approval'].includes(kpi.status)) {
+        return (
+          <Button size="sm" variant="default" onClick={() => onViewDetails(kpi)}>
+              {kpi.status === 'Upper Manager Approval' ? <Award className="mr-2 h-4 w-4" /> : <Eye className="mr-2 h-4 w-4" />}
+              {kpi.status === 'Upper Manager Approval' ? 'Acknowledge' : 'Review'}
           </Button>
-          <Button size="sm" variant="destructive" onClick={() => onViewDetails(kpi)}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Revise & Resubmit
-          </Button>
-        </>
-      );
+        );
     }
-    if (kpi.status === 'Draft') {
-      return (
-         <Button size="sm" variant="secondary" onClick={() => onViewDetails(kpi)}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Review & Agree
-        </Button>
-      )
-    }
+    
     return (
        <Button size="sm" variant="outline" onClick={() => onViewDetails(kpi)}>
           <Eye className="mr-2 h-4 w-4" />
@@ -996,7 +1007,6 @@ export default function MyPortfolioPage() {
                                       kpi={kpi}
                                       submission={submissionsMap.get(kpi.id)}
                                       onViewDetails={handleViewDetails}
-                                      onAcknowledge={handleAcknowledgeKpi}
                                       onViewMonthlyReport={handleViewMonthlyReport}
                                       onEdit={handleEdit}
                                   />
@@ -1032,7 +1042,9 @@ export default function MyPortfolioPage() {
           setSelectedKpi(null);
         }}
         onAgree={handleAgreeToKpi}
+        onAcknowledge={handleAcknowledgeKpi}
         canAgree={!!selectedKpi && ['Draft', 'Rejected'].includes(selectedKpi.status) && selectedKpi.employeeId === user.uid}
+        canAcknowledge={!!selectedKpi && selectedKpi.status === 'Upper Manager Approval' && selectedKpi.employeeId === user.uid}
       />
       
       <MonthlyReportDialog
@@ -1058,3 +1070,5 @@ export default function MyPortfolioPage() {
     </div>
   );
 }
+
+    
