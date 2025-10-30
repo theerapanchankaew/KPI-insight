@@ -335,23 +335,25 @@ const CorporateKpiRow = ({
 
     return (
         <>
-            <TableRow className="border-b-2 border-gray-300 hover:bg-gray-50">
+            <TableRow className="border-b-2 border-gray-300 hover:bg-gray-50 group">
                 <TableCell className="font-bold text-gray-900 py-4">
-                     <div className="flex items-center gap-2">
+                     <div className="flex items-center justify-between">
                         <span onClick={() => setIsOpen(!isOpen)} className="flex items-center gap-2 cursor-pointer flex-grow">
                             {isOpen ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
                             {kpi.measure}
                         </span>
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex items-center gap-1">
                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onOpenCascade(kpi)}>
                                 <Share2 className="h-4 w-4 text-blue-600" />
                            </Button>
-                           <Button variant="ghost" size="icon" className="h-7 w-7">
-                                <Edit className="h-4 w-4 text-gray-600" />
-                           </Button>
-                           <Button variant="ghost" size="icon" className="h-7 w-7">
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                           </Button>
+                           <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                               <Button variant="ghost" size="icon" className="h-7 w-7">
+                                    <Edit className="h-4 w-4 text-gray-600" />
+                               </Button>
+                               <Button variant="ghost" size="icon" className="h-7 w-7">
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                               </Button>
+                           </div>
                         </div>
                     </div>
                 </TableCell>
@@ -530,4 +532,3 @@ export default function KPICascadeManagement() {
     </>
   );
 }
-
