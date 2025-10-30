@@ -15,22 +15,43 @@ import { useKpiData } from '@/context/KpiDataContext';
 import { kpiReportData } from '@/lib/data/report-data'; // Keep for quarterly
 import { Skeleton } from '@/components/ui/skeleton';
 
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
 const MonthlyReport = () => {
     const { orgData, isOrgDataLoading, cascadedKpis, isCascadedKpisLoading, monthlyKpisData, isMonthlyKpisLoading } = useKpiData();
 
     const isLoading = isOrgDataLoading || isCascadedKpisLoading || isMonthlyKpisLoading;
 
-    // Memoize the data for the AI summary to prevent re-generating on every render
+    const currentMonthIndex = useMemo(() => {
+        if (!monthlyKpisData || monthlyKpisData.length === 0) {
+            return new Date().getMonth(); // Default to current month if no data
+        }
+        // Find the latest month that has an 'actual' value greater than 0
+        const latestMonthWithActuals = monthlyKpisData
+            .filter(m => m.actual > 0)
+            .reduce((latest, m) => m.month > latest ? m.month : latest, 0);
+        
+        return latestMonthWithActuals > 0 ? latestMonthWithActuals - 1 : new Date().getMonth();
+    }, [monthlyKpisData]);
+    
+    const currentMonthName = MONTH_NAMES[currentMonthIndex];
+
+
     const aiInputData = useMemo(() => {
-        if (isLoading || !orgData || !cascadedKpis) return "[]";
+        if (isLoading || !orgData || !cascadedKpis || !monthlyKpisData) return "[]";
         
         const dataForAI = {
+            reportMonth: currentMonthName,
             departments: orgData.map(e => e.department),
-            cascadedKpis: cascadedKpis,
+            cascadedKpis: cascadedKpis.map(kpi => {
+                 const monthlyForKpi = monthlyKpisData?.filter(m => m.parentKpiId === kpi.corporateKpiId) || [];
+                 const ytdActual = monthlyForKpi.reduce((sum, m) => sum + m.actual, 0);
+                 return { ...kpi, ytdActual };
+            }),
         };
         
         return JSON.stringify(dataForAI, null, 2);
-    }, [orgData, cascadedKpis, isLoading]);
+    }, [orgData, cascadedKpis, monthlyKpisData, isLoading, currentMonthName]);
 
     const departmentPerformance = useMemo(() => {
         if (!cascadedKpis || !monthlyKpisData || !orgData) return [];
@@ -43,28 +64,28 @@ const MonthlyReport = () => {
                 return { department: dept, achievement: 0 };
             }
             
-            let totalTarget = 0;
-            let totalActual = 0;
+            let totalWeightedAchievement = 0;
+            let totalWeight = 0;
 
             deptKpis.forEach(kpi => {
-                const monthlyForThisKpi = monthlyKpisData.filter(m => m.parentKpiId === kpi.corporateKpiId);
-                const kpiTotalTarget = monthlyForThisKpi.reduce((sum, m) => sum + m.target, 0);
-                const kpiTotalActual = monthlyForThisKpi.reduce((sum, m) => sum + m.actual, 0);
+                const monthlyForThisKpi = monthlyKpisData.filter(m => m.parentKpiId === kpi.corporateKpiId && m.month <= currentMonthIndex + 1);
+                const ytdTarget = monthlyForThisKpi.reduce((sum, m) => sum + m.target, 0);
+                const ytdActual = monthlyForThisKpi.reduce((sum, m) => sum + m.actual, 0);
                 
-                // Weight the KPI's contribution
-                const weightPercentage = kpi.weight / 100;
-                totalTarget += kpiTotalTarget * weightPercentage;
-                totalActual += kpiTotalActual * weightPercentage;
+                const achievement = ytdTarget > 0 ? (ytdActual / ytdTarget) * 100 : 0;
+                const weight = kpi.weight || 0;
+
+                totalWeightedAchievement += achievement * weight;
+                totalWeight += weight;
             });
             
-            const achievement = totalTarget > 0 ? (totalActual / totalTarget) * 100 : 0;
-            return { department: dept, achievement };
+            const overallAchievement = totalWeight > 0 ? totalWeightedAchievement / totalWeight : 0;
+            return { department: dept, achievement: overallAchievement };
         });
 
-        // Sort by achievement descending and take top 3
         return performance.sort((a, b) => b.achievement - a.achievement).slice(0, 3);
 
-    }, [cascadedKpis, monthlyKpisData, orgData]);
+    }, [cascadedKpis, monthlyKpisData, orgData, currentMonthIndex]);
 
     const getAchievementBadgeVariant = (achievement: number): "success" | "warning" | "destructive" => {
         if (achievement >= 100) return 'success';
@@ -79,12 +100,12 @@ const MonthlyReport = () => {
                 <ExecutiveSummary kpiData={aiInputData} />
                 <Card>
                     <CardHeader>
-                        <CardTitle>Top Performers (by Department)</CardTitle>
+                        <CardTitle>Top Performers (YTD)</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
                          {isLoading ? (
                             [...Array(3)].map((_, i) => <Skeleton key={i} className="h-16 w-full" />)
-                         ) : departmentPerformance.map((dept, index) => (
+                         ) : departmentPerformance.length > 0 ? departmentPerformance.map((dept, index) => (
                             <div key={dept.department} className={cn("flex items-center justify-between p-3 rounded-lg", 
                                 index === 0 ? 'bg-success/10' : index === 1 ? 'bg-blue-50' : 'bg-orange-50'
                             )}>
@@ -98,55 +119,72 @@ const MonthlyReport = () => {
                                     {dept.achievement.toFixed(1)}% 
                                 </span>
                             </div>
-                        ))}
+                        )) : <p className="text-sm text-center text-muted-foreground py-8">No performance data to rank.</p>}
                     </CardContent>
                 </Card>
             </div>
             <Card>
                 <CardHeader>
-                    <CardTitle>Detailed KPI Performance (Cascaded)</CardTitle>
+                    <CardTitle>Detailed KPI Performance</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead>KPI</TableHead>
-                                <TableHead>Department</TableHead>
-                                <TableHead>Weight</TableHead>
-                                <TableHead>Target</TableHead>
-                                <TableHead>Actual (YTD)</TableHead>
-                                <TableHead>Achievement</TableHead>
+                                <TableHead className="w-[25%]">KPI</TableHead>
+                                <TableHead>Dept</TableHead>
+                                <TableHead>Month Target ({currentMonthName})</TableHead>
+                                <TableHead>Month Actual ({currentMonthName})</TableHead>
+                                <TableHead>Month Ach. %</TableHead>
+                                <TableHead>YTD Target</TableHead>
+                                <TableHead>YTD Actual</TableHead>
+                                <TableHead>YTD Ach. %</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {isLoading ? (
-                                [...Array(4)].map((_, i) => (
+                                [...Array(5)].map((_, i) => (
                                     <TableRow key={i}>
                                         <TableCell><Skeleton className="h-5 w-48" /></TableCell>
-                                        <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                                         <TableCell><Skeleton className="h-5 w-16" /></TableCell>
-                                        <TableCell><Skeleton className="h-5 w-20" /></TableCell>
-                                        <TableCell><Skeleton className="h-5 w-20" /></TableCell>
-                                        <TableCell><Skeleton className="h-6 w-16" /></TableCell>
+                                        <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                                        <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                                        <TableCell><Skeleton className="h-6 w-20" /></TableCell>
+                                        <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                                        <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                                        <TableCell><Skeleton className="h-6 w-20" /></TableCell>
                                     </TableRow>
                                 ))
                             ) : cascadedKpis && cascadedKpis.length > 0 ? (
                                 cascadedKpis.map(kpi => {
-                                    const monthlyForKpi = monthlyKpisData?.filter(m => m.parentKpiId === kpi.corporateKpiId) || [];
-                                    const totalTarget = monthlyForKpi.reduce((sum, m) => sum + m.target, 0);
-                                    const totalActual = monthlyForKpi.reduce((sum, m) => sum + m.actual, 0);
-                                    const achievement = totalTarget > 0 ? (totalActual / totalTarget) * 100 : 0;
+                                    const allMonthlyForKpi = monthlyKpisData?.filter(m => m.parentKpiId === kpi.corporateKpiId) || [];
+                                    
+                                    const currentMonthData = allMonthlyForKpi.find(m => m.month === currentMonthIndex + 1);
+                                    const monthTarget = currentMonthData?.target || 0;
+                                    const monthActual = currentMonthData?.actual || 0;
+                                    const monthAchievement = monthTarget > 0 ? (monthActual / monthTarget) * 100 : 0;
+
+                                    const ytdMonthlyData = allMonthlyForKpi.filter(m => m.month <= currentMonthIndex + 1);
+                                    const ytdTarget = ytdMonthlyData.reduce((sum, m) => sum + m.target, 0);
+                                    const ytdActual = ytdMonthlyData.reduce((sum, m) => sum + m.actual, 0);
+                                    const ytdAchievement = ytdTarget > 0 ? (ytdActual / ytdTarget) * 100 : 0;
                                     
                                     return (
                                         <TableRow key={kpi.id}>
                                             <TableCell className="font-medium">{kpi.measure}</TableCell>
                                             <TableCell>{kpi.department}</TableCell>
-                                            <TableCell>{kpi.weight}%</TableCell>
-                                            <TableCell>{kpi.target}</TableCell>
-                                            <TableCell>{totalActual.toLocaleString()}</TableCell>
+                                            <TableCell>{monthTarget.toLocaleString()}</TableCell>
+                                            <TableCell>{monthActual.toLocaleString()}</TableCell>
                                             <TableCell>
-                                                <Badge variant={getAchievementBadgeVariant(achievement)}>
-                                                    {achievement.toFixed(1)}%
+                                                <Badge variant={getAchievementBadgeVariant(monthAchievement)} className="w-16 justify-center">
+                                                    {monthAchievement.toFixed(0)}%
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell>{ytdTarget.toLocaleString()}</TableCell>
+                                            <TableCell>{ytdActual.toLocaleString()}</TableCell>
+                                            <TableCell>
+                                                 <Badge variant={getAchievementBadgeVariant(ytdAchievement)} className="w-16 justify-center">
+                                                    {ytdAchievement.toFixed(0)}%
                                                 </Badge>
                                             </TableCell>
                                         </TableRow>
@@ -154,8 +192,8 @@ const MonthlyReport = () => {
                                 })
                             ) : (
                                 <TableRow>
-                                    <TableCell colSpan={6} className="h-24 text-center">
-                                        No cascaded KPIs to report.
+                                    <TableCell colSpan={8} className="h-24 text-center">
+                                        No cascaded KPIs to report. Deploy KPIs from the Cascade page.
                                     </TableCell>
                                 </TableRow>
                             )}
