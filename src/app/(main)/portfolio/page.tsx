@@ -467,31 +467,22 @@ const KpiDetailDialog = ({
   
   const isRejected = kpi.status === 'Rejected';
   let dialogTitle = "KPI Details";
-  let button: React.ReactNode = null;
-  
-  if (canAcknowledge) {
-      dialogTitle = "Acknowledge Approved KPI";
-      button = (
-          <Button onClick={handleAcknowledge} className="bg-blue-600 hover:bg-blue-700">
-              <Award className="mr-2 h-4 w-4" />
-              Acknowledge & Start KPI
-          </Button>
-      );
-  } else if (canAgree) {
-      dialogTitle = isRejected ? "Revise & Resubmit KPI" : "Review & Agree to KPI";
-      button = (
-           <Button onClick={handleAgree} className={isRejected ? "bg-orange-500 hover:bg-orange-600" : "bg-green-600 hover:bg-green-700"}>
-              {isRejected ? <RefreshCw className="mr-2 h-4 w-4" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-              {isRejected ? "Resubmit to Manager" : "Agree & Submit to Manager"}
-          </Button>
-      );
-  }
   
   const formatDate = (timestamp: any) => {
     if (!timestamp) return 'N/A';
     const date = timestamp instanceof Timestamp ? timestamp.toDate() : new Date(timestamp);
     return format(date, 'MMM dd, yyyy, hh:mm a');
   };
+
+  const sortedTargetEntries = useMemo(() => {
+    if (kpi.type !== 'committed') return [];
+    // Sort keys like 'level1', 'level2' numerically
+    return Object.entries(kpi.targets).sort(([keyA], [keyB]) => {
+        const numA = parseInt(keyA.replace('level', ''), 10);
+        const numB = parseInt(keyB.replace('level', ''), 10);
+        return numA - numB;
+    });
+  }, [kpi]);
 
 
   return (
@@ -500,7 +491,7 @@ const KpiDetailDialog = ({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {getStatusIcon(kpi.status)}
-            {dialogTitle}
+            {canAcknowledge ? "Acknowledge Approved KPI" : canAgree ? (isRejected ? "Revise & Resubmit KPI" : "Review & Agree to KPI") : "KPI Details"}
           </DialogTitle>
           <DialogDescription>
             Review your assigned KPI and the communication trail.
@@ -553,7 +544,7 @@ const KpiDetailDialog = ({
                   <div>
                     <Label className="text-sm text-gray-500">Performance Levels</Label>
                     <div className="mt-2 space-y-2">
-                      {Object.entries(kpi.targets).map(([level, target], idx) => (
+                      {sortedTargetEntries.map(([level, target], idx) => (
                         <div key={level} className="flex items-center gap-3 p-2 bg-gray-50 rounded">
                           <span className="font-semibold text-sm w-20">Level {idx + 1}</span>
                           <span className="text-sm">{target}</span>
@@ -643,7 +634,18 @@ const KpiDetailDialog = ({
           <DialogClose asChild>
             <Button variant="outline">Close</Button>
           </DialogClose>
-          {button}
+          {canAcknowledge && (
+            <Button onClick={handleAcknowledge} className="bg-blue-600 hover:bg-blue-700">
+                <Award className="mr-2 h-4 w-4" />
+                Acknowledge & Start KPI
+            </Button>
+          )}
+          {canAgree && (
+            <Button onClick={handleAgree} className={isRejected ? "bg-orange-500 hover:bg-orange-600" : "bg-green-600 hover:bg-green-700"}>
+                {isRejected ? <RefreshCw className="mr-2 h-4 w-4" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                {isRejected ? "Resubmit to Manager" : "Agree & Submit to Manager"}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
