@@ -151,50 +151,74 @@ const ApprovalDialog = ({ isOpen, onClose, onConfirm }: {
     );
 };
 
-
-// ==================== KPI SUBMISSIONS TAB ====================
-
-const KpiSubmissions = ({ submissions, onApprove, onReject, isLoading }: {
-    submissions: WithId<KpiSubmission>[];
-    onApprove: (submissionId: string) => void;
-    onReject: (submissionId: string, reason: string) => void;
+// ==================== GENERIC LIST COMPONENT ====================
+const ApprovalList = ({
+    items,
+    title,
+    isLoading,
+    getEmployeeName,
+    onApprove,
+    onReject,
+    noItemsMessage,
+    actionButtonText,
+    approveDialog,
+}: {
+    items: WithId<KpiSubmission | IndividualKpi>[];
+    title: string;
     isLoading: boolean;
+    getEmployeeName?: (employeeId: string) => string;
+    onApprove: (itemId: string, notes: string) => void;
+    onReject: (itemId: string, reason: string) => void;
+    noItemsMessage: string;
+    actionButtonText: string;
+    approveDialog?: boolean;
 }) => {
-    const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null);
+    const [selectedId, setSelectedId] = useState<string | null>(null);
     const [isRejectDialogOpen, setRejectDialogOpen] = useState(false);
+    const [isApproveDialogOpen, setApproveDialogOpen] = useState(false);
 
     const handleRejectClick = (id: string) => {
-        setSelectedSubmissionId(id);
+        setSelectedId(id);
         setRejectDialogOpen(true);
     };
 
-    const handleConfirmReject = (reason: string) => {
-        if (selectedSubmissionId) {
-            onReject(selectedSubmissionId, reason);
+    const handleApproveClick = (id: string) => {
+        if (approveDialog) {
+            setSelectedId(id);
+            setApproveDialogOpen(true);
+        } else {
+            onApprove(id, '');
         }
-        setRejectDialogOpen(false);
-        setSelectedSubmissionId(null);
     };
 
-    if (isLoading) {
-        return <Skeleton className="h-64" />;
-    }
+    const handleConfirmReject = (reason: string) => {
+        if (selectedId) onReject(selectedId, reason);
+        setRejectDialogOpen(false);
+        setSelectedId(null);
+    };
+    
+    const handleConfirmApprove = (notes: string) => {
+        if (selectedId) onApprove(selectedId, notes);
+        setApproveDialogOpen(false);
+        setSelectedId(null);
+    };
 
-    if (!submissions || submissions.length === 0) {
+    if (isLoading) return <Skeleton className="h-64" />;
+    if (!items || items.length === 0) {
         return (
             <Card>
                 <CardContent className="p-12 text-center">
                     <Inbox className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-                    <p className="text-gray-600">No KPI data submissions are currently awaiting your review.</p>
+                    <p className="text-gray-600">{noItemsMessage}</p>
                 </CardContent>
             </Card>
         );
     }
     
-    return (
-        <>
-            <div className="space-y-4">
-                {submissions.map((item) => (
+    const renderItem = (item: WithId<KpiSubmission | IndividualKpi>) => {
+        if ('kpiMeasure' in item) { // Type guard for both IndividualKpi and KpiSubmission
+            if ('actualValue' in item) { // KpiSubmission
+                 return (
                     <Card key={item.id}>
                         <CardContent className="p-4 grid grid-cols-1 md:grid-cols-6 gap-4 items-center">
                              <div className="md:col-span-3">
@@ -213,7 +237,7 @@ const KpiSubmissions = ({ submissions, onApprove, onReject, isLoading }: {
                             </div>
                             <div className="md:col-span-6 border-t pt-4 mt-2 flex justify-end gap-2">
                                 <Button variant="destructive" size="sm" onClick={() => handleRejectClick(item.id)}>Reject</Button>
-                                <Button variant="default" size="sm" onClick={() => onApprove(item.id)}>Approve</Button>
+                                <Button variant="default" size="sm" onClick={() => handleApproveClick(item.id, )}>{actionButtonText}</Button>
                             </div>
                              {item.notes && (
                                 <div className="md:col-span-6 text-sm text-gray-600 bg-gray-50 p-3 rounded-md">
@@ -222,116 +246,49 @@ const KpiSubmissions = ({ submissions, onApprove, onReject, isLoading }: {
                             )}
                         </CardContent>
                     </Card>
-                ))}
-            </div>
-
-            <RejectionDialog 
-                isOpen={isRejectDialogOpen}
-                onClose={() => setRejectDialogOpen(false)}
-                onConfirm={handleConfirmReject}
-            />
-        </>
-    );
-};
-
-// ==================== COMMITMENT REQUESTS TAB ====================
-const CommitmentRequests = ({ kpis, onApprove, onReject, isLoading, employees }: {
-    kpis: WithId<IndividualKpi>[];
-    onApprove: (kpiId: string, notes: string) => void;
-    onReject: (kpiId: string, reason: string) => void;
-    isLoading: boolean;
-    employees: WithId<Employee>[];
-}) => {
-    const [selectedKpiId, setSelectedKpiId] = useState<string | null>(null);
-    const [isRejectDialogOpen, setRejectDialogOpen] = useState(false);
-    const [isApproveDialogOpen, setApproveDialogOpen] = useState(false);
-
-    const handleRejectClick = (id: string) => {
-        setSelectedKpiId(id);
-        setRejectDialogOpen(true);
-    };
-    
-    const handleApproveClick = (id: string) => {
-        setSelectedKpiId(id);
-        setApproveDialogOpen(true);
-    };
-
-    const handleConfirmReject = (reason: string) => {
-        if (selectedKpiId) {
-            onReject(selectedKpiId, reason);
-        }
-        setRejectDialogOpen(false);
-        setSelectedKpiId(null);
-    };
-
-    const handleConfirmApprove = (notes: string) => {
-        if(selectedKpiId) {
-            onApprove(selectedKpiId, notes);
-        }
-        setApproveDialogOpen(false);
-        setSelectedKpiId(null);
-    };
-
-    const getEmployeeName = (employeeId: string) => {
-        return employees.find(e => e.id === employeeId)?.name || 'Unknown Employee';
-    };
-    
-    if (isLoading) {
-        return <Skeleton className="h-64" />;
-    }
-
-    if (!kpis || kpis.length === 0) {
-        return (
-            <Card>
-                <CardContent className="p-12 text-center">
-                    <Inbox className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-                    <p className="text-gray-600">No commitment requests are currently awaiting your approval.</p>
-                </CardContent>
-            </Card>
-        );
-    }
-    
-    return (
-        <>
-            <div className="space-y-4">
-                {kpis.map((kpi) => (
-                    <Card key={kpi.id}>
+                );
+            } else { // IndividualKpi
+                return (
+                    <Card key={item.id}>
                         <CardContent className="p-4 grid grid-cols-1 md:grid-cols-5 gap-4 items-center">
                             <div className="md:col-span-2">
-                                <p className="font-semibold text-gray-800">{kpi.kpiMeasure}</p>
+                                <p className="font-semibold text-gray-800">{item.kpiMeasure}</p>
                                 <p className="text-sm text-gray-500">
-                                    Request from: {getEmployeeName(kpi.employeeId)}
+                                    Request from: {getEmployeeName?.(item.employeeId) || '...'}
                                 </p>
                             </div>
                             <div>
                                 <Label className="text-xs">Weight</Label>
-                                <p className="font-medium">{kpi.weight}%</p>
+                                <p className="font-medium">{item.weight}%</p>
                             </div>
                             <div className="md:col-span-2 flex justify-end gap-2">
-                                <Button variant="destructive" size="sm" onClick={() => handleRejectClick(kpi.id)}>Reject</Button>
-                                <Button variant="default" size="sm" onClick={() => handleApproveClick(kpi.id)}>Final Agreement</Button>
+                                <Button variant="destructive" size="sm" onClick={() => handleRejectClick(item.id)}>Reject</Button>
+                                <Button variant="default" size="sm" onClick={() => handleApproveClick(item.id)}>{actionButtonText}</Button>
                             </div>
-                            {kpi.employeeNotes && (
-                                <div className="md:col-span-5 text-sm text-gray-600 bg-blue-50 p-3 rounded-md border border-blue-200">
-                                    <strong>Employee Notes:</strong> {kpi.employeeNotes}
+                            {(item.employeeNotes || item.managerNotes) && (
+                                <div className="md:col-span-5 space-y-2 mt-2">
+                                    {item.employeeNotes && <div className="text-sm text-gray-600 bg-blue-50 p-3 rounded-md border border-blue-200">
+                                        <strong>Employee Notes:</strong> {item.employeeNotes}
+                                    </div>}
+                                    {item.managerNotes && <div className="text-sm text-gray-600 bg-purple-50 p-3 rounded-md border border-purple-200">
+                                        <strong>Manager Notes:</strong> {item.managerNotes}
+                                    </div>}
                                 </div>
                             )}
                         </CardContent>
                     </Card>
-                ))}
-            </div>
+                );
+            }
+        }
+        return null;
+    };
 
-            <RejectionDialog 
-                isOpen={isRejectDialogOpen}
-                onClose={() => setRejectDialogOpen(false)}
-                onConfirm={handleConfirmReject}
-            />
 
-            <ApprovalDialog
-                isOpen={isApproveDialogOpen}
-                onClose={() => setApproveDialogOpen(false)}
-                onConfirm={handleConfirmApprove}
-            />
+    return (
+        <>
+            <div className="space-y-4">{items.map(renderItem)}</div>
+            <RejectionDialog isOpen={isRejectDialogOpen} onClose={() => setRejectDialogOpen(false)} onConfirm={handleConfirmReject} />
+            {approveDialog && <ApprovalDialog isOpen={isApproveDialogOpen} onClose={() => setApproveDialogOpen(false)} onConfirm={handleConfirmApprove} />}
         </>
     );
 };
@@ -352,28 +309,23 @@ export default function ActionCenterPage() {
   
   const { data: userProfile, isLoading: isProfileLoading } = useDoc<AppUser>(userProfileRef);
 
-  const isManagerOrAdmin = useMemo(() => {
-    if (!userProfile) return false;
-    return ['Admin', 'VP', 'AVP', 'Manager'].includes(userProfile.role);
-  }, [userProfile]);
+  const isManagerOrAdmin = useMemo(() => userProfile?.role && ['Admin', 'VP', 'AVP', 'Manager'].includes(userProfile.role), [userProfile]);
+  const isUpperManager = useMemo(() => userProfile?.role && ['Admin', 'VP'].includes(userProfile.role), [userProfile]);
 
   useEffect(() => {
     setPageTitle("Action Center");
   }, [setPageTitle]);
   
-  // Fetch employees to get names for submissions
   const employeesQuery = useMemoFirebase(() => (firestore ? collection(firestore, 'employees') : null), [firestore]);
   const { data: employeesData, isLoading: isEmployeesLoading } = useCollection<WithId<Employee>>(employeesQuery);
 
-  // Fetch KPI Submissions needing Manager Review
   const submissionsQuery = useMemoFirebase(() => {
     if (!firestore || !isManagerOrAdmin) return null;
-    return query(collection(firestore, 'submissions'), where('status', '==', 'Manager Review'));
+    return query(collection(firestore, 'kpi_submissions'), where('status', '==', 'Manager Review'));
   }, [firestore, isManagerOrAdmin]);
 
   const { data: submissions, isLoading: isSubmissionsLoading } = useCollection<WithId<KpiSubmission>>(submissionsQuery);
 
-  // Fetch individual KPIs needing manager agreement
   const commitmentRequestsQuery = useMemoFirebase(() => {
     if (!firestore || !isManagerOrAdmin) return null;
     return query(collection(firestore, 'individual_kpis'), where('status', '==', 'Manager Review'));
@@ -381,42 +333,68 @@ export default function ActionCenterPage() {
   
   const { data: commitmentRequests, isLoading: isCommitmentsLoading } = useCollection<WithId<IndividualKpi>>(commitmentRequestsQuery);
 
-  const isLoading = isUserLoading || isProfileLoading || isSubmissionsLoading || isEmployeesLoading || isCommitmentsLoading;
+  const upperManagerApprovalQuery = useMemoFirebase(() => {
+      if (!firestore || !isUpperManager) return null;
+      return query(collection(firestore, 'individual_kpis'), where('status', '==', 'Upper Manager Approval'));
+  }, [firestore, isUpperManager]);
 
-  // Handlers
+  const { data: upperManagerApprovals, isLoading: isUpperManagerApprovalsLoading } = useCollection<WithId<IndividualKpi>>(upperManagerApprovalQuery);
+
+
+  const isLoading = isUserLoading || isProfileLoading || isSubmissionsLoading || isEmployeesLoading || isCommitmentsLoading || isUpperManagerApprovalsLoading;
+
   const handleApproveSubmission = async (submissionId: string) => {
     if (!firestore) return;
-    const submissionRef = doc(firestore, 'submissions', submissionId);
-    setDocumentNonBlocking(submissionRef, { status: 'Upper Manager Approval', reviewedAt: serverTimestamp() }, { merge: true });
-    toast({ title: "Submission Approved", description: "The submission has been moved to the next approval stage." });
+    const submissionRef = doc(firestore, 'kpi_submissions', submissionId);
+    setDocumentNonBlocking(submissionRef, { status: 'Closed', reviewedAt: serverTimestamp() }, { merge: true });
+    toast({ title: "Submission Approved", description: "The submission has been approved and closed." });
   };
 
   const handleRejectSubmission = async (submissionId: string, reason: string) => {
     if (!firestore) return;
-    const submissionRef = doc(firestore, 'submissions', submissionId);
+    const submissionRef = doc(firestore, 'kpi_submissions', submissionId);
     setDocumentNonBlocking(submissionRef, { status: 'Rejected', rejectionReason: reason, reviewedAt: serverTimestamp() }, { merge: true });
-    toast({ title: "Submission Rejected", description: "The submission has been marked as rejected.", variant: "destructive" });
+    toast({ title: "Submission Rejected", variant: "destructive" });
   };
   
   const handleApproveCommitment = async (kpiId: string, notes: string) => {
     if (!firestore) return;
     const kpiRef = doc(firestore, 'individual_kpis', kpiId);
     setDocumentNonBlocking(kpiRef, { status: 'Upper Manager Approval', managerNotes: notes, reviewedAt: serverTimestamp() }, { merge: true });
-    toast({ title: "Commitment Approved", description: "The KPI is now pending final acknowledgment by the employee." });
+    toast({ title: "Commitment Agreed", description: "The KPI has been escalated to upper management for final approval." });
   };
 
   const handleRejectCommitment = async (kpiId: string, reason: string) => {
     if (!firestore) return;
     const kpiRef = doc(firestore, 'individual_kpis', kpiId);
     setDocumentNonBlocking(kpiRef, { status: 'Rejected', rejectionReason: reason, managerNotes: reason, reviewedAt: serverTimestamp() }, { merge: true });
-    toast({ title: "Commitment Rejected", description: "The employee has been notified to revise their commitment.", variant: "destructive" });
+    toast({ title: "Commitment Rejected", variant: "destructive" });
+  };
+
+  const handleUpperManagerApprove = async (kpiId: string) => {
+    if (!firestore) return;
+    const kpiRef = doc(firestore, 'individual_kpis', kpiId);
+    setDocumentNonBlocking(kpiRef, { status: 'In-Progress' }, { merge: true });
+    toast({ title: "Final Approval Given", description: "The KPI is now active." });
+  };
+
+  const handleUpperManagerReject = async (kpiId: string, reason: string) => {
+    if (!firestore) return;
+    const kpiRef = doc(firestore, 'individual_kpis', kpiId);
+    setDocumentNonBlocking(kpiRef, { status: 'Rejected', rejectionReason: reason }, { merge: true });
+    toast({ title: "Commitment Rejected", variant: "destructive" });
+  };
+
+  
+  const getEmployeeName = (employeeId: string) => {
+      return employeesData?.find(e => e.id === employeeId)?.name || 'Unknown Employee';
   };
   
   const stats = useMemo(() => ({
       pendingSubmissions: submissions?.length ?? 0,
       pendingCommitments: commitmentRequests?.length ?? 0,
-      teamSize: employeesData?.length ?? 0,
-  }), [submissions, commitmentRequests, employeesData]);
+      pendingUpperManager: upperManagerApprovals?.length ?? 0,
+  }), [submissions, commitmentRequests, upperManagerApprovals]);
 
   if (isLoading) {
       return (
@@ -449,54 +427,79 @@ export default function ActionCenterPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardContent className="p-4">
-            <Label className="text-sm text-gray-500">Pending Submissions</Label>
+            <Label className="text-sm text-gray-500">Pending Data Submissions</Label>
             <p className="text-2xl font-bold text-orange-600">{stats.pendingSubmissions}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <Label className="text-sm text-gray-500">Pending Commitments</Label>
+            <Label className="text-sm text-gray-500">Pending Commitment Agreements</Label>
             <p className="text-2xl font-bold text-blue-600">{stats.pendingCommitments}</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
-            <Label className="text-sm text-gray-500">Team Members</Label>
-            <p className="text-2xl font-bold text-gray-900">{stats.teamSize}</p>
-          </CardContent>
-        </Card>
+        {isUpperManager && <Card>
+            <CardContent className="p-4">
+                <Label className="text-sm text-gray-500">Pending Final Approval</Label>
+                <p className="text-2xl font-bold text-indigo-600">{stats.pendingUpperManager}</p>
+            </CardContent>
+        </Card>}
       </div>
       
       <Tabs defaultValue="submissions">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className={cn("grid w-full", isUpperManager ? "grid-cols-3" : "grid-cols-2")}>
               <TabsTrigger value="submissions">
-                  KPI Submissions
+                  Data Submissions
                   {stats.pendingSubmissions > 0 && <Badge className="ml-2 bg-orange-500">{stats.pendingSubmissions}</Badge>}
               </TabsTrigger>
               <TabsTrigger value="commitments">
                   Commitment Requests
                   {stats.pendingCommitments > 0 && <Badge className="ml-2 bg-blue-500">{stats.pendingCommitments}</Badge>}
               </TabsTrigger>
+              {isUpperManager && <TabsTrigger value="upper-approval">
+                  Upper Manager Approval
+                  {stats.pendingUpperManager > 0 && <Badge className="ml-2 bg-indigo-500">{stats.pendingUpperManager}</Badge>}
+              </TabsTrigger>}
           </TabsList>
           <TabsContent value="submissions" className="mt-6">
-             <KpiSubmissions 
-                submissions={submissions || []} 
+             <ApprovalList 
+                items={submissions || []}
+                title="KPI Submissions"
+                isLoading={isSubmissionsLoading}
                 onApprove={handleApproveSubmission}
                 onReject={handleRejectSubmission}
-                isLoading={isSubmissionsLoading}
+                noItemsMessage="No KPI data submissions are currently awaiting your review."
+                actionButtonText="Approve"
              />
           </TabsContent>
           <TabsContent value="commitments" className="mt-6">
-              <CommitmentRequests
-                kpis={commitmentRequests || []}
+              <ApprovalList
+                items={commitmentRequests || []}
+                title="Commitment Requests"
+                isLoading={isCommitmentsLoading}
+                getEmployeeName={getEmployeeName}
                 onApprove={handleApproveCommitment}
                 onReject={handleRejectCommitment}
-                isLoading={isCommitmentsLoading}
-                employees={employeesData || []}
+                noItemsMessage="No commitment requests are currently awaiting your approval."
+                actionButtonText="Final Agreement"
+                approveDialog={true}
               />
           </TabsContent>
+           {isUpperManager && <TabsContent value="upper-approval" className="mt-6">
+              <ApprovalList
+                items={upperManagerApprovals || []}
+                title="Upper Manager Approval"
+                isLoading={isUpperManagerApprovalsLoading}
+                getEmployeeName={getEmployeeName}
+                onApprove={handleUpperManagerApprove}
+                onReject={handleUpperManagerReject}
+                noItemsMessage="No commitments are currently awaiting final approval."
+                actionButtonText="Final Approve"
+              />
+          </TabsContent>}
       </Tabs>
 
     </div>
   );
 }
+
+    
