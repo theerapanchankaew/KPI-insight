@@ -206,7 +206,7 @@ const KpiCard = ({ kpi, monthlyData }: { kpi: WithId<CorporateKpi>, monthlyData:
                                         const { cx, cy, payload } = props;
                                         if (payload.isEditable) {
                                             return (
-                                                <g className="cursor-pointer group/dot">
+                                                <g key={payload.month} className="cursor-pointer group/dot">
                                                     <circle cx={cx} cy={cy} r={8} fill="hsl(var(--primary))" fillOpacity={0.2} className="transition-opacity opacity-0 group-hover/dot:opacity-100" />
                                                     <circle cx={cx} cy={cy} r={4} fill="hsl(var(--primary))" stroke="hsl(var(--background))" strokeWidth={2} />
                                                 </g>
