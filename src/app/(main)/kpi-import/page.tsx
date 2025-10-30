@@ -12,9 +12,9 @@ import { Progress } from '@/components/ui/progress';
 import { useRouter } from 'next/navigation';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useFirestore, useUser } from '@/firebase';
-import { collection }from 'firebase/firestore';
+import { collection, doc, writeBatch } from 'firebase/firestore';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
-import { doc } from 'firebase/firestore';
+import { exampleJson, exampleOrgData } from '@/lib/data/kpi-import-data';
 
 const KpiImportTab = () => {
     const firestore = useFirestore();
@@ -72,7 +72,7 @@ const KpiImportTab = () => {
         accept: { 'application/json': ['.json'] }
     });
 
-    const handleUpload = () => {
+    const handleUpload = async () => {
         if (!firestore) {
             toast({ variant: 'destructive', title: 'Error', description: 'Firestore not initialized.' });
             return;
@@ -90,23 +90,26 @@ const KpiImportTab = () => {
         
         const kpisToUpload = fileContent.kpi_catalog;
         const totalKpis = kpisToUpload.length;
-        let kpisUploaded = 0;
+        
+        try {
+            const batch = writeBatch(firestore);
+            kpisToUpload.forEach((kpi, index) => {
+                const docRef = doc(firestore, 'kpi_catalog', kpi.id);
+                batch.set(docRef, kpi, { merge: true });
+            });
 
-        kpisToUpload.forEach((kpi, index) => {
-            // Assuming each KPI has a unique 'id' field in the JSON
-            const docRef = doc(firestore, 'kpi_catalog', kpi.id);
-            
-            // Non-blocking write to Firestore
-            setDocumentNonBlocking(docRef, kpi, { merge: true });
+            await batch.commit();
 
-            kpisUploaded++;
-            setUploadProgress((kpisUploaded / totalKpis) * 100);
-        });
-
-        setUploading(false);
-        setUploadComplete(true);
-        toast({ title: 'Upload Complete', description: `${kpisUploaded} KPIs have been saved to Firestore.` });
-        router.push('/cascade');
+            setUploadProgress(100);
+            setUploading(false);
+            setUploadComplete(true);
+            toast({ title: 'Upload Complete', description: `${totalKpis} KPIs have been saved to Firestore.` });
+            router.push('/cascade');
+        } catch (error) {
+            console.error(error);
+            setUploading(false);
+            toast({ title: 'Upload Failed', description: 'Could not save KPIs to Firestore.', variant: 'destructive'});
+        }
     };
 
     const removeFile = () => {
@@ -116,18 +119,6 @@ const KpiImportTab = () => {
     };
 
     const isButtonDisabled = files.length === 0 || uploading || uploadComplete || !fileContent || !user || isUserLoading;
-
-    const exampleJson = `{
-  "version": "1.0",
-  "kpi_catalog": [
-    {
-      "id": "1bf13fca-25c4-4a04-8390-8b2173a2ffda",
-      "perspective": "Sustainability",
-      "measure": "Total Revenue",
-      "target": "≥ 194.10 ล้านบาท"
-    }
-  ]
-}`;
 
     return (
         <div className="space-y-6">
@@ -224,17 +215,18 @@ const OrgImportTab = () => {
             return;
         }
         if (fileContent) {
-            const employeesCollectionRef = collection(firestore, 'employees');
             
             fileContent.forEach((item: any) => {
-                const employeeId = item['รหัส'] ? item['รหัส'].toString() : `user-${Math.random().toString(36).substr(2, 9)}`;
-                const employeeDocRef = doc(employeesCollectionRef, employeeId);
+                const employeeId = String(item.id);
+                if (!employeeId) return;
+
+                const employeeDocRef = doc(firestore, 'employees', employeeId);
                 const employeeData = {
                     id: employeeId,
-                    name: item['ชื่อ-นามสกุล'] || 'N/A',
-                    department: item['แผนก'] || 'N/A',
-                    position: item['ตำแหน่ง'] || 'N/A',
-                    manager: item['ผู้บังคับบัญชา'] || ''
+                    name: item.name || 'N/A',
+                    department: item.department || 'N/A',
+                    position: item.position || 'N/A',
+                    manager: item.manager || ''
                 };
                 setDocumentNonBlocking(employeeDocRef, employeeData, { merge: true });
             });
@@ -252,23 +244,6 @@ const OrgImportTab = () => {
     };
 
     const isButtonDisabled = !fileContent || !user || isUserLoading;
-
-    const exampleOrgData = `[
-  {
-    "รหัส": 1,
-    "ชื่อ-นามสกุล": "ชวลิต แก้วน้ำดี",
-    "ตำแหน่ง": "ผู้จัดการแผนกอาวุโส",
-    "แผนก": "HQMS",
-    "ผู้บังคับบัญชา": "ธีระพันธุ์"
-  },
-  {
-    "รหัส": 2,
-    "ชื่อ-นามสกุล": "นายปรัชญ์ ชยานุรักษ์",
-    "ตำแหน่ง": "เจ้าหน้าที่บริหารงานคุณภาพ",
-    "แผนก": "QMS",
-    "ผู้บังคับบัญชา": "ชวลิต แก้วน้ำดี"
-  }
-]`;
 
     return (
         <div className="space-y-6">
@@ -343,3 +318,5 @@ export default function KpiImportPage() {
     </div>
   );
 }
+
+    

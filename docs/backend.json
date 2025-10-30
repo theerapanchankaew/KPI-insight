@@ -553,6 +553,29 @@
                   "cascaded",
                   "committed"
                 ]
+              },
+              "task": {
+                "type": "string",
+                "description": "Task for a 'committed' KPI."
+              },
+              "targets": {
+                "type": "object",
+                "description": "5-level targets for a 'committed' KPI.",
+                "properties": {
+                  "level1": { "type": "string" },
+                  "level2": { "type": "string" },
+                  "level3": { "type": "string" },
+                  "level4": { "type": "string" },
+                  "level5": { "type": "string" }
+                }
+              },
+              "target": {
+                "type": "string",
+                "description": "Target for a 'cascaded' KPI."
+              },
+              "corporateKpiId": {
+                  "type": "string",
+                  "description": "Link to parent corporate KPI for 'cascaded' type."
               }
             },
             "required": [
@@ -564,7 +587,7 @@
               "type"
             ]
           },
-          "description": "KPIs assigned to individual employees. Readable by the assigned user and their manager. Writable by manager/admin. Status updatable by employee.",
+          "description": "KPIs assigned to individual employees. Can be of type 'cascaded' (from corporate) or 'committed' (department-specific). Readable by the assigned user and their manager. Writable by manager/admin. Status updatable by employee.",
           "params": [
             {
               "name": "individualKpiId",
@@ -662,3 +685,5 @@
     "reasoning": "The permission errors indicate the default-deny security rules are working as intended. The fix is to define the intended access patterns. This updated structure declares that 'employees' and 'kpi_catalog' should be readable by any authenticated user, which is necessary for the UI to function. It also specifies that only Admins can list the sensitive '/users' collection, securing user data while allowing the User Management page to work for authorized personnel. Custom claims for 'role' are also defined to enable role-based access control in the security rules."
   }
 }
+
+    

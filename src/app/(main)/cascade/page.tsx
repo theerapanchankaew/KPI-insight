@@ -106,7 +106,7 @@ const AssignKpiDialog = ({
             return;
         }
 
-        const individualKpi: Omit<IndividualKpi, 'id'> = {
+        const individualKpi: Omit<AssignedCascadedKpi, 'id'> = {
             employeeId,
             kpiId: departmentKpi.id, // Link to the department KPI
             corporateKpiId: departmentKpi.corporateKpiId,
@@ -257,7 +257,7 @@ const DeployAndCascadeDialog = ({
             });
 
             // Deploy Monthly KPIs based on Corporate KPI
-            const yearlyTargetValue = parseFloat(corporateKpi.target.replace(/[^0-9.]/g, ''));
+            const yearlyTargetValue = typeof corporateKpi.target === 'string' ? parseFloat(corporateKpi.target.replace(/[^0-9.]/g, '')) : corporateKpi.target;
             const currentYear = new Date().getFullYear();
 
             for (let i = 1; i <= 12; i++) {
@@ -490,6 +490,8 @@ const CorporateKpiRow = ({
     }, [monthlyKpis, kpi.id]);
 
     const achievement = ytdTarget > 0 ? (ytdActual / ytdTarget) * 100 : 0;
+    
+    const yearlyTargetString = typeof kpi.target === 'string' ? kpi.target : kpi.target.toLocaleString();
 
     return (
         <>
@@ -519,7 +521,7 @@ const CorporateKpiRow = ({
                     <Badge variant="outline">{kpi.perspective}</Badge>
                 </TableCell>
                 <TableCell className="font-bold text-gray-900 py-4 text-right">100%</TableCell>
-                <TableCell className="font-bold text-gray-900 py-4 text-right">{kpi.target} {kpi.unit}</TableCell>
+                <TableCell className="font-bold text-gray-900 py-4 text-right">{yearlyTargetString} {kpi.unit}</TableCell>
                 <TableCell className="font-bold text-primary py-4 text-right">{ytdActual.toLocaleString(undefined, {maximumFractionDigits: 0})}</TableCell>
                 <TableCell className="py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
@@ -712,3 +714,5 @@ export default function KPICascadeManagement() {
     </>
   );
 }
+
+    

@@ -85,14 +85,13 @@ const MonthlyReport = () => {
 
             deptKpis.forEach(kpi => {
                 const monthlyForThisKpi = monthlyKpisData.filter(m => m.parentKpiId === kpi.corporateKpiId && m.month <= selectedMonthIndex + 1);
-                const ytdTarget = monthlyForThisKpi.reduce((sum, m) => sum + m.target, 0);
-                const ytdActual = monthlyForThisKpi.reduce((sum, m) => sum + m.actual, 0);
+                const ytdTarget = monthlyForThisKpi.reduce((sum, m) => sum + m.target, 0) * (kpi.weight / 100);
+                const ytdActual = monthlyForThisKpi.reduce((sum, m) => sum + m.actual, 0) * (kpi.weight / 100);
                 
                 const achievement = ytdTarget > 0 ? (ytdActual / ytdTarget) * 100 : 0;
-                const weight = kpi.weight || 0;
-
-                totalWeightedAchievement += achievement * weight;
-                totalWeight += weight;
+                
+                totalWeightedAchievement += achievement * kpi.weight;
+                totalWeight += kpi.weight;
             });
             
             const overallAchievement = totalWeight > 0 ? totalWeightedAchievement / totalWeight : 0;
@@ -201,28 +200,28 @@ const MonthlyReport = () => {
                                     const allMonthlyForKpi = monthlyKpisData?.filter(m => m.parentKpiId === kpi.corporateKpiId) || [];
                                     
                                     const currentMonthData = allMonthlyForKpi.find(m => m.month === selectedMonthIndex + 1);
-                                    const monthTarget = currentMonthData?.target || 0;
-                                    const monthActual = currentMonthData?.actual || 0;
+                                    const monthTarget = (currentMonthData?.target || 0) * (kpi.weight / 100);
+                                    const monthActual = (currentMonthData?.actual || 0) * (kpi.weight / 100);
                                     const monthAchievement = monthTarget > 0 ? (monthActual / monthTarget) * 100 : 0;
 
                                     const ytdMonthlyData = allMonthlyForKpi.filter(m => m.month <= selectedMonthIndex + 1);
-                                    const ytdTarget = ytdMonthlyData.reduce((sum, m) => sum + m.target, 0);
-                                    const ytdActual = ytdMonthlyData.reduce((sum, m) => sum + m.actual, 0);
+                                    const ytdTarget = ytdMonthlyData.reduce((sum, m) => sum + m.target, 0) * (kpi.weight / 100);
+                                    const ytdActual = ytdMonthlyData.reduce((sum, m) => sum + m.actual, 0) * (kpi.weight / 100);
                                     const ytdAchievement = ytdTarget > 0 ? (ytdActual / ytdTarget) * 100 : 0;
                                     
                                     return (
                                         <TableRow key={kpi.id}>
                                             <TableCell className="font-medium">{kpi.measure}</TableCell>
                                             <TableCell>{kpi.department}</TableCell>
-                                            <TableCell>{monthTarget.toLocaleString()}</TableCell>
-                                            <TableCell>{monthActual.toLocaleString()}</TableCell>
+                                            <TableCell>{monthTarget.toLocaleString(undefined, {maximumFractionDigits: 0})}</TableCell>
+                                            <TableCell>{monthActual.toLocaleString(undefined, {maximumFractionDigits: 0})}</TableCell>
                                             <TableCell>
                                                 <Badge variant={getAchievementBadgeVariant(monthAchievement)} className="w-16 justify-center">
                                                     {monthAchievement.toFixed(0)}%
                                                 </Badge>
                                             </TableCell>
-                                            <TableCell>{ytdTarget.toLocaleString()}</TableCell>
-                                            <TableCell>{ytdActual.toLocaleString()}</TableCell>
+                                            <TableCell>{ytdTarget.toLocaleString(undefined, {maximumFractionDigits: 0})}</TableCell>
+                                            <TableCell>{ytdActual.toLocaleString(undefined, {maximumFractionDigits: 0})}</TableCell>
                                             <TableCell>
                                                  <Badge variant={getAchievementBadgeVariant(ytdAchievement)} className="w-16 justify-center">
                                                     {ytdAchievement.toFixed(0)}%

@@ -11,9 +11,8 @@ import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 export interface Kpi {
   id: string;
   perspective: string;
-  strategic_objective: string;
   measure: string;
-  target: string;
+  target: string | number;
   unit: string;
   category: string;
 }
@@ -185,3 +184,5 @@ export const useKpiData = () => {
   }
   return context;
 };
+
+    

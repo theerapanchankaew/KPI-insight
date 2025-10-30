@@ -5,7 +5,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { useAppLayout } from '../layout';
-import { Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell } from 'recharts';
+import { LineChart, CartesianGrid, Tooltip, XAxis, YAxis, Line, ResponsiveContainer } from 'recharts';
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
 import KpiInsights from './components/kpi-insights';
 import { Building2, Target, Edit } from 'lucide-react';
@@ -178,12 +178,12 @@ const KpiCard = ({ kpi, monthlyData }: { kpi: WithId<CorporateKpi>, monthlyData:
                         </Badge>
                     </div>
                     <CardDescription>
-                        Yearly Target: {kpi.target} {kpi.unit && `(${kpi.unit})`}
+                        Yearly Target: {(typeof kpi.target === 'string' ? kpi.target : kpi.target.toLocaleString())} {kpi.unit && `(${kpi.unit})`}
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="flex-1 flex">
                     <div className="h-40 w-full">
-                        <ChartContainer config={chartConfig} className="h-full w-full">
+                        <ResponsiveContainer>
                             <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }} onClick={handlePointClick}>
                                 <CartesianGrid vertical={false} strokeDasharray="3 3" />
                                 <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} fontSize={10} />
@@ -200,23 +200,25 @@ const KpiCard = ({ kpi, monthlyData }: { kpi: WithId<CorporateKpi>, monthlyData:
                                 <Line 
                                     type="monotone" 
                                     dataKey="Actual" 
-                                    stroke="var(--color-Actual)" 
-                                    strokeWidth={2} 
-                                    dot={(props) => {
+                                    stroke="hsl(var(--primary))" 
+                                    strokeWidth={2}
+                                    dot={(props: any) => {
                                         const { cx, cy, payload } = props;
-                                        return (
-                                            <g>
-                                                <Cell fill={payload.isEditable ? 'var(--color-Actual)' : 'transparent'} />
-                                                <circle cx={cx} cy={cy} r={4} fill={payload.isEditable ? 'var(--color-Actual)' : 'transparent'} stroke="white" strokeWidth={2} className="cursor-pointer" />
-                                                <circle cx={cx} cy={cy} r={6} fill="transparent" />
-                                            </g>
-                                        );
+                                        if (payload.isEditable) {
+                                            return (
+                                                <g className="cursor-pointer group/dot">
+                                                    <circle cx={cx} cy={cy} r={8} fill="hsl(var(--primary))" fillOpacity={0.2} className="transition-opacity opacity-0 group-hover/dot:opacity-100" />
+                                                    <circle cx={cx} cy={cy} r={4} fill="hsl(var(--primary))" stroke="hsl(var(--background))" strokeWidth={2} />
+                                                </g>
+                                            );
+                                        }
+                                        return null;
                                     }}
                                     connectNulls={false}
                                 />
-                                <Line type="monotone" dataKey="Target" stroke="var(--color-Target)" strokeWidth={2} strokeDasharray="3 3" dot={false} />
+                                <Line type="monotone" dataKey="Target" stroke="hsl(var(--accent))" strokeWidth={2} strokeDasharray="3 3" dot={false} />
                             </LineChart>
-                        </ChartContainer>
+                        </ResponsiveContainer>
                     </div>
                 </CardContent>
             </Card>
@@ -373,3 +375,5 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+    
