@@ -56,6 +56,11 @@ interface CommittedKpi extends IndividualKpiBase {
 
 type IndividualKpi = (AssignedCascadedKpi | CommittedKpi) & { id: string };
 
+type MonthlyBreakdown = {
+    month: number;
+    percentage: number;
+    target: number;
+};
 
 // ==================== UTILITY FUNCTIONS ====================
 const getStatusColor = (status: IndividualKpi['status']) => {
@@ -191,17 +196,40 @@ const DeployAndCascadeDialog = ({
     const { toast } = useToast();
     const { user } = useUser();
     const [cascades, setCascades] = useState<Partial<CascadedKpi>[]>([]);
+    const [distributionStrategy, setDistributionStrategy] = useState<'equal' | 'custom'>('equal');
+    const [monthlyBreakdown, setMonthlyBreakdown] = useState<MonthlyBreakdown[]>(
+        Array.from({ length: 12 }, (_, i) => ({ month: i + 1, percentage: 100/12, target: 0 }))
+    );
+
+    const yearlyTargetValue = useMemo(() => {
+      if (!corporateKpi) return 0;
+      return typeof corporateKpi.target === 'string' 
+        ? parseFloat(corporateKpi.target.replace(/[^0-9.]/g, '')) 
+        : corporateKpi.target;
+    }, [corporateKpi]);
 
     useEffect(() => {
         if (corporateKpi) {
             const initialCascades = existingCascades.length > 0 ? existingCascades : [{ department: '', weight: 0, target: '' }];
             setCascades(initialCascades);
+            
+            // Recalculate equal distribution when KPI changes
+            const equalPercentage = 100 / 12;
+            const equalTarget = yearlyTargetValue / 12;
+            setMonthlyBreakdown(
+                Array.from({ length: 12 }, (_, i) => ({
+                    month: i + 1,
+                    percentage: equalPercentage,
+                    target: equalTarget,
+                }))
+            );
         }
-    }, [corporateKpi, existingCascades]);
+    }, [corporateKpi, existingCascades, yearlyTargetValue]);
 
     if (!corporateKpi) return null;
     
-    const totalWeight = cascades.reduce((sum, c) => sum + (c.weight || 0), 0);
+    const totalCascadeWeight = cascades.reduce((sum, c) => sum + (c.weight || 0), 0);
+    const totalMonthlyPercentage = monthlyBreakdown.reduce((sum, m) => sum + (m.percentage || 0), 0);
     
     const handleCascadeChange = (index: number, field: keyof CascadedKpi, value: string | number) => {
         const newCascades = [...cascades];
@@ -221,12 +249,30 @@ const DeployAndCascadeDialog = ({
         }
         setCascades(cascades.filter((_, i) => i !== index));
     };
+
+    const handleMonthlyBreakdownChange = (index: number, field: 'percentage' | 'target', value: number) => {
+        const newBreakdown = [...monthlyBreakdown];
+        newBreakdown[index][field] = value;
+
+        // If percentage changes, update target. If target changes, update percentage.
+        if (field === 'percentage') {
+            newBreakdown[index].target = (value / 100) * yearlyTargetValue;
+        } else if (field === 'target' && yearlyTargetValue > 0) {
+            newBreakdown[index].percentage = (value / yearlyTargetValue) * 100;
+        }
+
+        setMonthlyBreakdown(newBreakdown);
+    };
     
     const handleSave = async () => {
         if (!firestore || !corporateKpi || !user) return;
 
-        if (totalWeight > 100) {
-            toast({ title: 'Invalid Weight', description: 'Total weight cannot exceed 100%.', variant: 'destructive' });
+        if (totalCascadeWeight > 100) {
+            toast({ title: 'Invalid Weight', description: 'Total cascade weight cannot exceed 100%.', variant: 'destructive' });
+            return;
+        }
+        if (distributionStrategy === 'custom' && Math.round(totalMonthlyPercentage) !== 100) {
+            toast({ title: 'Invalid Monthly Breakdown', description: 'Total monthly percentage must be exactly 100%.', variant: 'destructive' });
             return;
         }
 
@@ -258,30 +304,29 @@ const DeployAndCascadeDialog = ({
             });
 
             // Deploy Monthly KPIs based on Corporate KPI
-            const yearlyTargetValue = typeof corporateKpi.target === 'string' ? parseFloat(corporateKpi.target.replace(/[^0-9.]/g, '')) : corporateKpi.target;
             const currentYear = new Date().getFullYear();
 
-            for (let i = 1; i <= 12; i++) {
+            monthlyBreakdown.forEach(monthData => {
                  const monthlyKpi: Omit<MonthlyKpi, 'id'> = {
                     parentKpiId: corporateKpi.id,
                     measure: corporateKpi.measure,
                     perspective: corporateKpi.perspective,
                     category: corporateKpi.category,
                     year: currentYear,
-                    month: i,
-                    target: yearlyTargetValue / 12, // Simple equal distribution for now
-                    actual: 0, // Default actual to 0
+                    month: monthData.month,
+                    target: distributionStrategy === 'equal' ? yearlyTargetValue / 12 : monthData.target,
+                    actual: 0,
                     progress: 0,
-                    percentage: (1/12) * 100,
+                    percentage: distributionStrategy === 'equal' ? 100/12 : monthData.percentage,
                     unit: corporateKpi.unit,
                     status: 'Active',
-                    distributionStrategy: 'equal',
+                    distributionStrategy: distributionStrategy,
                     createdAt: serverTimestamp(),
                     createdBy: user.uid,
                  };
-                 const monthlyDocRef = doc(collection(firestore, 'monthly_kpis'), `${corporateKpi.id}_${currentYear}_${i}`);
+                 const monthlyDocRef = doc(collection(firestore, 'monthly_kpis'), `${corporateKpi.id}_${currentYear}_${monthData.month}`);
                  batch.set(monthlyDocRef, monthlyKpi, { merge: true });
-            }
+            });
 
             await batch.commit();
             toast({ title: 'Success', description: 'KPI cascade and monthly breakdown have been saved.' });
@@ -298,62 +343,118 @@ const DeployAndCascadeDialog = ({
                 <DialogHeader>
                     <DialogTitle>Deploy & Cascade KPI</DialogTitle>
                     <DialogDescription>
-                        Cascade '<span className="font-semibold text-primary">{corporateKpi.measure}</span>' to departments. The total weight must not exceed 100%. This will also deploy monthly targets.
+                        Cascade '<span className="font-semibold text-primary">{corporateKpi.measure}</span>' to departments. This will also deploy monthly targets.
                     </DialogDescription>
                 </DialogHeader>
-                <div className="py-4 max-h-[60vh] overflow-y-auto pr-2">
-                    <div className="space-y-4">
-                        {cascades.map((cascade, index) => (
-                            <div key={index} className="grid grid-cols-12 gap-x-4 items-center p-3 border rounded-lg">
-                                <div className="col-span-5">
-                                    <Label>Department</Label>
-                                    <Select 
-                                        value={cascade.department} 
-                                        onValueChange={(val) => handleCascadeChange(index, 'department', val)}
-                                    >
-                                        <SelectTrigger><SelectValue placeholder="Select Department" /></SelectTrigger>
-                                        <SelectContent>
-                                            {departments.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-                                        </SelectContent>
-                                    </Select>
+                <div className="py-4 max-h-[70vh] overflow-y-auto pr-2 space-y-6">
+                    {/* Department Cascade Section */}
+                    <div>
+                        <h4 className="font-medium text-lg mb-2">1. Department Cascade</h4>
+                        <p className="text-sm text-muted-foreground mb-4">Total weight must not exceed 100%.</p>
+                        <div className="space-y-4">
+                            {cascades.map((cascade, index) => (
+                                <div key={index} className="grid grid-cols-12 gap-x-4 items-center p-3 border rounded-lg">
+                                    <div className="col-span-5">
+                                        <Label>Department</Label>
+                                        <Select 
+                                            value={cascade.department} 
+                                            onValueChange={(val) => handleCascadeChange(index, 'department', val)}
+                                        >
+                                            <SelectTrigger><SelectValue placeholder="Select Department" /></SelectTrigger>
+                                            <SelectContent>
+                                                {departments.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="col-span-2">
+                                        <Label>Weight (%)</Label>
+                                        <Input 
+                                            type="number" 
+                                            value={cascade.weight}
+                                            onChange={(e) => handleCascadeChange(index, 'weight', Number(e.target.value))}
+                                        />
+                                    </div>
+                                    <div className="col-span-4">
+                                        <Label>Target</Label>
+                                        <Input 
+                                            value={cascade.target}
+                                            onChange={(e) => handleCascadeChange(index, 'target', e.target.value)}
+                                            placeholder="e.g., ≥ 20M"
+                                        />
+                                    </div>
+                                    <div className="col-span-1 self-end">
+                                        <Button variant="ghost" size="icon" onClick={() => removeCascade(index)} disabled={cascades.length <= 1 && !(cascade as WithId<CascadedKpi>).id}>
+                                            <Trash2 className="h-4 w-4 text-destructive" />
+                                        </Button>
+                                    </div>
                                 </div>
-                                <div className="col-span-2">
-                                    <Label>Weight (%)</Label>
-                                    <Input 
-                                        type="number" 
-                                        value={cascade.weight}
-                                        onChange={(e) => handleCascadeChange(index, 'weight', Number(e.target.value))}
-                                    />
-                                </div>
-                                <div className="col-span-4">
-                                    <Label>Target</Label>
-                                    <Input 
-                                        value={cascade.target}
-                                        onChange={(e) => handleCascadeChange(index, 'target', e.target.value)}
-                                        placeholder="e.g., ≥ 20M"
-                                    />
-                                </div>
-                                <div className="col-span-1 self-end">
-                                    <Button variant="ghost" size="icon" onClick={() => removeCascade(index)} disabled={cascades.length <= 1 && !(cascade as WithId<CascadedKpi>).id}>
-                                        <Trash2 className="h-4 w-4 text-destructive" />
-                                    </Button>
-                                </div>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
+                        <Button variant="outline" size="sm" onClick={addCascade} className="mt-4">
+                            <PlusCircle className="mr-2 h-4 w-4" /> Add Department
+                        </Button>
+                         <p className="text-sm font-medium mt-2">Total Weight: <span className={cn(totalCascadeWeight > 100 ? "text-destructive" : "text-primary")}>{totalCascadeWeight}%</span> / 100%</p>
                     </div>
-                     <Button variant="outline" size="sm" onClick={addCascade} className="mt-4">
-                        <PlusCircle className="mr-2 h-4 w-4" /> Add Department
-                    </Button>
+                    
+                    {/* Monthly Breakdown Section */}
+                    <div>
+                         <h4 className="font-medium text-lg mb-2">2. Monthly Target Breakdown</h4>
+                         <div className="space-y-2 mb-4">
+                            <Label>Distribution Strategy</Label>
+                            <Select value={distributionStrategy} onValueChange={(val: 'equal' | 'custom') => setDistributionStrategy(val)}>
+                                <SelectTrigger className="w-[200px]">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="equal">Equal Distribution</SelectItem>
+                                    <SelectItem value="custom">Custom Distribution</SelectItem>
+                                </SelectContent>
+                            </Select>
+                         </div>
+                        
+                        {distributionStrategy === 'custom' && (
+                            <div className="border rounded-lg p-4">
+                               <p className="text-sm text-muted-foreground mb-4">Total percentage must be exactly 100%.</p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {monthlyBreakdown.map((month, index) => (
+                                        <div key={month.month} className="space-y-2 p-2 bg-muted/50 rounded-md">
+                                            <Label className="font-semibold">Month {month.month}</Label>
+                                            <div className="flex items-center gap-2">
+                                                <Input 
+                                                    type="number"
+                                                    value={month.percentage}
+                                                    onChange={e => handleMonthlyBreakdownChange(index, 'percentage', Number(e.target.value))}
+                                                    className="w-1/2"
+                                                    placeholder="%"
+                                                />
+                                                <Input 
+                                                    type="number"
+                                                    value={month.target}
+                                                    onChange={e => handleMonthlyBreakdownChange(index, 'target', Number(e.target.value))}
+                                                    className="w-1/2"
+                                                    placeholder="Target"
+                                                />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <p className="text-sm font-medium mt-4">
+                                    Total Percentage: <span className={cn(Math.round(totalMonthlyPercentage) !== 100 ? "text-destructive" : "text-success")}>{totalMonthlyPercentage.toFixed(2)}%</span> / 100%
+                                </p>
+                            </div>
+                        )}
+                    </div>
+
                 </div>
                 <DialogFooter>
                     <div className="w-full flex justify-between items-center">
                         <div>
-                            <p className="text-sm font-medium">Total Weight: <span className={cn(totalWeight > 100 ? "text-destructive" : "text-primary")}>{totalWeight}%</span> / 100%</p>
+                           {/* Footer info can go here if needed */}
                         </div>
                         <div>
                            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
                            <Button onClick={handleSave} className="ml-2">
-                                <Save className="mr-2 h-4 w-4" /> Save Cascade
+                                <Save className="mr-2 h-4 w-4" /> Save Deployment
                            </Button>
                         </div>
                     </div>
