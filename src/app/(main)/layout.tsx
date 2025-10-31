@@ -202,7 +202,7 @@ const AppHeader = () => {
 
   const [openCommand, setOpenCommand] = React.useState(false);
 
-  useEffect(() => {
+  React.useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
@@ -218,10 +218,10 @@ const AppHeader = () => {
     router.push('/login');
   };
   
-  const runCommand = (command: () => void) => {
+  const runCommand = React.useCallback((command: () => void) => {
     setOpenCommand(false)
     command()
-  }
+  }, [])
 
   const departments = React.useMemo(() => {
       if (!orgData) return [];
@@ -464,5 +464,3 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     </AppLayoutContext.Provider>
   );
 }
-
-    
