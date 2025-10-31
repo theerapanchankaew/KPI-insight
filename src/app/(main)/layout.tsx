@@ -15,6 +15,9 @@ import {
   ShieldCheck,
   LogOut,
   User as UserIcon,
+  Users,
+  Briefcase,
+  Building,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { appConfig, navItems, headerData } from '@/lib/data/layout-data';
@@ -192,7 +195,7 @@ const EditProfileDialog = ({ children }: { children: React.ReactNode }) => {
 
 const AppHeader = () => {
   const { pageTitle } = useAppLayout();
-  const { settings, kpiData, cascadedKpis } = useKpiData();
+  const { settings, kpiData, cascadedKpis, orgData } = useKpiData();
   const { user, isUserLoading } = useUser();
   const auth = useAuth();
   const router = useRouter();
@@ -211,7 +214,7 @@ const AppHeader = () => {
   }, [])
 
   const handleLogout = () => {
-    auth.signOut();
+    if (auth) auth.signOut();
     router.push('/login');
   };
   
@@ -219,6 +222,11 @@ const AppHeader = () => {
     setOpenCommand(false)
     command()
   }
+
+  const departments = React.useMemo(() => {
+      if (!orgData) return [];
+      return [...new Set(orgData.map(e => e.department))];
+  }, [orgData]);
 
   return (
     <>
@@ -352,34 +360,61 @@ const AppHeader = () => {
         <CommandInput placeholder="Type a command or search..." />
         <CommandList>
           <CommandEmpty>No results found.</CommandEmpty>
-          <CommandGroup heading="Suggestions">
+          <CommandGroup heading="Pages">
              {navItems.map(item => (
-                <CommandItem key={item.href} value={item.label} onSelect={() => runCommand(() => router.push(item.href))}>
+                <CommandItem key={item.href} value={`Page ${item.label}`} onSelect={() => runCommand(() => router.push(item.href))}>
                     <item.icon className="mr-2 h-4 w-4" />
                     <span>{item.label}</span>
                 </CommandItem>
             ))}
           </CommandGroup>
+
           {kpiData && (
             <CommandGroup heading="Corporate KPIs">
                  {kpiData.map(kpi => (
-                    <CommandItem key={kpi.id} value={kpi.measure} onSelect={() => runCommand(() => router.push('/cascade'))}>
+                    <CommandItem key={kpi.id} value={`KPI ${kpi.measure}`} onSelect={() => runCommand(() => router.push('/cascade'))}>
                         <ShieldCheck className="mr-2 h-4 w-4" />
                         <span>{kpi.measure}</span>
                     </CommandItem>
                 ))}
             </CommandGroup>
           )}
+
           {cascadedKpis && (
             <CommandGroup heading="Cascaded KPIs">
                  {cascadedKpis.map(kpi => (
-                    <CommandItem key={kpi.id} value={`${kpi.measure} (${kpi.department})`} onSelect={() => runCommand(() => router.push('/cascade'))}>
+                    <CommandItem key={kpi.id} value={`Cascaded ${kpi.measure} ${kpi.department}`} onSelect={() => runCommand(() => router.push('/cascade'))}>
+                        <Briefcase className="mr-2 h-4 w-4" />
                         <span>{kpi.measure}</span>
                         <span className="ml-2 text-xs text-muted-foreground">({kpi.department})</span>
                     </CommandItem>
                 ))}
             </CommandGroup>
           )}
+
+          {orgData && (
+            <CommandGroup heading="Employees">
+                {orgData.map(employee => (
+                    <CommandItem key={employee.id} value={`Employee ${employee.name}`} onSelect={() => runCommand(() => router.push(`/portfolio?userId=${employee.id}`))}>
+                        <Users className="mr-2 h-4 w-4" />
+                        <span>{employee.name}</span>
+                        <span className="ml-2 text-xs text-muted-foreground">({employee.position})</span>
+                    </CommandItem>
+                ))}
+            </CommandGroup>
+          )}
+
+          {departments && (
+             <CommandGroup heading="Departments">
+                {departments.map(dept => (
+                    <CommandItem key={dept} value={`Department ${dept}`} onSelect={() => runCommand(() => router.push(`/cascade?department=${dept}`))}>
+                        <Building className="mr-2 h-4 w-4" />
+                        <span>{dept}</span>
+                    </CommandItem>
+                ))}
+            </CommandGroup>
+          )}
+
         </CommandList>
       </CommandDialog>
     </>
@@ -429,3 +464,5 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     </AppLayoutContext.Provider>
   );
 }
+
+    

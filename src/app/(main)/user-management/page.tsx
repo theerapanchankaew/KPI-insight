@@ -277,7 +277,8 @@ export default function UserManagementPage() {
     }
     const employeesCollection = collection(firestore, 'employees');
     const newId = newUser.name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now().toString().slice(-5);
-    addDocumentNonBlocking(doc(employeesCollection, newId), {id: newId, ...newUser});
+    const employeeDocRef = doc(employeesCollection, newId);
+    setDocumentNonBlocking(employeeDocRef, {id: newId, ...newUser}, { merge: true });
     
     toast({ title: 'Employee Added', description: `${newUser.name} has been added.` });
   };
@@ -341,7 +342,7 @@ export default function UserManagementPage() {
         status: 'Manager Review' as const,
     };
     
-    addDocumentNonBlocking(collection(firestore, 'submissions'), submissionData);
+    addDocumentNonBlocking(collection(firestore, 'kpi_submissions'), submissionData);
 
     toast({
         title: 'KPI Fast-Tracked!',
@@ -527,3 +528,5 @@ export default function UserManagementPage() {
     </div>
   );
 }
+
+    
