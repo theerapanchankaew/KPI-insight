@@ -7,8 +7,7 @@ import { cn } from "@/lib/utils";
 import { useAppLayout } from '../layout';
 import { LineChart, CartesianGrid, Tooltip, XAxis, YAxis, Line, ResponsiveContainer } from 'recharts';
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
-import KpiInsights from './components/kpi-insights';
-import { Building2, Target, Edit } from 'lucide-react';
+import { Building2, Target, Edit, Users, Network, Briefcase } from 'lucide-react';
 import { useKpiData } from '@/context/KpiDataContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCollection, useFirestore, useMemoFirebase, WithId, setDocumentNonBlocking } from '@/firebase';
@@ -232,6 +231,20 @@ const KpiCard = ({ kpi, monthlyData }: { kpi: WithId<CorporateKpi>, monthlyData:
     )
 }
 
+const SummaryStatCard = ({ title, value, icon: Icon, isLoading }: { title: string, value: string | number, icon: React.ElementType, isLoading: boolean }) => (
+    <Card>
+      <CardContent className="p-4 flex items-center gap-4">
+        <div className="w-12 h-12 bg-muted rounded-lg flex items-center justify-center">
+            <Icon className="w-6 h-6 text-muted-foreground" />
+        </div>
+        <div>
+            <p className="text-sm text-muted-foreground">{title}</p>
+            {isLoading ? <Skeleton className="h-6 w-12 mt-1" /> : <p className="text-2xl font-bold">{value}</p>}
+        </div>
+      </CardContent>
+    </Card>
+);
+
 
 const DepartmentPerformance = () => {
   const { orgData, isOrgDataLoading, cascadedKpis, isCascadedKpisLoading } = useKpiData();
@@ -261,19 +274,20 @@ const DepartmentPerformance = () => {
   const isLoading = isOrgDataLoading || isCascadedKpisLoading;
 
   return (
-    <Card className="shadow-sm border-gray-200 lg:col-span-3">
+    <Card className="shadow-sm border-gray-200">
       <CardHeader>
         <CardTitle>Department Performance</CardTitle>
+        <CardDescription>Number of KPIs cascaded to each department.</CardDescription>
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <Skeleton className="h-24" />
             <Skeleton className="h-24" />
             <Skeleton className="h-24" />
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {departments.length > 0 ? departments.map((dept, index) => (
               <div key={index} className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
                 <div className={cn("w-12 h-12 rounded-lg flex items-center justify-center", 'bg-secondary/10')}>
@@ -301,7 +315,14 @@ const DepartmentPerformance = () => {
 
 export default function DashboardPage() {
   const { setPageTitle } = useAppLayout();
-  const { kpiData, isKpiDataLoading, monthlyKpisData, isMonthlyKpisLoading } = useKpiData();
+  const { kpiData, cascadedKpis, orgData, isKpiDataLoading, isCascadedKpisLoading, isOrgDataLoading, monthlyKpisData, isMonthlyKpisLoading } = useKpiData();
+  
+  const firestore = useFirestore();
+  const individualKpisQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return collection(firestore, 'individual_kpis');
+  }, [firestore]);
+  const { data: individualKpis, isLoading: isIndividualKpisLoading } = useCollection(individualKpisQuery);
   
   const groupedKpis = useMemo(() => {
     if (!kpiData) return {};
@@ -318,12 +339,25 @@ export default function DashboardPage() {
     setPageTitle('Dashboard');
   }, [setPageTitle]);
   
-  const isLoading = isKpiDataLoading || isMonthlyKpisLoading;
+  const isLoading = isKpiDataLoading || isMonthlyKpisLoading || isCascadedKpisLoading || isOrgDataLoading || isIndividualKpisLoading;
+  
+  const summaryStats = useMemo(() => ({
+    totalKpis: kpiData?.length ?? 0,
+    cascadedKpis: cascadedKpis?.length ?? 0,
+    assignedKpis: individualKpis?.length ?? 0,
+    totalEmployees: orgData?.length ?? 0,
+  }), [kpiData, cascadedKpis, individualKpis, orgData]);
 
   return (
     <div className="fade-in space-y-6">
-       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
+       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <SummaryStatCard title="Total KPIs" value={summaryStats.totalKpis} icon={Target} isLoading={isLoading} />
+            <SummaryStatCard title="Cascaded KPIs" value={summaryStats.cascadedKpis} icon={Network} isLoading={isLoading} />
+            <SummaryStatCard title="Assigned KPIs" value={summaryStats.assignedKpis} icon={Briefcase} isLoading={isLoading} />
+            <SummaryStatCard title="Total Employees" value={summaryStats.totalEmployees} icon={Users} isLoading={isLoading} />
+        </div>
+
+        <div className="space-y-6">
             {isLoading ? (
                 [...Array(2)].map((_, i) => (
                     <Card key={i}>
@@ -366,12 +400,8 @@ export default function DashboardPage() {
                 </Card>
             )}
         </div>
-        <KpiInsights />
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <DepartmentPerformance />
-      </div>
+      <DepartmentPerformance />
     </div>
   );
 }
