@@ -5,7 +5,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { useAppLayout } from '../layout';
-import { LineChart, CartesianGrid, Tooltip, XAxis, YAxis, Line, ResponsiveContainer } from 'recharts';
+import { LineChart, CartesianGrid, Tooltip, XAxis, YAxis, Line, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
 import { Building2, Target, Edit, Users, Network, Briefcase } from 'lucide-react';
 import { useKpiData } from '@/context/KpiDataContext';
@@ -246,72 +246,94 @@ const SummaryStatCard = ({ title, value, icon: Icon, isLoading }: { title: strin
 );
 
 
-const DepartmentPerformance = () => {
-  const { orgData, isOrgDataLoading, cascadedKpis, isCascadedKpisLoading } = useKpiData();
+const DepartmentPerformanceChart = () => {
+    const { orgData, cascadedKpis, monthlyKpisData, isOrgDataLoading, isCascadedKpisLoading, isMonthlyKpisLoading } = useKpiData();
 
-  const departmentKpiCounts = useMemo(() => {
-    if (!cascadedKpis || !orgData) return {};
+    const performanceData = useMemo(() => {
+        if (!orgData || !cascadedKpis || !monthlyKpisData) return [];
+
+        const departments = [...new Set(orgData.map(e => e.department).filter(Boolean))];
+
+        const data = departments.map(dept => {
+            const deptKpis = cascadedKpis.filter(kpi => kpi.department === dept);
+            if (deptKpis.length === 0) {
+                return { name: dept, achievement: 0 };
+            }
+            
+            let totalWeightedAchievement = 0;
+            let totalWeight = 0;
+
+            deptKpis.forEach(kpi => {
+                const relevantMonthly = monthlyKpisData.filter(m => m.parentKpiId === kpi.corporateKpiId);
+                const ytdTarget = relevantMonthly.reduce((sum, m) => sum + m.target, 0) * (kpi.weight / 100);
+                const ytdActual = relevantMonthly.reduce((sum, m) => sum + m.actual, 0) * (kpi.weight / 100);
+
+                const achievement = ytdTarget > 0 ? (ytdActual / ytdTarget) * 100 : 0;
+                
+                totalWeightedAchievement += achievement * kpi.weight;
+                totalWeight += kpi.weight;
+            });
+            
+            const overallAchievement = totalWeight > 0 ? totalWeightedAchievement / totalWeight : 0;
+            return { name: dept, achievement: overallAchievement };
+        });
+
+        return data.sort((a,b) => b.achievement - a.achievement);
+
+    }, [orgData, cascadedKpis, monthlyKpisData]);
+
+    const isLoading = isOrgDataLoading || isCascadedKpisLoading || isMonthlyKpisLoading;
     
-    const departmentSet = new Set(orgData.map(e => e.department));
-    const counts: Record<string, number> = {};
+    const chartConfig = {
+      achievement: { label: 'Achievement' },
+    };
 
-    for (const dept of departmentSet) {
-      counts[dept] = 0;
-    }
+    const getColor = (value: number) => {
+      if (value >= 100) return 'hsl(var(--success))';
+      if (value >= 80) return 'hsl(var(--accent))';
+      return 'hsl(var(--destructive))';
+    };
 
-    for (const kpi of cascadedKpis) {
-      if (counts.hasOwnProperty(kpi.department)) {
-        counts[kpi.department]++;
-      }
-    }
-    return counts;
-  }, [cascadedKpis, orgData]);
-  
-  const departments = useMemo(() => {
-    return orgData ? [...new Set(orgData.map(e => e.department))].filter(Boolean) : [];
-  }, [orgData]);
-  
-  const isLoading = isOrgDataLoading || isCascadedKpisLoading;
-
-  return (
-    <Card className="shadow-sm border-gray-200">
-      <CardHeader>
-        <CardTitle>Department Performance</CardTitle>
-        <CardDescription>Number of KPIs cascaded to each department.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <Skeleton className="h-24" />
-            <Skeleton className="h-24" />
-            <Skeleton className="h-24" />
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {departments.length > 0 ? departments.map((dept, index) => (
-              <div key={index} className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
-                <div className={cn("w-12 h-12 rounded-lg flex items-center justify-center", 'bg-secondary/10')}>
-                  <Building2 className={cn("w-6 h-6", 'text-secondary')} />
-                </div>
-                <div>
-                  <h4 className="font-semibold text-gray-800">{dept}</h4>
-                  <p className={cn("text-xl font-bold", 'text-secondary')}>{departmentKpiCounts[dept] || 0}</p>
-                  <p className="text-xs text-gray-500">Cascaded KPIs</p>
-                </div>
-              </div>
-            )) : (
-              <div className="col-span-3 text-center py-10">
-                <Building2 className="w-12 h-12 text-gray-300 mx-auto" />
-                <h4 className="mt-4 font-semibold text-gray-600">No Department Data</h4>
-                <p className="text-sm text-gray-500">Please import organization data in the "Intake Data" page.</p>
-              </div>
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>YTD Department Performance</CardTitle>
+                <CardDescription>Overall weighted KPI achievement by department.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                {isLoading ? (
+                    <Skeleton className="h-64" />
+                ) : performanceData.length > 0 ? (
+                    <ChartContainer config={chartConfig} className="h-64 w-full">
+                        <ResponsiveContainer>
+                            <BarChart data={performanceData} layout="vertical" margin={{ left: 10 }}>
+                                <CartesianGrid horizontal={false} />
+                                <XAxis type="number" dataKey="achievement" unit="%" tickLine={false} axisLine={false} tickMargin={8} />
+                                <YAxis type="category" dataKey="name" tickLine={false} axisLine={false} tickMargin={8} width={80} />
+                                <Tooltip
+                                    cursor={{ fill: 'hsl(var(--muted))' }}
+                                    content={<ChartTooltipContent formatter={(value) => `${Number(value).toFixed(1)}%`} />}
+                                />
+                                <Bar dataKey="achievement" radius={4}>
+                                    {performanceData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={getColor(entry.achievement)} />
+                                    ))}
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </ChartContainer>
+                ) : (
+                    <div className="col-span-3 text-center py-10">
+                        <Building2 className="w-12 h-12 text-gray-300 mx-auto" />
+                        <h4 className="mt-4 font-semibold text-gray-600">No Department Data</h4>
+                        <p className="text-sm text-gray-500">Please import organization data in the "Intake Data" page.</p>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    );
 };
+
 
 export default function DashboardPage() {
   const { setPageTitle } = useAppLayout();
@@ -401,7 +423,7 @@ export default function DashboardPage() {
             )}
         </div>
 
-      <DepartmentPerformance />
+      <DepartmentPerformanceChart />
     </div>
   );
 }
