@@ -81,6 +81,18 @@ const getStatusColor = (status: IndividualKpi['status']) => {
     return colors[status] || colors['Draft'];
 };
 
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// Helper to get the fiscal year months in order, starting from October
+const getFiscalMonthNames = () => {
+    const fiscalMonths = [];
+    for (let i = 0; i < 12; i++) {
+        fiscalMonths.push(MONTH_NAMES[(9 + i) % 12]);
+    }
+    return fiscalMonths;
+};
+const FISCAL_MONTH_NAMES = getFiscalMonthNames();
+
 
 // ==================== DIALOGS ====================
 const AssignKpiDialog = ({
@@ -210,7 +222,7 @@ const DeployAndCascadeDialog = ({
     const [cascades, setCascades] = useState<Partial<CascadedKpi>[]>([]);
     const [distributionStrategy, setDistributionStrategy] = useState<'equal' | 'custom'>('equal');
     const [monthlyBreakdown, setMonthlyBreakdown] = useState<MonthlyBreakdown[]>(
-        Array.from({ length: 12 }, (_, i) => ({ month: i + 1, percentage: 100/12, target: 0 }))
+        Array.from({ length: 12 }, (_, i) => ({ month: (9 + i) % 12 + 1, percentage: 100/12, target: 0 }))
     );
 
     const yearlyTargetValue = useMemo(() => {
@@ -230,7 +242,7 @@ const DeployAndCascadeDialog = ({
             const equalTarget = yearlyTargetValue / 12;
             setMonthlyBreakdown(
                 Array.from({ length: 12 }, (_, i) => ({
-                    month: i + 1,
+                    month: (9 + i) % 12 + 1,
                     percentage: equalPercentage,
                     target: equalTarget,
                 }))
@@ -317,14 +329,18 @@ const DeployAndCascadeDialog = ({
 
             // Deploy Monthly KPIs based on Corporate KPI
             const currentYear = new Date().getFullYear();
+            const currentMonth = new Date().getMonth(); // 0-11
+            const fiscalYearStartYear = currentMonth >= 9 ? currentYear : currentYear - 1;
+
 
             monthlyBreakdown.forEach(monthData => {
+                 const yearForMonth = fiscalYearStartYear + (monthData.month < 10 ? 1 : 0);
                  const monthlyKpi: Omit<MonthlyKpi, 'id'> = {
                     parentKpiId: corporateKpi.id,
                     measure: corporateKpi.measure,
                     perspective: corporateKpi.perspective,
                     category: corporateKpi.category,
-                    year: currentYear,
+                    year: yearForMonth,
                     month: monthData.month,
                     target: distributionStrategy === 'equal' ? yearlyTargetValue / 12 : monthData.target,
                     actual: 0,
@@ -336,7 +352,7 @@ const DeployAndCascadeDialog = ({
                     createdAt: serverTimestamp(),
                     createdBy: user.uid,
                  };
-                 const monthlyDocRef = doc(collection(firestore, 'monthly_kpis'), `${corporateKpi.id}_${currentYear}_${monthData.month}`);
+                 const monthlyDocRef = doc(collection(firestore, 'monthly_kpis'), `${corporateKpi.id}_${yearForMonth}_${monthData.month}`);
                  batch.set(monthlyDocRef, monthlyKpi, { merge: true });
             });
 
@@ -430,7 +446,7 @@ const DeployAndCascadeDialog = ({
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                     {monthlyBreakdown.map((month, index) => (
                                         <div key={month.month} className="space-y-2 p-2 bg-muted/50 rounded-md">
-                                            <Label className="font-semibold">Month {month.month}</Label>
+                                            <Label className="font-semibold">{FISCAL_MONTH_NAMES[index]}</Label>
                                             <div className="flex items-center gap-2">
                                                 <Input 
                                                     type="number"
@@ -844,3 +860,4 @@ export default function KPICascadeManagement() {
     </>
   );
 }
+
