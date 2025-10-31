@@ -25,6 +25,17 @@ import type { MonthlyKpi, Kpi as CorporateKpi } from '@/context/KpiDataContext';
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+// Helper to get the fiscal year months in order, starting from October
+const getFiscalMonthNames = () => {
+    const fiscalMonths = [];
+    for (let i = 0; i < 12; i++) {
+        fiscalMonths.push(MONTH_NAMES[(9 + i) % 12]);
+    }
+    return fiscalMonths;
+};
+const FISCAL_MONTH_NAMES = getFiscalMonthNames();
+
+
 const formatYAxis = (tick: number | string) => {
     const num = Number(tick);
     if (isNaN(num)) return tick;
@@ -115,8 +126,19 @@ const KpiCard = ({ kpi, monthlyData }: { kpi: WithId<CorporateKpi>, monthlyData:
     }, [kpi.id, monthlyData]);
 
     const chartData = useMemo(() => {
-        const dataByMonth = MONTH_NAMES.map((name, index) => {
-            const monthData = dataForKpi.find(d => d.month === index + 1);
+        const today = new Date();
+        const currentMonth = today.getMonth(); // 0-11
+        const currentYear = today.getFullYear();
+
+        // Fiscal year starts in October. If we are in Oct, Nov, Dec, the fiscal year starts this calendar year.
+        // If we are in Jan-Sep, the fiscal year started last calendar year.
+        const fiscalYearStartYear = currentMonth >= 9 ? currentYear : currentYear - 1;
+
+        return FISCAL_MONTH_NAMES.map((name, index) => {
+            const monthIndex1Based = (9 + index) % 12 + 1; // Oct is 10, Jan is 1
+            const year = fiscalYearStartYear + (monthIndex1Based < 10 ? 1 : 0);
+
+            const monthData = dataForKpi.find(d => d.month === monthIndex1Based && d.year === year);
             return {
                 month: name,
                 Actual: monthData?.actual ?? null, // Use null for missing data to create gaps
@@ -124,7 +146,6 @@ const KpiCard = ({ kpi, monthlyData }: { kpi: WithId<CorporateKpi>, monthlyData:
                 isEditable: !!monthData,
             };
         });
-        return dataByMonth;
     }, [dataForKpi]);
     
     const chartConfig = {
@@ -132,7 +153,7 @@ const KpiCard = ({ kpi, monthlyData }: { kpi: WithId<CorporateKpi>, monthlyData:
       Target: { label: 'Target', color: 'hsl(var(--accent))' },
     };
 
-    const totalActual = useMemo(() => chartData.reduce((sum, item) => sum + (item.Actual || 0), 0), [chartData]);
+    const totalActual = useMemo(() => dataForKpi.reduce((sum, item) => sum + (item.actual || 0), 0), [dataForKpi]);
     const yearlyTarget = useMemo(() => {
       const targetValue = typeof kpi.target === 'string' ? parseFloat(kpi.target.replace(/[^0-9.]/g, '')) : kpi.target;
       return isNaN(targetValue) ? 0 : targetValue;
@@ -427,5 +448,7 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+    
 
     

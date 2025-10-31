@@ -119,8 +119,19 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   
   const monthlyKpisQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
-    const currentYear = new Date().getFullYear();
-    return query(collection(firestore, 'monthly_kpis'), where('year', '==', currentYear));
+    
+    // For fiscal year (Oct-Sep), we might need data from two calendar years.
+    const today = new Date();
+    const currentMonth = today.getMonth(); // 0-11
+    const currentYear = today.getFullYear();
+    
+    // If we are in Jan-Sep, the fiscal year started last year. We need last year's Oct-Dec and this year's Jan-Sep.
+    // If we are in Oct-Dec, the fiscal year started this year. We need this year's Oct-Dec and next year's Jan-Sep.
+    const fiscalYearStartYear = currentMonth >= 9 ? currentYear : currentYear - 1;
+    const fiscalYearEndYear = fiscalYearStartYear + 1;
+    
+    // Query for data across the two relevant calendar years.
+    return query(collection(firestore, 'monthly_kpis'), where('year', 'in', [fiscalYearStartYear, fiscalYearEndYear]));
   }, [firestore, user]);
   const { data: monthlyKpisData, isLoading: isMonthlyKpisLoading } = useCollection<MonthlyKpi>(monthlyKpisQuery);
 
@@ -184,3 +195,5 @@ export const useKpiData = () => {
   }
   return context;
 };
+
+    
