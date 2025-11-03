@@ -56,6 +56,12 @@ export const navItems = [
     icon: FileText,
   },
   {
+    href: '/master-data',
+    label: 'Master Data',
+    description: 'จัดการข้อมูลหลัก',
+    icon: Database,
+  },
+  {
     href: '/settings',
     label: 'System Administration',
     description: 'การตั้งค่าระบบ',
