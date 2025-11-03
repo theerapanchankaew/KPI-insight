@@ -67,6 +67,14 @@ export interface MonthlyKpi {
   createdBy: string;
 }
 
+interface IndividualKpi {
+    status: 'Draft' | 'Agreed' | 'In-Progress' | 'Manager Review' | 'Upper Manager Approval' | 'Employee Acknowledged' | 'Closed' | 'Rejected';
+}
+
+interface KpiSubmission {
+    status: 'Manager Review' | 'Upper Manager Approval' | 'Closed' | 'Rejected';
+}
+
 const defaultSettings: AppSettings = {
     orgName: 'บริษัท ABC จำกัด (เริ่มต้น)',
     period: 'รายไตรมาส (Quarterly)',
@@ -87,6 +95,12 @@ interface KpiDataContextType {
   settings: AppSettings;
   setSettings: (settings: Partial<AppSettings>) => void;
   isSettingsLoading: boolean;
+  pendingSubmissions: WithId<KpiSubmission>[] | null;
+  isPendingSubmissionsLoading: boolean;
+  pendingCommitmentRequests: WithId<IndividualKpi>[] | null;
+  isPendingCommitmentRequestsLoading: boolean;
+  pendingUpperManagerApprovals: WithId<IndividualKpi>[] | null;
+  isPendingUpperManagerApprovalsLoading: boolean;
 }
 
 // Create the context
@@ -120,36 +134,49 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   const monthlyKpisQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
     
-    // For fiscal year (Oct-Sep), we might need data from two calendar years.
     const today = new Date();
     const currentMonth = today.getMonth(); // 0-11
     const currentYear = today.getFullYear();
-    
-    // If we are in Jan-Sep, the fiscal year started last year. We need last year's Oct-Dec and this year's Jan-Sep.
-    // If we are in Oct-Dec, the fiscal year started this year. We need this year's Oct-Dec and next year's Jan-Sep.
     const fiscalYearStartYear = currentMonth >= 9 ? currentYear : currentYear - 1;
     const fiscalYearEndYear = fiscalYearStartYear + 1;
     
-    // Query for data across the two relevant calendar years.
     return query(collection(firestore, 'monthly_kpis'), where('year', 'in', [fiscalYearStartYear, fiscalYearEndYear]));
   }, [firestore, user]);
   const { data: monthlyKpisData, isLoading: isMonthlyKpisLoading } = useCollection<MonthlyKpi>(monthlyKpisQuery);
 
-  // Settings should be readable by any authenticated user.
   const settingsDocRef = useMemoFirebase(() => {
-    if (!firestore || !user) return null; // Only fetch if user is logged in.
+    if (!firestore || !user) return null;
     return doc(firestore, 'settings', 'global');
   }, [firestore, user]);
   
   const { data: settingsData, isLoading: isSettingsLoading } = useDoc<AppSettings>(settingsDocRef);
   
+  // Queries for notifications/approvals
+  const pendingSubmissionsQuery = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return query(collection(firestore, 'kpi_submissions'), where('status', '==', 'Manager Review'));
+  }, [firestore, user]);
+  const { data: pendingSubmissions, isLoading: isPendingSubmissionsLoading } = useCollection<KpiSubmission>(pendingSubmissionsQuery);
+
+  const pendingCommitmentRequestsQuery = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return query(collection(firestore, 'individual_kpis'), where('status', '==', 'Manager Review'));
+  }, [firestore, user]);
+  const { data: pendingCommitmentRequests, isLoading: isPendingCommitmentRequestsLoading } = useCollection<IndividualKpi>(pendingCommitmentRequestsQuery);
+
+  const pendingUpperManagerApprovalsQuery = useMemoFirebase(() => {
+      if (!firestore || !user) return null;
+      return query(collection(firestore, 'individual_kpis'), where('status', '==', 'Upper Manager Approval'));
+  }, [firestore, user]);
+  const { data: pendingUpperManagerApprovals, isLoading: isPendingUpperManagerApprovalsLoading } = useCollection<IndividualKpi>(pendingUpperManagerApprovalsQuery);
+
+
   const [localSettings, setLocalSettings] = useState<AppSettings>(defaultSettings);
 
   useEffect(() => {
     if (settingsData) {
       setLocalSettings(settingsData);
     } else if (!isSettingsLoading && !user) {
-      // If not loading and no user, fallback to default.
       setLocalSettings(defaultSettings);
     }
   }, [settingsData, isSettingsLoading, user]);
@@ -177,6 +204,12 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
     settings: localSettings,
     setSettings,
     isSettingsLoading: isLoading,
+    pendingSubmissions,
+    isPendingSubmissionsLoading,
+    pendingCommitmentRequests,
+    isPendingCommitmentRequestsLoading,
+    pendingUpperManagerApprovals,
+    isPendingUpperManagerApprovalsLoading
   };
 
 
@@ -195,5 +228,3 @@ export const useKpiData = () => {
   }
   return context;
 };
-
-    

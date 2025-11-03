@@ -28,6 +28,7 @@ import { collection, query, where, doc, serverTimestamp } from 'firebase/firesto
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { useKpiData } from '@/context/KpiDataContext';
 
 // ==================== TYPE DEFINITIONS ====================
 
@@ -309,6 +310,18 @@ export default function ActionCenterPage() {
   }, [user, firestore]);
   
   const { data: userProfile, isLoading: isProfileLoading } = useDoc<AppUser>(userProfileRef);
+  
+  const {
+      pendingSubmissions,
+      isPendingSubmissionsLoading,
+      pendingCommitmentRequests,
+      isPendingCommitmentRequestsLoading,
+      pendingUpperManagerApprovals,
+      isPendingUpperManagerApprovalsLoading,
+      orgData: employeesData,
+      isOrgDataLoading: isEmployeesLoading
+  } = useKpiData();
+
 
   const isManagerOrAdmin = useMemo(() => userProfile?.role && ['Admin', 'VP', 'AVP', 'Manager'].includes(userProfile.role), [userProfile]);
   const isUpperManager = useMemo(() => userProfile?.role && ['Admin', 'VP'].includes(userProfile.role), [userProfile]);
@@ -317,32 +330,7 @@ export default function ActionCenterPage() {
     setPageTitle("Action Center");
   }, [setPageTitle]);
   
-  const employeesQuery = useMemoFirebase(() => (firestore ? collection(firestore, 'employees') : null), [firestore]);
-  const { data: employeesData, isLoading: isEmployeesLoading } = useCollection<WithId<Employee>>(employeesQuery);
-
-  const submissionsQuery = useMemoFirebase(() => {
-    if (!firestore || !isManagerOrAdmin) return null;
-    return query(collection(firestore, 'kpi_submissions'), where('status', '==', 'Manager Review'));
-  }, [firestore, isManagerOrAdmin]);
-
-  const { data: submissions, isLoading: isSubmissionsLoading } = useCollection<WithId<KpiSubmission>>(submissionsQuery);
-
-  const commitmentRequestsQuery = useMemoFirebase(() => {
-    if (!firestore || !isManagerOrAdmin) return null;
-    return query(collection(firestore, 'individual_kpis'), where('status', '==', 'Manager Review'));
-  }, [firestore, isManagerOrAdmin]);
-  
-  const { data: commitmentRequests, isLoading: isCommitmentsLoading } = useCollection<WithId<IndividualKpi>>(commitmentRequestsQuery);
-
-  const upperManagerApprovalQuery = useMemoFirebase(() => {
-      if (!firestore || !isUpperManager) return null;
-      return query(collection(firestore, 'individual_kpis'), where('status', '==', 'Upper Manager Approval'));
-  }, [firestore, isUpperManager]);
-
-  const { data: upperManagerApprovals, isLoading: isUpperManagerApprovalsLoading } = useCollection<WithId<IndividualKpi>>(upperManagerApprovalQuery);
-
-
-  const isLoading = isUserLoading || isProfileLoading || isSubmissionsLoading || isEmployeesLoading || isCommitmentsLoading || isUpperManagerApprovalsLoading;
+  const isLoading = isUserLoading || isProfileLoading || isPendingSubmissionsLoading || isEmployeesLoading || isPendingCommitmentRequestsLoading || isPendingUpperManagerApprovalsLoading;
 
   const handleApproveSubmission = async (submissionId: string) => {
     if (!firestore) return;
@@ -392,10 +380,10 @@ export default function ActionCenterPage() {
   };
   
   const stats = useMemo(() => ({
-      pendingSubmissions: submissions?.length ?? 0,
-      pendingCommitments: commitmentRequests?.length ?? 0,
-      pendingUpperManager: upperManagerApprovals?.length ?? 0,
-  }), [submissions, commitmentRequests, upperManagerApprovals]);
+      pendingSubmissions: pendingSubmissions?.length ?? 0,
+      pendingCommitments: pendingCommitmentRequests?.length ?? 0,
+      pendingUpperManager: pendingUpperManagerApprovals?.length ?? 0,
+  }), [pendingSubmissions, pendingCommitmentRequests, pendingUpperManagerApprovals]);
 
   if (isLoading) {
       return (
@@ -463,9 +451,9 @@ export default function ActionCenterPage() {
           </TabsList>
           <TabsContent value="submissions" className="mt-6">
              <ApprovalList 
-                items={submissions || []}
+                items={pendingSubmissions || []}
                 title="KPI Submissions"
-                isLoading={isSubmissionsLoading}
+                isLoading={isPendingSubmissionsLoading}
                 onApprove={handleApproveSubmission}
                 onReject={handleRejectSubmission}
                 noItemsMessage="No KPI data submissions are currently awaiting your review."
@@ -474,9 +462,9 @@ export default function ActionCenterPage() {
           </TabsContent>
           <TabsContent value="commitments" className="mt-6">
               <ApprovalList
-                items={commitmentRequests || []}
+                items={pendingCommitmentRequests || []}
                 title="Commitment Requests"
-                isLoading={isCommitmentsLoading}
+                isLoading={isPendingCommitmentRequestsLoading}
                 getEmployeeName={getEmployeeName}
                 onApprove={handleApproveCommitment}
                 onReject={handleRejectCommitment}
@@ -487,9 +475,9 @@ export default function ActionCenterPage() {
           </TabsContent>
            {isUpperManager && <TabsContent value="upper-approval" className="mt-6">
               <ApprovalList
-                items={upperManagerApprovals || []}
+                items={pendingUpperManagerApprovals || []}
                 title="Upper Manager Approval"
-                isLoading={isUpperManagerApprovalsLoading}
+                isLoading={isPendingUpperManagerApprovalsLoading}
                 getEmployeeName={getEmployeeName}
                 onApprove={handleUpperManagerApprove}
                 onReject={handleUpperManagerReject}
@@ -502,5 +490,3 @@ export default function ActionCenterPage() {
     </div>
   );
 }
-
-    

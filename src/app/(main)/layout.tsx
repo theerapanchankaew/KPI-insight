@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, createContext, useContext, useEffect } from 'react';
+import React, { useState, createContext, useContext, useEffect, useMemo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -20,7 +20,7 @@ import {
   Building,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { appConfig, navItems, headerData } from '@/lib/data/layout-data';
+import { appConfig, navItems } from '@/lib/data/layout-data';
 import { KpiDataProvider, useKpiData } from '@/context/KpiDataContext';
 import { useUser, useAuth, useDoc, useFirestore, useMemoFirebase } from '@/firebase';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
@@ -195,12 +195,38 @@ const EditProfileDialog = ({ children }: { children: React.ReactNode }) => {
 
 const AppHeader = () => {
   const { pageTitle } = useAppLayout();
-  const { settings, kpiData, cascadedKpis, orgData } = useKpiData();
+  const { settings, kpiData, cascadedKpis, orgData, pendingSubmissions, pendingCommitmentRequests, pendingUpperManagerApprovals } = useKpiData();
   const { user, isUserLoading } = useUser();
   const auth = useAuth();
   const router = useRouter();
 
   const [openCommand, setOpenCommand] = React.useState(false);
+  
+  const userProfileRef = useMemoFirebase(() => {
+    if(!user || !auth) return null;
+    return doc(useFirestore(), 'users', user.uid);
+  }, [user, auth]);
+
+  const { data: userProfile } = useDoc(userProfileRef);
+
+  const notificationCount = useMemo(() => {
+    if (!userProfile) return 0;
+    
+    const { role } = userProfile;
+    let count = 0;
+
+    if (role === 'Admin' || role === 'VP' || role === 'AVP' || role === 'Manager') {
+        count += pendingSubmissions?.length ?? 0;
+        count += pendingCommitmentRequests?.length ?? 0;
+    }
+    
+    if (role === 'Admin' || role === 'VP') {
+        count += pendingUpperManagerApprovals?.length ?? 0;
+    }
+    
+    return count;
+  }, [userProfile, pendingSubmissions, pendingCommitmentRequests, pendingUpperManagerApprovals]);
+
 
   React.useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -293,9 +319,15 @@ const AppHeader = () => {
             </Button>
           </div>
           <div className="relative">
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="w-6 h-6" />
-              <span className="absolute -top-1 -right-1 bg-destructive text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">{headerData.alertCount}</span>
+             <Button asChild variant="ghost" size="icon" className="relative">
+              <Link href="/approvals">
+                <Bell className="w-6 h-6" />
+                {notificationCount > 0 && (
+                   <span className="absolute -top-1 -right-1 bg-destructive text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                    {notificationCount}
+                   </span>
+                )}
+              </Link>
             </Button>
           </div>
           <div className="flex items-center space-x-3">
@@ -313,7 +345,7 @@ const AppHeader = () => {
                       <div className="flex items-center space-x-3 cursor-pointer">
                           <div className="hidden sm:block text-right">
                             <p className="text-sm font-medium text-foreground">{user.isAnonymous ? 'Anonymous User' : (user.displayName || user.email)}</p>
-                            <p className="text-xs text-muted-foreground">{user.isAnonymous ? 'Guest' : 'Member'}</p>
+                            <p className="text-xs text-muted-foreground">{userProfile?.role || 'Member'}</p>
                           </div>
                           <Avatar>
                             <AvatarFallback className="bg-gradient-to-r from-primary to-secondary text-white font-semibold">
