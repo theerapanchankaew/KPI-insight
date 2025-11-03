@@ -925,24 +925,23 @@ const EmployeePortfolio = ({ employee, kpis, submissionsMap, handlers, isManager
     );
 };
 
-const EmployeeNode = ({ node, allKpis, submissionsMap, handlers, level = 0, isManagerView }: {
+const EmployeeNode = ({ node, allKpis, submissionsMap, handlers, level = 0 }: {
     node: TreeNode;
     allKpis: WithId<IndividualKpi>[];
     submissionsMap: Map<string, WithId<KpiSubmission>>;
     handlers: any;
     level?: number;
-    isManagerView: boolean;
 }) => {
     const employeeKpis = allKpis.filter(kpi => kpi.employeeId === node.id);
 
     return (
         <div style={{ marginLeft: `${level * 20}px` }} className={cn("space-y-4", level > 0 && "mt-4")}>
-            <EmployeePortfolio employee={node} kpis={employeeKpis} submissionsMap={submissionsMap} handlers={handlers} isManagerView={isManagerView}/>
+            <EmployeePortfolio employee={node} kpis={employeeKpis} submissionsMap={submissionsMap} handlers={handlers} isManagerView={false}/>
             
             {node.reports && node.reports.length > 0 && (
                 <div className="space-y-4">
                     {node.reports.map(report => (
-                        <EmployeeNode key={report.id} node={report} allKpis={allKpis} submissionsMap={submissionsMap} handlers={handlers} level={level + 1} isManagerView={isManagerView} />
+                        <EmployeeNode key={report.id} node={report} allKpis={allKpis} submissionsMap={submissionsMap} handlers={handlers} level={level + 1} />
                     ))}
                 </div>
             )}
@@ -1003,67 +1002,61 @@ export default function MyPortfolioPage() {
   }, [submissions]);
   
   const teamMembers = useMemo(() => {
-      if (!allEmployees || !user || !isManagerOrAdmin) return [];
-      
-      const userEmployeeRecord = allEmployees.find(e => e.id === user.uid);
-      if (!userEmployeeRecord) return [];
+    if (!allEmployees || !user) return [];
+    if (userProfile?.role === 'Admin') return allEmployees;
 
-      if (userProfile?.role === 'Admin') return allEmployees;
+    const userEmployeeRecord = allEmployees.find(e => e.id === user.uid);
+    if (!userEmployeeRecord) return [];
 
-      // Create a map for easy lookup
-      const employeeMap = new Map(allEmployees.map(e => [e.name, e]));
-      
-      // Recursive function to get all reports
-      const getAllReports = (managerName: string) => {
-          let reports: Employee[] = [];
-          const directReports = allEmployees.filter(e => e.manager === managerName);
-          reports = reports.concat(directReports);
-          directReports.forEach(report => {
-              reports = reports.concat(getAllReports(report.name));
-          });
-          return reports;
-      };
+    const getAllReports = (managerName: string): Employee[] => {
+        let reports: Employee[] = [];
+        const directReports = allEmployees.filter(e => e.manager === managerName);
+        reports = reports.concat(directReports);
+        directReports.forEach(report => {
+            reports = reports.concat(getAllReports(report.name));
+        });
+        return reports;
+    };
 
-      return [userEmployeeRecord, ...getAllReports(userEmployeeRecord.name)];
+    if (isManagerOrAdmin) {
+        return [userEmployeeRecord, ...getAllReports(userEmployeeRecord.name)];
+    }
+    
+    return [userEmployeeRecord];
   }, [allEmployees, user, isManagerOrAdmin, userProfile]);
 
   const organizationalTree = useMemo(() => {
-      if (!teamMembers || teamMembers.length === 0) return [];
+    if (!teamMembers || teamMembers.length === 0 || !user || !userProfile) return [];
 
-      const employeeMap = new Map<string, TreeNode>();
-      teamMembers.forEach(emp => {
-          employeeMap.set(emp.name, { ...emp, reports: [] });
-      });
+    const employeeMap = new Map<string, TreeNode>();
+    teamMembers.forEach(emp => {
+      employeeMap.set(emp.id, { ...emp, reports: [] });
+    });
 
-      const rootNodes: TreeNode[] = [];
-      let loggedInUserNode: TreeNode | undefined;
-
-      employeeMap.forEach(employee => {
-          if (employee.id === user?.uid) {
-              loggedInUserNode = employee;
-          }
-          if (employee.manager && employeeMap.has(employee.manager)) {
-              employeeMap.get(employee.manager)!.reports.push(employee);
-          } else {
-              // This is a root node within the visible set
-              rootNodes.push(employee);
-          }
-      });
-      
-      if (!user || !userProfile) return [];
-      
-      // If the user is a manager, they are the root of their own tree.
-      if (isManagerOrAdmin && loggedInUserNode) {
-          return [loggedInUserNode];
+    const rootNodes: TreeNode[] = [];
+    employeeMap.forEach(employee => {
+      if (employee.manager && employeeMap.has(employee.manager)) {
+        // This is incorrect if the manager is not in the teamMembers list
+        // Let's find by name
+        const managerNode = Array.from(employeeMap.values()).find(e => e.name === employee.manager);
+        managerNode?.reports.push(employee);
+      } else {
+        rootNodes.push(employee);
       }
+    });
 
-      // For non-managers, just show themselves
-      if (loggedInUserNode) {
-        loggedInUserNode.reports = [];
-        return [loggedInUserNode];
-      }
-      
-      return []; // Should not happen if data is consistent
+    if (isManagerOrAdmin) {
+        const loggedInUserNode = rootNodes.find(node => node.id === user.uid);
+        return loggedInUserNode ? [loggedInUserNode] : rootNodes;
+    }
+    
+    const loggedInUserNode = employeeMap.get(user.uid);
+    if (loggedInUserNode) {
+      loggedInUserNode.reports = [];
+      return [loggedInUserNode];
+    }
+
+    return [];
   }, [teamMembers, user, userProfile, isManagerOrAdmin]);
 
 
@@ -1211,7 +1204,7 @@ export default function MyPortfolioPage() {
       <div className="space-y-4">
         {organizationalTree.length > 0 ? (
            organizationalTree.map(node => (
-                <EmployeeNode key={node.id} node={node} allKpis={kpis || []} submissionsMap={submissionsMap} handlers={handlers} isManagerView={isManagerOrAdmin || false} />
+                <EmployeeNode key={node.id} node={node} allKpis={kpis || []} submissionsMap={submissionsMap} handlers={handlers} />
             ))
         ) : (
             <Card>
@@ -1269,3 +1262,6 @@ export default function MyPortfolioPage() {
     </div>
   );
 }
+
+
+    
