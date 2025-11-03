@@ -6,7 +6,6 @@ import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@
 import { collection, doc, query, where } from 'firebase/firestore';
 import { WithId } from '@/firebase/firestore/use-collection';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
-import { getIdTokenResult } from 'firebase/auth';
 
 // ==================== NORMALIZED ENTITY TYPES ====================
 
@@ -161,9 +160,6 @@ interface KpiDataContextType {
   settings: AppSettings;
   setSettings: (settings: Partial<AppSettings>) => void;
   isSettingsLoading: boolean;
-
-  isManagerOrAdmin: boolean;
-  isRoleLoading: boolean;
 }
 
 // ==================== CONTEXT DEFINITION ====================
@@ -175,30 +171,6 @@ const KpiDataContext = createContext<KpiDataContextType | undefined>(undefined);
 export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   const firestore = useFirestore();
   const { user } = useUser();
-
-  const [isManagerOrAdmin, setIsManagerOrAdmin] = useState(false);
-  const [isRoleLoading, setIsRoleLoading] = useState(true);
-
-  useEffect(() => {
-    if (user) {
-      setIsRoleLoading(true);
-      getIdTokenResult(user, true) // Force refresh the token to get the latest claims
-        .then((idTokenResult) => {
-          const userRole = idTokenResult.claims.role as string;
-          // Standardize the check to be case-insensitive for robustness
-          const role = userRole?.toLowerCase();
-          setIsManagerOrAdmin(['admin', 'vp', 'avp', 'manager'].includes(role));
-          setIsRoleLoading(false);
-        })
-        .catch(() => {
-          setIsManagerOrAdmin(false);
-          setIsRoleLoading(false);
-        });
-    } else {
-      setIsManagerOrAdmin(false);
-      setIsRoleLoading(false);
-    }
-  }, [user]);
 
   // Master Data Queries
   const employeesQuery = useMemoFirebase(() => firestore ? collection(firestore, 'employees') : null, [firestore]);
@@ -230,10 +202,11 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   const { data: monthlyKpisData, isLoading: isMonthlyKpisLoading } = useCollection<MonthlyKpi>(monthlyKpisQuery);
 
   const individualKpisQuery = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
+    if (!firestore) return null;
+    // This query is now simpler. It fetches all individual KPIs.
+    // Security rules will ensure that users only get the data they are allowed to see.
     return collection(firestore, 'individual_kpis');
-  }, [firestore, user]);
-
+  }, [firestore]);
   const { data: individualKpis, isLoading: isIndividualKpisLoading } = useCollection<WithId<IndividualKpi>>(individualKpisQuery);
 
   // Settings
@@ -273,9 +246,6 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
     settings: localSettings,
     setSettings,
     isSettingsLoading: isSettingsLoading,
-
-    isManagerOrAdmin,
-    isRoleLoading,
   };
 
 
@@ -296,3 +266,4 @@ export const useKpiData = () => {
   return context;
 };
 
+    

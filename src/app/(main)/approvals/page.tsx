@@ -23,13 +23,14 @@ import {
   Inbox
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useUser, useCollection, useMemoFirebase, useDoc, WithId } from '@/firebase';
+import { useFirestore, useUser, useCollection, useMemoFirebase, WithId } from '@/firebase';
 import { collection, query, where, doc, serverTimestamp } from 'firebase/firestore';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { useKpiData } from '@/context/KpiDataContext';
-import type { Employee, IndividualKpi, KpiSubmission, User as AppUser } from '@/context/KpiDataContext';
+import type { Employee, IndividualKpi, KpiSubmission } from '@/context/KpiDataContext';
+import { useUserProfile } from '@/hooks/use-user-profile';
 
 
 // ==================== DIALOGS ====================
@@ -241,7 +242,8 @@ export default function ActionCenterPage() {
   const { setPageTitle } = useAppLayout();
   const { toast } = useToast();
   const firestore = useFirestore();
-  const { user, isUserLoading } = useUser();
+  const { user } = useUser();
+  const { userProfile, isLoading: isProfileLoading } = useUserProfile();
   
   const {
       employees: employeesData, 
@@ -250,20 +252,13 @@ export default function ActionCenterPage() {
       isIndividualKpisLoading,
   } = useKpiData();
 
-  const userProfileRef = useMemoFirebase(() => {
-    if (!user || !firestore) return null;
-    return doc(firestore, 'users', user.uid);
-  }, [user, firestore]);
-  
-  const { data: userProfile, isLoading: isProfileLoading } = useDoc<AppUser>(userProfileRef);
-
   const currentEmployeeRecord = useMemo(() => {
       if (!user || !employeesData) return null;
       return employeesData.find(e => e.id === user.uid);
   }, [user, employeesData])
   
-  const isManagerOrAdmin = useMemo(() => userProfile?.roles && userProfile.roles.some(r => ['admin', 'vp', 'avp', 'manager'].includes(r)), [userProfile]);
-  const isUpperManager = useMemo(() => userProfile?.roles && userProfile.roles.some(r => ['admin', 'vp'].includes(r)), [userProfile]);
+  const isManagerOrAdmin = useMemo(() => userProfile?.roles && userProfile.roles.some(r => ['admin', 'vp', 'avp', 'manager'].includes(r.toLowerCase())), [userProfile]);
+  const isUpperManager = useMemo(() => userProfile?.roles && userProfile.roles.some(r => ['admin', 'vp'].includes(r.toLowerCase())), [userProfile]);
 
 
   const directReportsQuery = useMemoFirebase(() => {
@@ -312,7 +307,7 @@ export default function ActionCenterPage() {
     setPageTitle("Action Center");
   }, [setPageTitle]);
   
-  const isLoading = isUserLoading || isProfileLoading || isPendingSubmissionsLoading || isEmployeesLoading || isPendingCommitmentRequestsLoading || isPendingUpperManagerApprovalsLoading || isDirectReportsLoading;
+  const isLoading = isProfileLoading || isPendingSubmissionsLoading || isEmployeesLoading || isPendingCommitmentRequestsLoading || isPendingUpperManagerApprovalsLoading || isDirectReportsLoading;
 
   const handleApproveSubmission = async (submissionId: string) => {
     if (!firestore) return;
@@ -331,8 +326,8 @@ export default function ActionCenterPage() {
   // Manager agrees, escalates to THEIR manager (or completes if manager is VP/Admin)
   const handleApproveCommitment = async (kpiId: string, notes: string) => {
     if (!firestore || !userProfile) return;
-    const kpiRef = doc(firestore, 'individual_kpis', kpiId);
     const nextStatus = userProfile.roles.includes('admin') || userProfile.roles.includes('vp') ? 'In-Progress' : 'Upper Manager Approval';
+    const kpiRef = doc(firestore, 'individual_kpis', kpiId);
     setDocumentNonBlocking(kpiRef, { status: nextStatus, managerNotes: notes, reviewedAt: serverTimestamp() }, { merge: true });
     toast({ title: "Commitment Agreed", description: nextStatus === 'In-Progress' ? "The KPI is now active." : "The KPI has been escalated for final approval." });
   };
@@ -476,5 +471,7 @@ export default function ActionCenterPage() {
     </div>
   );
 }
+
+    
 
     

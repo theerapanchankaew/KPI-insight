@@ -40,7 +40,7 @@ import {
   Users
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useUser, useCollection, useMemoFirebase, WithId, useDoc, addDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
+import { useFirestore, useUser, useCollection, useMemoFirebase, WithId, addDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
 import { collection, query, where, doc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -53,6 +53,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { format } from 'date-fns';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { useUserProfile } from '@/hooks/use-user-profile';
 
 
 // ==================== TYPE DEFINITIONS ====================
@@ -959,7 +960,8 @@ export default function MyPortfolioPage() {
   const { setPageTitle } = useAppLayout();
   const { toast } = useToast();
   const firestore = useFirestore();
-  const { user, isUserLoading } = useUser();
+  const { user } = useUser();
+  const { userProfile, isLoading: isProfileLoading } = useUserProfile();
   const { employees: allEmployees, isEmployeesLoading, monthlyKpisData, isMonthlyKpisLoading, individualKpis: allKpis, isIndividualKpisLoading, positions, isPositionsLoading } = useKpiData();
 
   const [selectedKpi, setSelectedKpi] = useState<WithId<IndividualKpi> | null>(null);
@@ -968,7 +970,7 @@ export default function MyPortfolioPage() {
   const [isEditDialogOpen, setEditDialogOpen] = useState(false);
   const [isCreateDialogOpen, setCreateDialogOpen] = useState(false);
 
-  const { isManagerOrAdmin, isRoleLoading } = useKpiData();
+  const isManagerOrAdmin = useMemo(() => userProfile?.roles?.some(r => ['admin', 'vp', 'avp', 'manager'].includes(r.toLowerCase())), [userProfile]);
   
   useEffect(() => {
     setPageTitle("My Portfolio");
@@ -1141,7 +1143,7 @@ export default function MyPortfolioPage() {
 
   // ==================== RENDER ====================
 
-  const isLoading = isUserLoading || isIndividualKpisLoading || isRoleLoading || isEmployeesLoading || isSubmissionsLoading || isMonthlyKpisLoading || isPositionsLoading;
+  const isLoading = isProfileLoading || isIndividualKpisLoading || isEmployeesLoading || isSubmissionsLoading || isMonthlyKpisLoading || isPositionsLoading;
 
   if (isLoading) {
     return (
@@ -1249,3 +1251,4 @@ export default function MyPortfolioPage() {
   );
 }
 
+    

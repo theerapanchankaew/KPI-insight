@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useAppLayout } from '../layout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -18,7 +18,7 @@ import {
   Users2,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useKpiData } from '@/context/KpiDataContext';
+import { useUserProfile } from '@/hooks/use-user-profile';
 
 const SettingsItem = ({ title, description, href, icon: Icon }: { title: string, description: string, href: string, icon: React.ElementType }) => (
   <Link href={href} passHref>
@@ -40,13 +40,19 @@ const SettingsItem = ({ title, description, href, icon: Icon }: { title: string,
 
 export default function SettingsPage() {
   const { setPageTitle } = useAppLayout();
-  const { isManagerOrAdmin, isRoleLoading } = useKpiData();
+  const { userProfile, isLoading: isProfileLoading } = useUserProfile();
+
+  const isAdmin = useMemo(() => {
+    if (!userProfile || !userProfile.roles) return false;
+    // Standardize to lowercase for case-insensitive check
+    return userProfile.roles.map(role => role.toLowerCase()).includes('admin');
+  }, [userProfile]);
   
   useEffect(() => {
     setPageTitle('Settings');
   }, [setPageTitle]);
 
-  if (isRoleLoading) {
+  if (isProfileLoading) {
     return (
         <div className="space-y-6">
             <Skeleton className="h-8 w-48" />
@@ -59,7 +65,7 @@ export default function SettingsPage() {
     )
   }
 
-  if (!isManagerOrAdmin) {
+  if (!isAdmin) {
     return (
         <Card className="mt-8">
             <CardContent className="p-12 text-center">
@@ -123,3 +129,5 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+    
