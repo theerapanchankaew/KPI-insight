@@ -4,10 +4,9 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useAppLayout } from '../layout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { useKpiData } from '@/context/KpiDataContext';
-import { useUser, useDoc, useFirestore, useMemoFirebase } from '@/firebase';
-import { doc } from 'firebase/firestore';
+import { useUser } from '@/firebase';
 import { Skeleton } from '@/components/ui/skeleton';
+import { getIdTokenResult } from 'firebase/auth';
 import {
   ChevronRight,
   ShieldAlert,
@@ -39,33 +38,40 @@ const SettingsItem = ({ title, description, href, icon: Icon }: { title: string,
   </Link>
 );
 
-interface AppUser {
-  roles: string[];
-}
 
 export default function SettingsPage() {
   const { setPageTitle } = useAppLayout();
-  const { user: authUser, isUserLoading: isAuthLoading } = useUser();
-  const firestore = useFirestore();
-
-  const userProfileRef = useMemoFirebase(() => {
-    if (!authUser || !firestore) return null;
-    return doc(firestore, 'users', authUser.uid);
-  }, [authUser, firestore]);
+  const { user, isUserLoading: isAuthLoading } = useUser();
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isCheckingRole, setIsCheckingRole] = useState(true);
   
-  const { data: userProfile, isLoading: isProfileLoading } = useDoc<AppUser>(userProfileRef);
-
-  const isAdmin = useMemo(() => {
-    // Safely check for userProfile and the roles array
-    if (!userProfile || !Array.isArray(userProfile.roles)) return false;
-    return userProfile.roles.includes('admin') || userProfile.roles.includes('Admin');
-  }, [userProfile]);
-
   useEffect(() => {
     setPageTitle('Settings');
   }, [setPageTitle]);
 
-  const isLoading = isAuthLoading || isProfileLoading;
+  useEffect(() => {
+    if (isAuthLoading) return;
+
+    if (user) {
+      setIsCheckingRole(true);
+      getIdTokenResult(user)
+        .then((idTokenResult) => {
+          const claims = idTokenResult.claims;
+          const userRole = claims.role as string;
+          setIsAdmin(userRole === 'Admin');
+          setIsCheckingRole(false);
+        })
+        .catch(() => {
+          setIsAdmin(false);
+          setIsCheckingRole(false);
+        });
+    } else {
+      setIsAdmin(false);
+      setIsCheckingRole(false);
+    }
+  }, [user, isAuthLoading]);
+  
+  const isLoading = isAuthLoading || isCheckingRole;
 
   if (isLoading) {
     return (
