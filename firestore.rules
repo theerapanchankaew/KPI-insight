@@ -28,19 +28,17 @@ service cloud.firestore {
     }
 
     /**
-     * @description Checks if the authenticated user is an Admin by checking for 'admin' in their roles token.
-     * This assumes 'roles' is a list on the custom claims.
+     * @description Checks if the authenticated user is an Admin by checking the 'role' custom claim.
      */
     function isAdmin() {
-      // Check if roles exist and hasAny is available.
-      return isSignedIn() && ('roles' in request.auth.token) && request.auth.token.roles.hasAny(['admin']);
+      return isSignedIn() && request.auth.token.role == 'Admin';
     }
     
     /**
      * @description Checks if the user is a manager or above.
      */
     function isManager() {
-      return isSignedIn() && ('roles' in request.auth.token) && request.auth.token.roles.hasAny(['admin', 'vp', 'avp', 'manager']);
+      return isSignedIn() && request.auth.token.role in ['Admin', 'VP', 'AVP', 'Manager'];
     }
     
     /**
@@ -67,7 +65,7 @@ service cloud.firestore {
      * Writable only by Admins.
      */
     match /employees/{employeeId} {
-      allow read: if isSignedIn() || isAdmin();
+      allow read: if isSignedIn();
       allow write: if isAdmin();
     }
 
@@ -75,17 +73,17 @@ service cloud.firestore {
      * Departments, Positions, Roles: Configuration data readable by all, writable by admins.
      */
     match /departments/{departmentId} {
-      allow read: if isSignedIn() || isAdmin();
+      allow read: if isSignedIn();
       allow write: if isAdmin();
     }
     
     match /positions/{positionId} {
-      allow read: if isSignedIn() || isAdmin();
+      allow read: if isSignedIn();
       allow write: if isAdmin();
     }
     
     match /roles/{roleId} {
-      allow read: if isSignedIn() || isAdmin(); 
+      allow list, get: if isSignedIn(); 
       allow write: if isAdmin();
     }
 
@@ -94,7 +92,7 @@ service cloud.firestore {
      * Readable by all, writable only by admins.
      */
     match /kpi_catalog/{kpiId} {
-      allow read: if isSignedIn() || isAdmin();
+      allow read: if isSignedIn();
       allow write: if isAdmin();
     }
 
@@ -103,8 +101,8 @@ service cloud.firestore {
      * Readable by all, writable by managers/admins.
      */
     match /cascaded_kpis/{cascadedKpiId} {
-      allow read: if isSignedIn() || isAdmin();
-      allow write: if isAdmin();
+      allow read: if isSignedIn();
+      allow write: if isManager();
     }
 
     /**
@@ -113,8 +111,8 @@ service cloud.firestore {
      * - Writable by the user (for status changes) or their manager/admin.
      */
     match /individual_kpis/{individualKpiId} {
-        allow read: if isSignedIn() || isAdmin();
-        allow write: if isAdmin();
+        allow read: if isSignedIn();
+        allow write: if isManager();
     }
 
     /**
@@ -134,7 +132,7 @@ service cloud.firestore {
      * Readable by all, writable by admins.
      */
     match /monthly_kpis/{monthlyKpiId} {
-      allow read: if isSignedIn() || isAdmin();
+      allow read: if isSignedIn();
       allow write: if isAdmin();
     }
 
@@ -142,7 +140,7 @@ service cloud.firestore {
      * Global Settings: Readable by all, writable only by admins.
      */
     match /settings/global {
-      allow read: if isSignedIn() || isAdmin();
+      allow read: if isSignedIn();
       allow write: if isAdmin();
     }
   }
