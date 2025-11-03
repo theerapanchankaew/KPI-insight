@@ -21,7 +21,6 @@ import {
   BookUser,
   List,
   UserCog,
-  Sitemap,
   Network,
   ListTree,
   BarChart,
@@ -127,9 +126,9 @@ export default function SettingsPage() {
             <CardContent>
                  <Accordion type="multiple" className="w-full">
                     <SubMenu title="Reporting Hierarchy" icon={GitMerge}>
-                        <SettingsItem title="Organization Chart" href="#" icon={Sitemap} />
-                        <SettingsItem title="Tree View" href="#" icon={Network} />
-                        <SettingsItem title="List View" href="#" icon={ListTree} />
+                        <SettingsItem title="Organization Chart" href="#" icon={Network} />
+                        <SettingsItem title="Tree View" href="#" icon={ListTree} />
+                        <SettingsItem title="List View" href="#" icon={List} />
                         <SettingsItem title="Manage Structure" href="#" icon={FileCog} />
                         <SettingsItem title="Reports & Analytics" href="#" icon={BarChart} />
                     </SubMenu>
