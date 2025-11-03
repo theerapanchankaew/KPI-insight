@@ -83,9 +83,8 @@ service cloud.firestore {
     }
     
     match /roles/{roleId} {
-      allow write: if isAdmin();
-      allow list: if isAdmin();
-      allow get: if isSignedIn();
+      allow read, write: if isAdmin();
+      allow list, get: if isSignedIn();
     }
 
     /**

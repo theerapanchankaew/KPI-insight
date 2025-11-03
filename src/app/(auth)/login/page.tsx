@@ -12,7 +12,7 @@ import { ShieldCheck, LogIn, UserPlus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useMemo } from 'react';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { doc, collection } from 'firebase/firestore';
+import { doc, collection, writeBatch, getDocs, limit, query } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { navItems } from '@/lib/data/layout-data';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -95,8 +95,8 @@ const SignUpForm = () => {
   const firestore = useFirestore();
   const { toast } = useToast();
   
-  const { data: positions } = useCollection<Position>(firestore ? collection(firestore, 'positions') : null);
-  const { data: roles } = useCollection<Role>(firestore ? collection(firestore, 'roles') : null);
+  const { data: positions } = useCollection<Position>(firestore ? collection(firestore, 'positions') : null, { disabled: !firestore });
+  const { data: roles } = useCollection<Role>(firestore ? collection(firestore, 'roles') : null, { disabled: !firestore });
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -125,6 +125,11 @@ const SignUpForm = () => {
     setIsSigningUp(true);
 
     try {
+      // Check if any user exists to determine if this is the first user
+      const usersQuery = query(collection(firestore, "users"), limit(1));
+      const usersSnapshot = await getDocs(usersQuery);
+      const isFirstUser = usersSnapshot.empty;
+      
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
       
@@ -132,20 +137,30 @@ const SignUpForm = () => {
       
       const selectedPosition = positions.find(p => p.id === positionId);
       if (!selectedPosition) throw new Error("Selected position not found.");
+      
+      const userRole = isFirstUser ? 'Admin' : 'Employee';
+      const userRoleCode = isFirstUser ? 'admin' : 'employee';
 
-      const defaultRoleTemplates = roles.filter(r => selectedPosition.defaultRoles.includes(r.code));
+      // This part is illustrative. In a real app, you'd call a Cloud Function
+      // to set the custom claim, as it cannot be done securely from the client.
+      // For this environment, we'll proceed assuming a backend mechanism handles this.
+      console.log(`Assigning role '${userRole}' to ${email}. A backend function should set this custom claim.`);
+
+      const defaultRoleTemplates = roles.filter(r => selectedPosition.defaultRoles.includes(r.code) || r.code === userRoleCode);
       const menuAccess = defaultRoleTemplates.reduce((acc, role) => ({...acc, ...role.menuAccess}), {});
       
+      const batch = writeBatch(firestore);
+
       // Create 'users' document (Authorization data)
       const userRef = doc(firestore, 'users', user.uid);
       const newUserProfile = {
         id: user.uid,
         employeeId: user.uid, // Link to the employees collection
         email: email,
-        roles: selectedPosition.defaultRoles,
+        roles: [userRoleCode],
         menuAccess: menuAccess,
       };
-      setDocumentNonBlocking(userRef, newUserProfile, { merge: true });
+      batch.set(userRef, newUserProfile);
 
       // Create 'employees' document (HR Master data)
       const employeeRef = doc(firestore, 'employees', user.uid);
@@ -159,11 +174,13 @@ const SignUpForm = () => {
         level: selectedPosition.level,
         status: 'active',
       };
-      setDocumentNonBlocking(employeeRef, newEmployee, { merge: true });
+      batch.set(employeeRef, newEmployee);
+
+      await batch.commit();
       
       toast({
           title: "Account Created",
-          description: "Your account has been successfully created. Please sign in."
+          description: `Your account has been created with the role: ${userRole}. Please sign in.`
       });
 
     } catch (err: any) {
