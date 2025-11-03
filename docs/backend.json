@@ -127,10 +127,13 @@
       "description": "Represents a Key Performance Indicator.",
       "properties": {
         "id": { "type": "string" },
+        "perspective": { "type": "string" },
+        "strategic_objective": { "type": "string" },
+        "objective_statement": { "type": "string" },
         "measure": { "type": "string" },
         "target": { "type": "string" },
         "unit": { "type": "string" },
-        "perspective": { "type": "string" },
+        "target_statement": { "type": "string" },
         "category": { "type": "string" }
       },
       "required": ["id", "measure", "target"]
@@ -170,21 +173,8 @@
   },
   "auth": {
     "providers": [
-      "password",
-      "anonymous"
-    ],
-    "customClaims": {
-      "role": {
-        "type": "string",
-        "enum": [
-          "Admin",
-          "VP",
-          "AVP",
-          "Manager",
-          "Employee"
-        ]
-      }
-    }
+      "password"
+    ]
   },
   "firestore": {
     "structure": [
@@ -213,6 +203,10 @@
         "definition": { "schema": { "$ref": "#/entities/Kpi" } }
       },
       {
+        "path": "/cascaded_kpis/{cascadedKpiId}",
+        "definition": { "schema": { "$ref": "#/entities/CascadedKpi" } }
+      },
+      {
         "path": "/individual_kpis/{individualKpiId}",
         "definition": { "schema": { "$ref": "#/entities/IndividualKpi" } }
       },
@@ -223,6 +217,19 @@
       {
         "path": "/monthly_kpis/{monthlyKpiId}",
         "definition": { "schema": { "$ref": "#/entities/MonthlyKpi" } }
+      },
+      {
+        "path": "/settings/global",
+        "definition": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "orgName": { "type": "string"},
+              "period": {"type": "string"},
+              "currency": {"type": "string"}
+            }
+          }
+        }
       }
     ],
     "reasoning": "The data model has been fully normalized to establish a single source of truth. 'employees' is the master for HR data. 'users' is for authentication and roles, linked via employeeId. 'departments', 'positions', and 'roles' are now separate, configurable collections, allowing for a highly flexible and scalable organizational structure. This eliminates data duplication and inconsistency."
