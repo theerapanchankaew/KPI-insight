@@ -226,7 +226,7 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   const { data: individualKpis, isLoading: isIndividualKpisLoading } = useCollection<WithId<IndividualKpi>>(individualKpisQuery);
 
   // Settings
-  const settingsDocRef = useMemoFirebase(() => firestore ? doc(firestore, 'settings', 'global') : null, [firestore]);
+  const settingsDocRef = useMemoFirebase(() => (firestore && user) ? doc(firestore, 'settings', 'global') : null, [firestore, user]);
   const { data: settingsData, isLoading: isSettingsLoading } = useDoc<AppSettings>(settingsDocRef);
 
   const [localSettings, setLocalSettings] = useState<AppSettings>(defaultSettings);
