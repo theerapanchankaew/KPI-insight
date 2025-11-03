@@ -277,17 +277,17 @@ const SummaryStatCard = ({ title, value, icon: Icon, isLoading }: { title: strin
 
 
 const DepartmentPerformanceChart = () => {
-    const { orgData, cascadedKpis, monthlyKpisData, isOrgDataLoading, isCascadedKpisLoading, isMonthlyKpisLoading } = useKpiData();
+    const { employees, cascadedKpis, monthlyKpisData, isEmployeesLoading, isCascadedKpisLoading, isMonthlyKpisLoading } = useKpiData();
 
     const performanceData = useMemo(() => {
-        if (!orgData || !cascadedKpis || !monthlyKpisData) return [];
+        if (!employees || !cascadedKpis || !monthlyKpisData) return [];
 
-        const departments = [...new Set(orgData.map(e => e.department).filter(Boolean))];
+        const departments = [...new Set(employees.map(e => e.departmentId).filter(Boolean))];
 
-        const data = departments.map(dept => {
-            const deptKpis = cascadedKpis.filter(kpi => kpi.department === dept);
+        const data = departments.map(deptId => {
+            const deptKpis = cascadedKpis.filter(kpi => kpi.department === deptId);
             if (deptKpis.length === 0) {
-                return { name: dept, achievement: 0 };
+                return { name: deptId, achievement: 0 };
             }
             
             let totalWeightedAchievement = 0;
@@ -305,14 +305,14 @@ const DepartmentPerformanceChart = () => {
             });
             
             const overallAchievement = totalWeight > 0 ? totalWeightedAchievement / totalWeight : 0;
-            return { name: dept, achievement: overallAchievement };
+            return { name: deptId, achievement: overallAchievement };
         });
 
         return data.sort((a,b) => b.achievement - a.achievement);
 
-    }, [orgData, cascadedKpis, monthlyKpisData]);
+    }, [employees, cascadedKpis, monthlyKpisData]);
 
-    const isLoading = isOrgDataLoading || isCascadedKpisLoading || isMonthlyKpisLoading;
+    const isLoading = isEmployeesLoading || isCascadedKpisLoading || isMonthlyKpisLoading;
     
     const chartConfig = {
       achievement: { label: 'Achievement' },
@@ -367,7 +367,7 @@ const DepartmentPerformanceChart = () => {
 
 export default function DashboardPage() {
   const { setPageTitle } = useAppLayout();
-  const { kpiData, cascadedKpis, orgData, isKpiDataLoading, isCascadedKpisLoading, isOrgDataLoading, monthlyKpisData, isMonthlyKpisLoading } = useKpiData();
+  const { kpiData, cascadedKpis, employees, isKpiDataLoading, isCascadedKpisLoading, isEmployeesLoading, monthlyKpisData, isMonthlyKpisLoading } = useKpiData();
   
   const firestore = useFirestore();
   const individualKpisQuery = useMemoFirebase(() => {
@@ -399,14 +399,14 @@ export default function DashboardPage() {
     setPageTitle('Dashboard');
   }, [setPageTitle]);
   
-  const isLoading = isKpiDataLoading || isMonthlyKpisLoading || isCascadedKpisLoading || isOrgDataLoading || isIndividualKpisLoading;
+  const isLoading = isKpiDataLoading || isMonthlyKpisLoading || isCascadedKpisLoading || isEmployeesLoading || isIndividualKpisLoading;
   
   const summaryStats = useMemo(() => ({
     totalKpis: kpiData?.length ?? 0,
     cascadedKpis: cascadedKpis?.length ?? 0,
     assignedKpis: individualKpis?.length ?? 0,
-    totalEmployees: orgData?.length ?? 0,
-  }), [kpiData, cascadedKpis, individualKpis, orgData]);
+    totalEmployees: employees?.length ?? 0,
+  }), [kpiData, cascadedKpis, individualKpis, employees]);
 
   return (
     <div className="fade-in space-y-6">
@@ -465,9 +465,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-    
-
-    
-
-    

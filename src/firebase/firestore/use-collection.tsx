@@ -112,10 +112,9 @@ export function useCollection<T = any>(
     return () => unsubscribe();
   }, [memoizedTargetRefOrQuery, options.disabled]); // Re-run if the target query/reference or disabled state changes.
   
-  if(memoizedTargetRefOrQuery && !memoizedTargetRefOrQuery.__memo) {
-    throw new Error('useCollection query was not properly memoized using useMemoFirebase');
+  if(memoizedTargetRefOrQuery && !('__memo' in memoizedTargetRefOrQuery)) {
+    throw new Error('useCollection query was not properly memoized using useMemoFirebase. This is a critical error that can cause infinite loops.');
   }
   
   return { data, isLoading, error };
 }
-

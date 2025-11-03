@@ -83,7 +83,7 @@ interface KpiSubmission {
 }
 
 
-type Role = 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee';
+type Role = 'admin' | 'vp' | 'avp' | 'manager' | 'employee';
 
 interface AppUser {
   id: string;
@@ -329,7 +329,7 @@ export default function ActionCenterPage() {
     return query(collection(firestore, 'employees'), where('managerId', '==', currentEmployeeRecord.id));
   }, [firestore, currentEmployeeRecord]);
 
-  const { data: directReports, isLoading: isDirectReportsLoading } = useCollection<Employee>(directReportsQuery);
+  const { data: directReports, isLoading: isDirectReportsLoading } = useCollection<Employee>(directReportsQuery, { disabled: !isManagerOrAdmin });
   
   const reportIds = useMemo(() => directReports?.map(r => r.id) || [], [directReports]);
 
@@ -342,7 +342,7 @@ export default function ActionCenterPage() {
         where('status', '==', 'Manager Review')
     );
   }, [firestore, reportIds]);
-  const { data: pendingCommitmentRequests, isLoading: isPendingCommitmentRequestsLoading } = useCollection<IndividualKpi>(pendingCommitmentRequestsQuery);
+  const { data: pendingCommitmentRequests, isLoading: isPendingCommitmentRequestsLoading } = useCollection<IndividualKpi>(pendingCommitmentRequestsQuery, { disabled: reportIds.length === 0 });
 
   // KPIs submitted by this manager's reports, that have been agreed by the manager, now needing upper approval
   const pendingUpperManagerApprovalsQuery = useMemoFirebase(() => {
@@ -353,7 +353,7 @@ export default function ActionCenterPage() {
           where('status', '==', 'Upper Manager Approval')
       );
   }, [firestore, isUpperManager, reportIds]);
-  const { data: pendingUpperManagerApprovals, isLoading: isPendingUpperManagerApprovalsLoading } = useCollection<IndividualKpi>(pendingUpperManagerApprovalsQuery);
+  const { data: pendingUpperManagerApprovals, isLoading: isPendingUpperManagerApprovalsLoading } = useCollection<IndividualKpi>(pendingUpperManagerApprovalsQuery, { disabled: !isUpperManager || reportIds.length === 0 });
 
 
   // Data Submissions from direct reports
@@ -365,7 +365,7 @@ export default function ActionCenterPage() {
         where('status', '==', 'Manager Review')
     );
   }, [firestore, reportIds]);
-  const { data: pendingSubmissions, isLoading: isPendingSubmissionsLoading } = useCollection<KpiSubmission>(pendingSubmissionsQuery);
+  const { data: pendingSubmissions, isLoading: isPendingSubmissionsLoading } = useCollection<KpiSubmission>(pendingSubmissionsQuery, { disabled: reportIds.length === 0 });
 
 
   useEffect(() => {

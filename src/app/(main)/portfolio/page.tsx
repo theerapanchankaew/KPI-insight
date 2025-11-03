@@ -113,7 +113,7 @@ interface MonthlyKpi {
 }
 
 interface AppUser {
-  role: 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee';
+  roles: ('Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee')[];
   department: string;
 }
 
@@ -188,7 +188,7 @@ const CreateCommittedKpiDialog = ({
     const [weight, setWeight] = useState('');
     const [targets, setTargets] = useState({ level1: '', level2: '', level3: '', level4: '', level5: '' });
     const { toast } = useToast();
-    const { orgData } = useKpiData();
+    const { employees: allEmployees } = useKpiData();
 
     useEffect(() => {
         if (!isManager) {
@@ -220,7 +220,7 @@ const CreateCommittedKpiDialog = ({
             return;
         }
 
-        const employee = orgData?.find(e => e.id === employeeId);
+        const employee = allEmployees?.find(e => e.id === employeeId);
         if (!employee) {
              toast({ title: "Employee not found", variant: "destructive"});
              return;
@@ -229,7 +229,7 @@ const CreateCommittedKpiDialog = ({
         onCreate({
             employeeId,
             employeeName: employee.name,
-            department: employee.department,
+            department: employee.departmentId,
             kpiMeasure: task,
             weight: Number(weight),
             type: 'committed',
@@ -957,7 +957,7 @@ export default function MyPortfolioPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
-  const { orgData: allEmployees, isOrgDataLoading: isEmployeesLoading, monthlyKpisData, isMonthlyKpisLoading } = useKpiData();
+  const { employees: allEmployees, isEmployeesLoading, monthlyKpisData, isMonthlyKpisLoading } = useKpiData();
 
   const [selectedKpi, setSelectedKpi] = useState<WithId<IndividualKpi> | null>(null);
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
@@ -971,7 +971,7 @@ export default function MyPortfolioPage() {
   }, [user, firestore]);
 
   const { data: userProfile, isLoading: isProfileLoading } = useDoc<AppUser>(userProfileRef);
-  const isManagerOrAdmin = useMemo(() => userProfile?.role && ['Admin', 'VP', 'AVP', 'Manager'].includes(userProfile.role), [userProfile]);
+  const isManagerOrAdmin = useMemo(() => userProfile?.roles && ['Admin', 'VP', 'AVP', 'Manager'].some(r => userProfile.roles.includes(r)), [userProfile]);
   
   useEffect(() => {
     setPageTitle("My Portfolio");
@@ -1003,23 +1003,23 @@ export default function MyPortfolioPage() {
   
   const teamMembers = useMemo(() => {
     if (!allEmployees || !user) return [];
-    if (userProfile?.role === 'Admin') return allEmployees;
+    if (userProfile?.roles?.includes('Admin')) return allEmployees;
 
     const userEmployeeRecord = allEmployees.find(e => e.id === user.uid);
     if (!userEmployeeRecord) return [];
 
-    const getAllReports = (managerName: string): Employee[] => {
+    const getAllReports = (managerId: string): Employee[] => {
         let reports: Employee[] = [];
-        const directReports = allEmployees.filter(e => e.manager === managerName);
+        const directReports = allEmployees.filter(e => e.managerId === managerId);
         reports = reports.concat(directReports);
         directReports.forEach(report => {
-            reports = reports.concat(getAllReports(report.name));
+            reports = reports.concat(getAllReports(report.id));
         });
         return reports;
     };
 
     if (isManagerOrAdmin) {
-        return [userEmployeeRecord, ...getAllReports(userEmployeeRecord.name)];
+        return [userEmployeeRecord, ...getAllReports(userEmployeeRecord.id)];
     }
     
     return [userEmployeeRecord];
@@ -1030,13 +1030,13 @@ export default function MyPortfolioPage() {
 
     const employeeMap = new Map<string, TreeNode>();
     allEmployees.forEach(emp => {
-      employeeMap.set(emp.name, { ...emp, reports: [] });
+      employeeMap.set(emp.id, { ...emp, reports: [] });
     });
 
     const rootNodes: TreeNode[] = [];
     employeeMap.forEach(employee => {
-      if (employee.manager && employeeMap.has(employee.manager)) {
-        employeeMap.get(employee.manager)?.reports.push(employee);
+      if (employee.managerId && employeeMap.has(employee.managerId)) {
+        employeeMap.get(employee.managerId)?.reports.push(employee);
       } else {
         rootNodes.push(employee);
       }
@@ -1045,13 +1045,13 @@ export default function MyPortfolioPage() {
     if(isManagerOrAdmin) {
         const currentUserEmployee = allEmployees.find(e => e.id === user.uid);
         if(!currentUserEmployee) return [];
-        const node = employeeMap.get(currentUserEmployee.name);
+        const node = employeeMap.get(currentUserEmployee.id);
         return node ? [node] : [];
     }
     
     const loggedInUserEmployee = allEmployees.find(e => e.id === user.uid);
     if(loggedInUserEmployee) {
-        const node = employeeMap.get(loggedInUserEmployee.name);
+        const node = employeeMap.get(loggedInUserEmployee.id);
         if(node) {
             node.reports = [];
             return [node];

@@ -61,13 +61,13 @@ interface KpiSubmission {
 }
 
 interface AppUser {
-  role: 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee';
+  roles: ('Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee')[];
 }
 
 interface Employee {
     id: string;
     name: string;
-    department: string;
+    departmentId: string;
 }
 
 
@@ -387,7 +387,7 @@ export default function SubmitPage() {
   const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { orgData: allEmployees, isOrgDataLoading: isEmployeesLoading, kpiData: kpiCatalog } = useKpiData();
+  const { employees, isEmployeesLoading, kpiData: kpiCatalog, departments } = useKpiData();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isViewCommitmentOpen, setViewCommitmentOpen] = useState(false);
@@ -408,7 +408,7 @@ export default function SubmitPage() {
   }, [setPageTitle]);
 
   const isManagerOrAdmin = useMemo(() => 
-    userProfile?.role && ['Admin', 'VP', 'AVP', 'Manager'].includes(userProfile.role),
+    userProfile?.roles && ['Admin', 'VP', 'AVP', 'Manager'].some(r => userProfile.roles.includes(r)),
     [userProfile]
   );
   
@@ -454,10 +454,10 @@ export default function SubmitPage() {
     return map;
   }, [allSubmissions]);
   
-  const departments = useMemo(() => {
-    if (!allEmployees) return [];
-    return [...new Set(allEmployees.map(e => e.department))].filter(Boolean).sort();
-  }, [allEmployees]);
+  const departmentOptions = useMemo(() => {
+    if (!departments) return [];
+    return departments.filter(d => d.name).sort((a, b) => a.name.localeCompare(b.name));
+  }, [departments]);
 
   const kpiCategories = useMemo(() => {
     if (!kpiCatalog) return [];
@@ -483,14 +483,14 @@ export default function SubmitPage() {
   const kpisByDepartment = useMemo(() => {
       if (!filteredKpis) return {};
       return filteredKpis.reduce((acc, kpi) => {
-          const dept = kpi.department || 'Unassigned';
-          if (!acc[dept]) {
-              acc[dept] = [];
+          const deptName = departments?.find(d => d.id === kpi.department)?.name || kpi.department || 'Unassigned';
+          if (!acc[deptName]) {
+              acc[deptName] = [];
           }
-          acc[dept].push(kpi);
+          acc[deptName].push(kpi);
           return acc;
       }, {} as { [key: string]: WithId<IndividualKpi>[] });
-  }, [filteredKpis]);
+  }, [filteredKpis, departments]);
 
 
   const summaryStats = useMemo(() => {
@@ -528,11 +528,13 @@ export default function SubmitPage() {
         return;
     }
 
+    const deptName = departments?.find(d => d.id === kpiOwner.department)?.name || kpiOwner.department;
+
     const submissionData: KpiSubmission = {
         ...submission,
         submittedBy: kpiOwner.employeeId,
         submitterName: kpiOwner.employeeName,
-        department: kpiOwner.department,
+        department: deptName,
         submissionDate: serverTimestamp(),
     };
     
@@ -584,7 +586,7 @@ export default function SubmitPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Departments</SelectItem>
-                {departments.map(dept => <SelectItem key={dept} value={dept}>{dept}</SelectItem>)}
+                {departmentOptions.map(dept => <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={employeeFilter} onValueChange={setEmployeeFilter} disabled={!isManagerOrAdmin}>
@@ -593,7 +595,7 @@ export default function SubmitPage() {
                 </SelectTrigger>
                 <SelectContent>
                     <SelectItem value="all">All Employees</SelectItem>
-                    {allEmployees?.map(emp => <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>)}
+                    {employees?.map(emp => <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>)}
                 </SelectContent>
             </Select>
             <Select value={categoryFilter} onValueChange={setCategoryFilter}>
