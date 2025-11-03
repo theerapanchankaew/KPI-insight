@@ -162,6 +162,9 @@ interface KpiDataContextType {
   settings: AppSettings;
   setSettings: (settings: Partial<AppSettings>) => void;
   isSettingsLoading: boolean;
+
+  isManagerOrAdmin: boolean;
+  isRoleLoading: boolean;
 }
 
 // ==================== CONTEXT DEFINITION ====================
@@ -173,6 +176,28 @@ const KpiDataContext = createContext<KpiDataContextType | undefined>(undefined);
 export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   const firestore = useFirestore();
   const { user } = useUser();
+
+  const [isManagerOrAdmin, setIsManagerOrAdmin] = useState(false);
+  const [isRoleLoading, setIsRoleLoading] = useState(true);
+
+  useEffect(() => {
+    if (user) {
+      setIsRoleLoading(true);
+      getIdTokenResult(user)
+        .then((idTokenResult) => {
+          const userRole = idTokenResult.claims.role as string;
+          setIsManagerOrAdmin(['Admin', 'VP', 'AVP', 'Manager'].includes(userRole));
+          setIsRoleLoading(false);
+        })
+        .catch(() => {
+          setIsManagerOrAdmin(false);
+          setIsRoleLoading(false);
+        });
+    } else {
+      setIsManagerOrAdmin(false);
+      setIsRoleLoading(false);
+    }
+  }, [user]);
 
   // Master Data Queries
   const employeesQuery = useMemoFirebase(() => firestore ? collection(firestore, 'employees') : null, [firestore]);
@@ -205,10 +230,6 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
 
   const individualKpisQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
-    // The security rules will handle filtering for managers vs. employees,
-    // so we can use a simpler query here. For a non-manager, this will
-    // only return their own KPIs. For a manager, it will return KPIs for
-    // their direct reports as well.
     return collection(firestore, 'individual_kpis');
   }, [firestore, user]);
 
@@ -251,6 +272,9 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
     settings: localSettings,
     setSettings,
     isSettingsLoading: isSettingsLoading,
+
+    isManagerOrAdmin,
+    isRoleLoading,
   };
 
 

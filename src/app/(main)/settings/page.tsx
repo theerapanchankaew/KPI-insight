@@ -1,12 +1,9 @@
-
 "use client";
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect } from 'react';
 import { useAppLayout } from '../layout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { useUser } from '@/firebase';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getIdTokenResult } from 'firebase/auth';
 import {
   ChevronRight,
   ShieldAlert,
@@ -20,6 +17,7 @@ import {
   Users2,
 } from 'lucide-react';
 import Link from 'next/link';
+import { useKpiData } from '@/context/KpiDataContext';
 
 const SettingsItem = ({ title, description, href, icon: Icon }: { title: string, description: string, href: string, icon: React.ElementType }) => (
   <Link href={href} passHref>
@@ -41,39 +39,13 @@ const SettingsItem = ({ title, description, href, icon: Icon }: { title: string,
 
 export default function SettingsPage() {
   const { setPageTitle } = useAppLayout();
-  const { user, isUserLoading: isAuthLoading } = useUser();
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [isCheckingRole, setIsCheckingRole] = useState(true);
+  const { isManagerOrAdmin, isRoleLoading } = useKpiData();
   
   useEffect(() => {
     setPageTitle('Settings');
   }, [setPageTitle]);
 
-  useEffect(() => {
-    if (isAuthLoading) return;
-
-    if (user) {
-      setIsCheckingRole(true);
-      getIdTokenResult(user)
-        .then((idTokenResult) => {
-          const claims = idTokenResult.claims;
-          const userRole = claims.role as string;
-          setIsAdmin(userRole === 'Admin');
-          setIsCheckingRole(false);
-        })
-        .catch(() => {
-          setIsAdmin(false);
-          setIsCheckingRole(false);
-        });
-    } else {
-      setIsAdmin(false);
-      setIsCheckingRole(false);
-    }
-  }, [user, isAuthLoading]);
-  
-  const isLoading = isAuthLoading || isCheckingRole;
-
-  if (isLoading) {
+  if (isRoleLoading) {
     return (
         <div className="space-y-6">
             <Skeleton className="h-8 w-48" />
@@ -86,7 +58,7 @@ export default function SettingsPage() {
     )
   }
 
-  if (!isAdmin) {
+  if (!isManagerOrAdmin) {
     return (
         <Card className="mt-8">
             <CardContent className="p-12 text-center">
