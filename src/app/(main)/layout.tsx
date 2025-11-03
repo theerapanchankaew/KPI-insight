@@ -107,17 +107,11 @@ const EditProfileDialog = ({ children }: { children: React.ReactNode }) => {
     const firestore = useFirestore();
     const { toast } = useToast();
     
-    const userDocRef = useMemoFirebase(() => {
-        if (!firestore || !user) return null;
-        return doc(firestore, 'users', user.uid);
-    }, [firestore, user]);
-
     const employeeDocRef = useMemoFirebase(() => {
         if (!firestore || !user) return null;
         return doc(firestore, 'employees', user.uid);
     }, [firestore, user]);
     
-    const { data: userProfile, isLoading: isProfileLoading } = useDoc(userDocRef);
     const { data: employeeProfile, isLoading: isEmployeeLoading } = useDoc<Employee>(employeeDocRef);
 
     const [displayName, setDisplayName] = useState('');
@@ -139,8 +133,7 @@ const EditProfileDialog = ({ children }: { children: React.ReactNode }) => {
                 }
                 
                 // Update Firestore 'employees' document
-                const updatedData = { ...employeeProfile, name: displayName };
-                setDocumentNonBlocking(employeeDocRef, updatedData, { merge: true });
+                setDocumentNonBlocking(employeeDocRef, { name: displayName }, { merge: true });
 
                 toast({ title: 'Profile Updated', description: 'Your display name has been changed.' });
             } catch (error) {
@@ -150,7 +143,7 @@ const EditProfileDialog = ({ children }: { children: React.ReactNode }) => {
         }
     };
     
-    const isLoading = isProfileLoading || isEmployeeLoading;
+    const isLoading = isEmployeeLoading;
 
     return (
         <Dialog>
@@ -161,8 +154,6 @@ const EditProfileDialog = ({ children }: { children: React.ReactNode }) => {
                 </DialogHeader>
                  {isLoading ? (
                     <div className="space-y-4 py-4">
-                        <Skeleton className="h-4 w-1/4" />
-                        <Skeleton className="h-10 w-full" />
                         <Skeleton className="h-4 w-1/4" />
                         <Skeleton className="h-10 w-full" />
                         <Skeleton className="h-4 w-1/4" />
@@ -184,8 +175,8 @@ const EditProfileDialog = ({ children }: { children: React.ReactNode }) => {
                             <Input id="email" value={user?.email || ''} disabled />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="role">Role</Label>
-                            <Input id="role" value={userProfile?.role || 'Loading...'} disabled />
+                            <Label htmlFor="role">Department</Label>
+                            <Input id="role" value={employeeProfile?.department || 'Loading...'} disabled />
                         </div>
                     </div>
                  )}

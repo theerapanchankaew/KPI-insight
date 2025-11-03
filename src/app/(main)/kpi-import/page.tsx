@@ -215,7 +215,7 @@ const OrgImportTab = () => {
             return;
         }
         if (fileContent) {
-            
+            const batch = writeBatch(firestore);
             fileContent.forEach((item: any) => {
                 const employeeId = String(item.id);
                 if (!employeeId) return;
@@ -228,11 +228,17 @@ const OrgImportTab = () => {
                     position: item.position || 'N/A',
                     manager: item.manager || ''
                 };
-                setDocumentNonBlocking(employeeDocRef, employeeData, { merge: true });
+                batch.set(employeeDocRef, employeeData, { merge: true });
+            });
+            
+            batch.commit().then(() => {
+                toast({ title: 'Import Complete', description: 'Organization data has been saved to the "employees" collection.' });
+                router.push('/user-management');
+            }).catch(error => {
+                console.error("Error writing batch: ", error);
+                toast({ variant: 'destructive', title: 'Import Failed', description: 'Could not save organization data.' });
             });
 
-            toast({ title: 'Import Complete', description: 'Organization data has been saved to Firestore.' });
-            router.push('/cascade');
         } else {
              toast({ variant: 'destructive', title: 'No Data to Send', description: 'No file has been processed.' });
         }
@@ -250,7 +256,7 @@ const OrgImportTab = () => {
             <Card>
                 <CardHeader>
                     <CardTitle>Upload Organization Data</CardTitle>
-                    <CardDescription>Select a JSON file with employee and organization structure.</CardDescription>
+                    <CardDescription>Select a JSON file with employee and organization structure. This will create or update records in the 'employees' collection.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                     <div {...getRootProps()} className={`border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors ${isDragActive ? 'border-primary bg-primary/10' : 'border-gray-300 hover:border-primary/50'}`}>
