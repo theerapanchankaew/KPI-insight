@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useUser } from '@/firebase';
 import { writeBatch, collection, doc } from 'firebase/firestore';
-import type { Kpi, Department } from '@/context/KpiDataContext';
+import type { Kpi, Department, Position } from '@/context/KpiDataContext';
 
 
 const KpiCatalogImport = () => {
@@ -176,6 +176,98 @@ const DepartmentImport = () => {
     )
 };
 
+const PositionImport = () => {
+    const [jsonInput, setJsonInput] = useState(`{
+  "positions": [
+    {
+      "id": "ceo",
+      "name": "Chief Executive Officer",
+      "nameTH": "ประธานเจ้าหน้าที่บริหาร",
+      "level": 10,
+      "category": "management",
+      "defaultRoles": ["Admin", "Manager"]
+    },
+    {
+      "id": "sales-mgr",
+      "name": "Sales Manager",
+      "nameTH": "ผู้จัดการฝ่ายขาย",
+      "level": 8,
+      "category": "management",
+      "defaultRoles": ["Manager"]
+    },
+    {
+      "id": "sales-rep",
+      "name": "Sales Representative",
+      "nameTH": "ตัวแทนฝ่ายขาย",
+      "level": 5,
+      "category": "staff",
+      "defaultRoles": ["Employee"]
+    }
+  ]
+}`);
+    const { toast } = useToast();
+    const firestore = useFirestore();
+    const [isImporting, setIsImporting] = useState(false);
+
+    const handleImport = async () => {
+        if (!firestore) {
+            toast({ title: "Error", description: "You must be logged in to import data.", variant: "destructive" });
+            return;
+        }
+
+        setIsImporting(true);
+        try {
+            const data = JSON.parse(jsonInput);
+            if (!data.positions || !Array.isArray(data.positions)) {
+                throw new Error("Invalid JSON format: 'positions' array not found.");
+            }
+
+            const positions: Position[] = data.positions;
+            const batch = writeBatch(firestore);
+            const posCollectionRef = collection(firestore, 'positions');
+
+            positions.forEach(pos => {
+                const docRef = doc(posCollectionRef, pos.id);
+                batch.set(docRef, pos);
+            });
+
+            await batch.commit();
+
+            toast({
+                title: "Import Successful",
+                description: `${positions.length} positions have been imported.`,
+            });
+
+        } catch (error: any) {
+            toast({
+                title: "Import Failed",
+                description: error.message || "Please check the JSON format and try again.",
+                variant: "destructive",
+            });
+        } finally {
+            setIsImporting(false);
+        }
+    };
+    
+    return (
+        <div className="space-y-6">
+            <p className="text-muted-foreground">
+                Paste your organization's positions JSON below. Ensure each position has a unique `id`.
+            </p>
+            <Textarea 
+                value={jsonInput}
+                onChange={(e) => setJsonInput(e.target.value)}
+                rows={15}
+                placeholder="Paste your JSON here..."
+                className="font-mono text-xs"
+            />
+            <Button onClick={handleImport} disabled={isImporting}>
+                {isImporting ? "Importing..." : "Import Positions"}
+            </Button>
+        </div>
+    )
+};
+
 
 const MasterDataItem = ({ title, description, icon: Icon }: { title: string, description: string, icon: React.ElementType }) => (
     <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed rounded-lg">
@@ -231,12 +323,8 @@ export default function MasterDataPage() {
             <TabsContent value="departments" className="mt-6">
                 <DepartmentImport />
             </TabsContent>
-            <TabsContent value="positions" className="mt-4">
-                 <MasterDataItem 
-                    title="Positions" 
-                    description="Position management features will be implemented here." 
-                    icon={Briefcase} 
-                />
+            <TabsContent value="positions" className="mt-6">
+                 <PositionImport />
             </TabsContent>
             <TabsContent value="roles" className="mt-4">
                  <MasterDataItem 
