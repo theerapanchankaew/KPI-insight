@@ -363,8 +363,16 @@ export default function DashboardPage() {
   const firestore = useFirestore();
   const individualKpisQuery = useMemoFirebase(() => {
     if (!firestore) return null;
-    return collection(firestore, 'individual_kpis');
+    return query(collection(firestore, 'individual_kpis'), where('status', 'in', [
+      'Agreed',
+      'In-Progress',
+      'Manager Review',
+      'Upper Manager Approval',
+      'Employee Acknowledged',
+      'Closed'
+    ]));
   }, [firestore]);
+
   const { data: individualKpis, isLoading: isIndividualKpisLoading } = useCollection(individualKpisQuery);
   
   const groupedKpis = useMemo(() => {
