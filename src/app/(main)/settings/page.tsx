@@ -54,9 +54,8 @@ export default function SettingsPage() {
       getIdTokenResult(authUser, true) // Force refresh the token
         .then((idTokenResult) => {
           const claims = idTokenResult.claims;
-          // The roles claim might be an array.
-          const userRoles = (claims.roles || []) as string[];
-          setIsAdmin(userRoles.includes('admin'));
+          const userRole = claims.role as string;
+          setIsAdmin(userRole === 'Admin');
           setIsCheckingAdmin(false);
         })
         .catch(() => {
@@ -118,7 +117,7 @@ export default function SettingsPage() {
             <CardDescription>Define how your company is organized and how decisions are made.</CardDescription>
           </CardHeader>
           <CardContent className="divide-y">
-            <SettingsItem title="Reporting Hierarchy" description="Manage the chain of command." href="/user-management" icon={GitMerge} />
+            <SettingsItem title="Reporting Hierarchy" description="Manage the chain of command." href="#" icon={GitMerge} />
             <SettingsItem title="Approval Hierarchy" description="Define who approves what." href="#" icon={FileCheck} />
             <SettingsItem title="Delegation Management" description="Assign temporary responsibilities." href="#" icon={Share} />
           </CardContent>
@@ -133,7 +132,7 @@ export default function SettingsPage() {
           <CardContent className="divide-y">
             <SettingsItem title="Departments" description="Manage business units." href="#" icon={Building} />
             <SettingsItem title="Positions" description="Manage job titles and levels." href="#" icon={Briefcase} />
-            <SettingsItem title="Roles" description="Manage system roles and permissions." href="/user-management" icon={Users} />
+            <SettingsItem title="Roles" description="Manage system roles and permissions." href="#" icon={Users} />
           </CardContent>
         </Card>
 
