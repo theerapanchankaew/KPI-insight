@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useAppLayout } from '../layout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -18,6 +18,7 @@ import { useUser, useFirestore, addDocumentNonBlocking, deleteDocumentNonBlockin
 import { doc, collection } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useKpiData } from '@/context/KpiDataContext';
+import { getIdTokenResult } from 'firebase/auth';
 import type { Employee, User, Department, Position, Role } from '@/context/KpiDataContext';
 
 type ManagedUser = Employee & {
@@ -58,7 +59,7 @@ const AddUserDialog = ({ isOpen, onOpenChange, onAddUser, departments, positions
                     </div>
                      <div className="space-y-2">
                         <Label>Email</Label>
-                        <Input type="email" value={newUser.email} onChange={e => setNewUser({ ...newUser, email: e.target.value })} placeholder="employee@company.com" />
+                        <Input type="email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value })} placeholder="employee@company.com" />
                     </div>
                     <div className="space-y-2">
                         <Label>Department</Label>
@@ -94,14 +95,30 @@ export default function UserManagementPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user: authUser, isUserLoading: isAuthLoading } = useUser();
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isCheckingAdmin, setIsCheckingAdmin] = useState(true);
 
-  const currentUserDocRef = useMemoFirebase(() => {
-    if (!authUser || !firestore) return null;
-    return doc(firestore, 'users', authUser.uid);
-  }, [authUser, firestore]);
-  const { data: currentUser, isLoading: isCurrentUserLoading } = useDoc<User>(currentUserDocRef);
-
-  const isAdmin = useMemo(() => currentUser?.roles?.includes('admin'), [currentUser]);
+  // Securely check for admin role from the auth token claims
+  useEffect(() => {
+    if (authUser) {
+      setIsCheckingAdmin(true);
+      getIdTokenResult(authUser, true) // Force refresh the token
+        .then((idTokenResult) => {
+          const claims = idTokenResult.claims;
+          // The roles claim might be an array.
+          const userRoles = (claims.roles || []) as string[];
+          setIsAdmin(userRoles.includes('admin'));
+          setIsCheckingAdmin(false);
+        })
+        .catch(() => {
+          setIsAdmin(false);
+          setIsCheckingAdmin(false);
+        });
+    } else if (!isAuthLoading) {
+        setIsAdmin(false);
+        setIsCheckingAdmin(false);
+    }
+  }, [authUser, isAuthLoading]);
 
   // Fetch all users only if the current user is an admin
   const usersQuery = useMemoFirebase(() => {
@@ -220,7 +237,7 @@ export default function UserManagementPage() {
       toast({ title: 'User Removed', description: 'The employee record and any associated user account have been removed.', variant: 'destructive' });
   };
 
-  const isLoading = isAuthLoading || isEmployeesLoading || isUsersLoading || isDepartmentsLoading || isPositionsLoading || isRolesLoading || isCurrentUserLoading;
+  const isLoading = isAuthLoading || isEmployeesLoading || isUsersLoading || isDepartmentsLoading || isPositionsLoading || isRolesLoading || isCheckingAdmin;
   
   const getDepartmentName = (id: string) => departments?.find(d => d.id === id)?.name || 'N/A';
   const getPositionName = (id: string) => positions?.find(p => p.id === id)?.name || 'N/A';
