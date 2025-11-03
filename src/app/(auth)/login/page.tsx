@@ -77,7 +77,7 @@ const SignInForm = () => {
            {error && <p className="text-sm text-destructive">{error}</p>}
         </CardContent>
         <CardFooter className="flex flex-col gap-4">
-          <Button type="submit" className="w-full" disabled={isSigningIn || !email || !password}>
+          <Button type="submit" className="w-full" disabled={isSigningIn}>
             {isSigningIn ? 'Signing In...' : (
               <>
                 <LogIn className="mr-2 h-4 w-4"/>
@@ -308,4 +308,5 @@ export default function LoginPage() {
   );
 }
 
+    
     

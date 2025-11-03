@@ -183,10 +183,12 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (user) {
       setIsRoleLoading(true);
-      getIdTokenResult(user)
+      getIdTokenResult(user, true) // Force refresh the token to get the latest claims
         .then((idTokenResult) => {
           const userRole = idTokenResult.claims.role as string;
-          setIsManagerOrAdmin(['Admin', 'VP', 'AVP', 'Manager'].includes(userRole));
+          // Standardize the check to be case-insensitive for robustness
+          const role = userRole?.toLowerCase();
+          setIsManagerOrAdmin(['admin', 'vp', 'avp', 'manager'].includes(role));
           setIsRoleLoading(false);
         })
         .catch(() => {
@@ -294,3 +296,5 @@ export const useKpiData = () => {
   }
   return context;
 };
+
+    
