@@ -151,24 +151,14 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   
   const { data: settingsData, isLoading: isSettingsLoading } = useDoc<AppSettings>(settingsDocRef);
   
-  // Queries for notifications/approvals
-  const pendingSubmissionsQuery = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
-    return query(collection(firestore, 'kpi_submissions'), where('status', '==', 'Manager Review'));
-  }, [firestore, user]);
-  const { data: pendingSubmissions, isLoading: isPendingSubmissionsLoading } = useCollection<KpiSubmission>(pendingSubmissionsQuery);
-
-  const pendingCommitmentRequestsQuery = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
-    return query(collection(firestore, 'individual_kpis'), where('status', '==', 'Manager Review'));
-  }, [firestore, user]);
-  const { data: pendingCommitmentRequests, isLoading: isPendingCommitmentRequestsLoading } = useCollection<IndividualKpi>(pendingCommitmentRequestsQuery);
-
-  const pendingUpperManagerApprovalsQuery = useMemoFirebase(() => {
-      if (!firestore || !user) return null;
-      return query(collection(firestore, 'individual_kpis'), where('status', '==', 'Upper Manager Approval'));
-  }, [firestore, user]);
-  const { data: pendingUpperManagerApprovals, isLoading: isPendingUpperManagerApprovalsLoading } = useCollection<IndividualKpi>(pendingUpperManagerApprovalsQuery);
+  // These queries are now fully managed inside the approvals page to support the hierarchical approval flow.
+  // We keep the state variables here so other components don't break.
+  const [pendingSubmissions, setPendingSubmissions] = useState<WithId<KpiSubmission>[] | null>(null);
+  const [isPendingSubmissionsLoading, setPendingSubmissionsLoading] = useState(true);
+  const [pendingCommitmentRequests, setPendingCommitmentRequests] = useState<WithId<IndividualKpi>[] | null>(null);
+  const [isPendingCommitmentRequestsLoading, setPendingCommitmentRequestsLoading] = useState(true);
+  const [pendingUpperManagerApprovals, setPendingUpperManagerApprovals] = useState<WithId<IndividualKpi>[] | null>(null);
+  const [isPendingUpperManagerApprovalsLoading, setPendingUpperManagerApprovalsLoading] = useState(true);
 
 
   const [localSettings, setLocalSettings] = useState<AppSettings>(defaultSettings);
@@ -228,3 +218,5 @@ export const useKpiData = () => {
   }
   return context;
 };
+
+    

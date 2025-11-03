@@ -966,9 +966,9 @@ export default function MyPortfolioPage() {
   const [isCreateDialogOpen, setCreateDialogOpen] = useState(false);
 
   const userProfileRef = useMemoFirebase(() => {
-    if (!user || !firestore) return null;
+    if (!user) return null;
     return doc(firestore, 'users', user.uid);
-  }, [firestore, user]);
+  }, [user, firestore]);
 
   const { data: userProfile, isLoading: isProfileLoading } = useDoc<AppUser>(userProfileRef);
   const isManagerOrAdmin = useMemo(() => userProfile?.role && ['Admin', 'VP', 'AVP', 'Manager'].includes(userProfile.role), [userProfile]);
@@ -1026,38 +1026,39 @@ export default function MyPortfolioPage() {
   }, [allEmployees, user, isManagerOrAdmin, userProfile]);
 
   const organizationalTree = useMemo(() => {
-    if (!teamMembers || teamMembers.length === 0 || !user || !userProfile) return [];
+    if (!allEmployees || !user) return [];
 
     const employeeMap = new Map<string, TreeNode>();
-    teamMembers.forEach(emp => {
-      employeeMap.set(emp.id, { ...emp, reports: [] });
+    allEmployees.forEach(emp => {
+      employeeMap.set(emp.name, { ...emp, reports: [] });
     });
 
     const rootNodes: TreeNode[] = [];
     employeeMap.forEach(employee => {
       if (employee.manager && employeeMap.has(employee.manager)) {
-        // This is incorrect if the manager is not in the teamMembers list
-        // Let's find by name
-        const managerNode = Array.from(employeeMap.values()).find(e => e.name === employee.manager);
-        managerNode?.reports.push(employee);
+        employeeMap.get(employee.manager)?.reports.push(employee);
       } else {
         rootNodes.push(employee);
       }
     });
 
-    if (isManagerOrAdmin) {
-        const loggedInUserNode = rootNodes.find(node => node.id === user.uid);
-        return loggedInUserNode ? [loggedInUserNode] : rootNodes;
+    if(isManagerOrAdmin) {
+        const currentUserEmployee = allEmployees.find(e => e.id === user.uid);
+        if(!currentUserEmployee) return [];
+        return [employeeMap.get(currentUserEmployee.name)!];
     }
     
-    const loggedInUserNode = employeeMap.get(user.uid);
-    if (loggedInUserNode) {
-      loggedInUserNode.reports = [];
-      return [loggedInUserNode];
+    const loggedInUserEmployee = allEmployees.find(e => e.id === user.uid);
+    if(loggedInUserEmployee) {
+        const node = employeeMap.get(loggedInUserEmployee.name);
+        if(node) {
+            node.reports = [];
+            return [node];
+        }
     }
 
     return [];
-  }, [teamMembers, user, userProfile, isManagerOrAdmin]);
+  }, [allEmployees, user, isManagerOrAdmin]);
 
 
   // ==================== HANDLERS ====================
@@ -1202,7 +1203,7 @@ export default function MyPortfolioPage() {
       </div>
       
       <div className="space-y-4">
-        {organizationalTree.length > 0 ? (
+        {organizationalTree && organizationalTree.length > 0 ? (
            organizationalTree.map(node => (
                 <EmployeeNode key={node.id} node={node} allKpis={kpis || []} submissionsMap={submissionsMap} handlers={handlers} />
             ))
@@ -1262,6 +1263,5 @@ export default function MyPortfolioPage() {
     </div>
   );
 }
-
 
     

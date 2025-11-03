@@ -91,6 +91,7 @@ type Role = 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee';
 
 interface AppUser {
   role: Role;
+  name: string;
 }
 
 // ==================== DIALOGS ====================
@@ -304,23 +305,61 @@ export default function ActionCenterPage() {
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
   
+  const {
+      orgData: employeesData, 
+      isOrgDataLoading: isEmployeesLoading
+  } = useKpiData();
+
   const userProfileRef = useMemoFirebase(() => {
     if (!user || !firestore) return null;
     return doc(firestore, 'users', user.uid);
   }, [user, firestore]);
   
   const { data: userProfile, isLoading: isProfileLoading } = useDoc<AppUser>(userProfileRef);
+
+  const directReportsQuery = useMemoFirebase(() => {
+    if (!firestore || !userProfile || !isManagerOrAdmin) return null;
+    // Find employees who report directly to the logged-in user
+    return query(collection(firestore, 'employees'), where('manager', '==', userProfile.name));
+  }, [firestore, userProfile, isManagerOrAdmin]);
+
+  const { data: directReports, isLoading: isDirectReportsLoading } = useCollection<Employee>(directReportsQuery);
   
-  const {
-      pendingSubmissions,
-      isPendingSubmissionsLoading,
-      pendingCommitmentRequests,
-      isPendingCommitmentRequestsLoading,
-      pendingUpperManagerApprovals,
-      isPendingUpperManagerApprovalsLoading,
-      orgData: employeesData,
-      isOrgDataLoading: isEmployeesLoading
-  } = useKpiData();
+  const reportIds = useMemo(() => directReports?.map(r => r.id) || [], [directReports]);
+
+  // KPIs submitted by direct reports for Manager Review
+  const pendingCommitmentRequestsQuery = useMemoFirebase(() => {
+    if (!firestore || reportIds.length === 0) return null;
+    return query(
+        collection(firestore, 'individual_kpis'), 
+        where('employeeId', 'in', reportIds),
+        where('status', '==', 'Manager Review')
+    );
+  }, [firestore, reportIds]);
+  const { data: pendingCommitmentRequests, isLoading: isPendingCommitmentRequestsLoading } = useCollection<IndividualKpi>(pendingCommitmentRequestsQuery);
+
+  // KPIs submitted by this manager's reports, that have been agreed by the manager, now needing upper approval
+  const pendingUpperManagerApprovalsQuery = useMemoFirebase(() => {
+      if (!firestore || reportIds.length === 0) return null;
+      return query(
+          collection(firestore, 'individual_kpis'),
+          where('employeeId', 'in', reportIds),
+          where('status', '==', 'Upper Manager Approval')
+      );
+  }, [firestore, reportIds]);
+  const { data: pendingUpperManagerApprovals, isLoading: isPendingUpperManagerApprovalsLoading } = useCollection<IndividualKpi>(pendingUpperManagerApprovalsQuery);
+
+
+  // Data Submissions from direct reports
+  const pendingSubmissionsQuery = useMemoFirebase(() => {
+    if (!firestore || reportIds.length === 0) return null;
+    return query(
+        collection(firestore, 'kpi_submissions'), 
+        where('submittedBy', 'in', reportIds),
+        where('status', '==', 'Manager Review')
+    );
+  }, [firestore, reportIds]);
+  const { data: pendingSubmissions, isLoading: isPendingSubmissionsLoading } = useCollection<KpiSubmission>(pendingSubmissionsQuery);
 
 
   const isManagerOrAdmin = useMemo(() => userProfile?.role && ['Admin', 'VP', 'AVP', 'Manager'].includes(userProfile.role), [userProfile]);
@@ -330,7 +369,7 @@ export default function ActionCenterPage() {
     setPageTitle("Action Center");
   }, [setPageTitle]);
   
-  const isLoading = isUserLoading || isProfileLoading || isPendingSubmissionsLoading || isEmployeesLoading || isPendingCommitmentRequestsLoading || isPendingUpperManagerApprovalsLoading;
+  const isLoading = isUserLoading || isProfileLoading || isPendingSubmissionsLoading || isEmployeesLoading || isPendingCommitmentRequestsLoading || isPendingUpperManagerApprovalsLoading || isDirectReportsLoading;
 
   const handleApproveSubmission = async (submissionId: string) => {
     if (!firestore) return;
@@ -346,11 +385,13 @@ export default function ActionCenterPage() {
     toast({ title: "Submission Rejected", variant: "destructive" });
   };
   
+  // Manager agrees, escalates to THEIR manager (or completes if manager is VP/Admin)
   const handleApproveCommitment = async (kpiId: string, notes: string) => {
-    if (!firestore) return;
+    if (!firestore || !userProfile) return;
     const kpiRef = doc(firestore, 'individual_kpis', kpiId);
-    setDocumentNonBlocking(kpiRef, { status: 'Upper Manager Approval', managerNotes: notes, reviewedAt: serverTimestamp() }, { merge: true });
-    toast({ title: "Commitment Agreed", description: "The KPI has been escalated to upper management for final approval." });
+    const nextStatus = ['Admin', 'VP'].includes(userProfile.role) ? 'In-Progress' : 'Upper Manager Approval';
+    setDocumentNonBlocking(kpiRef, { status: nextStatus, managerNotes: notes, reviewedAt: serverTimestamp() }, { merge: true });
+    toast({ title: "Commitment Agreed", description: nextStatus === 'In-Progress' ? "The KPI is now active." : "The KPI has been escalated for final approval." });
   };
 
   const handleRejectCommitment = async (kpiId: string, reason: string) => {
@@ -360,6 +401,7 @@ export default function ActionCenterPage() {
     toast({ title: "Commitment Rejected", variant: "destructive" });
   };
 
+  // Final approval from VP/Admin
   const handleUpperManagerApprove = async (kpiId: string) => {
     if (!firestore) return;
     const kpiRef = doc(firestore, 'individual_kpis', kpiId);
@@ -490,3 +532,5 @@ export default function ActionCenterPage() {
     </div>
   );
 }
+
+    

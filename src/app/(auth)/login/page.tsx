@@ -6,12 +6,12 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useAuth, useFirestore, useUser, initiateEmailSignIn } from '@/firebase';
+import { useAuth, useFirestore, useUser } from '@/firebase';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { ShieldCheck, LogIn, UserPlus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { navItems } from '@/lib/data/layout-data';
@@ -22,8 +22,9 @@ const SignInForm = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [isSigningIn, setIsSigningIn] = useState(false);
   
-  const handleEmailSignIn = (e: React.FormEvent) => {
+  const handleEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!auth) {
         setError('Authentication service not available.');
@@ -34,7 +35,15 @@ const SignInForm = () => {
       return;
     }
     setError(null);
-    initiateEmailSignIn(auth, email, password);
+    setIsSigningIn(true);
+    try {
+        await signInWithEmailAndPassword(auth, email, password);
+        // Auth listener in layout will handle redirect
+    } catch(err: any) {
+        setError(err.message);
+    } finally {
+        setIsSigningIn(false);
+    }
   };
 
   return (
@@ -49,6 +58,7 @@ const SignInForm = () => {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              disabled={isSigningIn}
             />
           </div>
           <div className="space-y-2">
@@ -59,14 +69,19 @@ const SignInForm = () => {
               required 
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              disabled={isSigningIn}
             />
           </div>
            {error && <p className="text-sm text-destructive">{error}</p>}
         </CardContent>
         <CardFooter className="flex flex-col gap-4">
-          <Button type="submit" className="w-full">
-              <LogIn className="mr-2 h-4 w-4"/>
-              Sign In
+          <Button type="submit" className="w-full" disabled={isSigningIn}>
+            {isSigningIn ? 'Signing In...' : (
+              <>
+                <LogIn className="mr-2 h-4 w-4"/>
+                Sign In
+              </>
+            )}
           </Button>
         </CardFooter>
       </form>
@@ -77,31 +92,14 @@ const SignUpForm = () => {
   const auth = useAuth();
   const firestore = useFirestore();
   const { toast } = useToast();
-  const [displayName, setDisplayName] = useState('');
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [position, setPosition] = useState('');
-  const [department, setDepartment] = useState('');
+  const [role, setRole] = useState<string>('Employee');
   const [error, setError] = useState<string | null>(null);
   const [isSigningUp, setIsSigningUp] = useState(false);
   
-  const positions = [
-    "ผู้จัดการแผนกอาวุโส",
-    "เจ้าหน้าที่บริหารงานคุณภาพ",
-    "เจ้าหน้าที่บริหารงานคุณภาพอาวุโส",
-    "เจ้าหน้าที่ส่งเสริมการตรวจ",
-    "หัวหน้าเจ้าหน้าที่ส่งเสริมการตรวจ",
-    "เจ้าหน้าที่ขายและบริการลูกค้า",
-    "เจ้าหน้าที่ขายและบริการลูกค้าอาวุโส",
-    "เจ้าหน้าที่วางแผนอาวุโส",
-    "หัวหน้าเจ้าหน้าที่ขายและบริการลูกค้า",
-    "นักพัฒนาระบบ",
-    "ผู้ตรวจประเมิน"
-  ];
-  const departments = ["QMS", "APS", "SPS", "IBS1", "IBS2", "IBS3", "IBS4", "IBS5"];
-
-
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!auth || !firestore) {
@@ -112,58 +110,38 @@ const SignUpForm = () => {
       setError("Passwords do not match.");
       return;
     }
-    if (!position) {
-        setError("Please select a position.");
-        return;
-    }
-    if (!department) {
-        setError("Please select a department.");
-        return;
-    }
     setError(null);
     setIsSigningUp(true);
 
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-      await updateProfile(user, { displayName });
+      await updateProfile(user, { displayName: name });
       
-      // Create document in 'users' collection for auth/permissions
       const userRef = doc(firestore, 'users', user.uid);
-      const userRole = email.includes('admin') || email.includes('theerapan@masci') ? 'Admin' : 'Employee';
-      
-      const defaultPermissions: { [key: string]: boolean } = navItems.reduce((acc, item) => {
-        acc[item.href] = defaultPermissions[userRole]?.[item.href] ?? false;
-        return acc;
-      }, {} as { [key: string]: boolean });
-
       const newUserProfile = {
         id: user.uid,
-        name: displayName,
+        name: name,
         email: email,
-        role: userRole,
-        department: department,
-        position: position,
-        manager: '', 
-        menuAccess: defaultPermissions,
+        role: role,
+        menuAccess: navItems.reduce((acc, item) => ({...acc, [item.href]: false}), {}),
       };
-      setDocumentNonBlocking(userRef, newUserProfile, { merge: true });
+      setDocumentNonBlocking(userRef, newUserProfile);
 
-      // ALSO create document in 'employees' collection for organizational structure
+      // Also create an employee document
       const employeeRef = doc(firestore, 'employees', user.uid);
       const newEmployeeRecord = {
-          id: user.uid,
-          name: displayName,
-          department,
-          position,
-          manager: '', // Manager to be assigned later by an Admin
+        id: user.uid,
+        name: name,
+        department: 'Unassigned',
+        position: 'Unassigned',
+        manager: '',
       };
       setDocumentNonBlocking(employeeRef, newEmployeeRecord, { merge: true });
-
       
       toast({
           title: "Account Created",
-          description: "Your account has been successfully created."
+          description: "Your account has been successfully created. Please sign in."
       });
       // The auth state listener in the layout will handle the redirect.
 
@@ -178,38 +156,12 @@ const SignUpForm = () => {
     <form onSubmit={handleSignUp}>
       <CardContent className="space-y-4">
          <div className="space-y-2">
-          <Label htmlFor="displayName">Display Name</Label>
-          <Input id="displayName" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required disabled={isSigningUp} />
+          <Label htmlFor="name">Full Name</Label>
+          <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required disabled={isSigningUp} />
         </div>
         <div className="space-y-2">
           <Label htmlFor="signup-email">Email</Label>
           <Input id="signup-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={isSigningUp}/>
-        </div>
-        <div className="space-y-2">
-            <Label htmlFor="department">Department</Label>
-            <Select value={department} onValueChange={setDepartment} required disabled={isSigningUp}>
-                <SelectTrigger id="department">
-                    <SelectValue placeholder="Select your department" />
-                </SelectTrigger>
-                <SelectContent>
-                    {departments.map((dept) => (
-                        <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                    ))}
-                </SelectContent>
-            </Select>
-        </div>
-        <div className="space-y-2">
-            <Label htmlFor="position">Position</Label>
-            <Select value={position} onValueChange={setPosition} required disabled={isSigningUp}>
-                <SelectTrigger id="position">
-                    <SelectValue placeholder="Select your position" />
-                </SelectTrigger>
-                <SelectContent>
-                    {positions.map((pos) => (
-                        <SelectItem key={pos} value={pos}>{pos}</SelectItem>
-                    ))}
-                </SelectContent>
-            </Select>
         </div>
         <div className="space-y-2">
           <Label htmlFor="signup-password">Password</Label>
@@ -218,6 +170,21 @@ const SignUpForm = () => {
          <div className="space-y-2">
           <Label htmlFor="confirm-password">Confirm Password</Label>
           <Input id="confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required disabled={isSigningUp} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="role">Role (Initial)</Label>
+            <Select value={role} onValueChange={setRole} disabled={isSigningUp}>
+                <SelectTrigger id="role">
+                    <SelectValue placeholder="Select a role" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="Admin">Admin</SelectItem>
+                    <SelectItem value="VP">VP</SelectItem>
+                    <SelectItem value="AVP">AVP</SelectItem>
+                    <SelectItem value="Manager">Manager</SelectItem>
+                    <SelectItem value="Employee">Employee</SelectItem>
+                </SelectContent>
+            </Select>
         </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
       </CardContent>
@@ -267,7 +234,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex h-screen w-full items-center justify-center bg-gray-100">
+    <div className="flex h-screen w-full items-center justify-center bg-gray-100 dark:bg-gray-900">
       <Card className="w-full max-w-md shadow-2xl">
         <CardHeader className="text-center">
            <ShieldCheck className="mx-auto h-12 w-12 text-primary" />
@@ -290,3 +257,5 @@ export default function LoginPage() {
     </div>
   );
 }
+
+    
