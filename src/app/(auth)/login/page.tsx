@@ -163,10 +163,11 @@ const SignUpForm = () => {
         }
 
       } else {
-        // Subsequent users get roles based on their position
-        const defaultRoleTemplates = roles.filter(r => selectedPosition.defaultRoles.includes(r.code) || r.code === 'employee');
+        // Subsequent users get roles based on their position's defaults
+        const defaultRoleTemplates = roles.filter(r => selectedPosition.defaultRoles.includes(r.code));
         menuAccess = defaultRoleTemplates.reduce((acc, role) => ({...acc, ...role.menuAccess}), {});
-        userRolesArray = defaultRoleTemplates.map(r => r.code);
+        // Always include the base 'employee' role
+        userRolesArray = ['employee', ...defaultRoleTemplates.map(r => r.code)];
       }
       
       const batch = writeBatch(firestore);
@@ -300,5 +301,7 @@ export default function LoginPage() {
     </div>
   );
 }
+
+    
 
     
