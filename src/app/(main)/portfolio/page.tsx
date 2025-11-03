@@ -976,10 +976,23 @@ export default function MyPortfolioPage() {
     setPageTitle("My Portfolio");
   }, [setPageTitle]);
   
+  const teamMemberIds = useMemo(() => {
+    if (!allEmployees || !user) return [];
+    if (isManagerOrAdmin) {
+      const buildReportTreeIds = (managerId: string): string[] => {
+        const reports = allEmployees.filter(e => e.managerId === managerId);
+        return reports.reduce((acc, report) => [...acc, report.id, ...buildReportTreeIds(report.id)], [] as string[]);
+      };
+      return [user.uid, ...buildReportTreeIds(user.uid)];
+    }
+    return [user.uid];
+  }, [allEmployees, user, isManagerOrAdmin]);
+
   const submissionsQuery = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
-    return collection(firestore, 'kpi_submissions');
-  }, [firestore, user]);
+    if (!firestore || teamMemberIds.length === 0) return null;
+    return query(collection(firestore, 'kpi_submissions'), where('submittedBy', 'in', teamMemberIds));
+  }, [firestore, teamMemberIds]);
+
   const { data: submissions, isLoading: isSubmissionsLoading } = useCollection<WithId<KpiSubmission>>(submissionsQuery);
 
   const submissionsMap = useMemo(() => {
