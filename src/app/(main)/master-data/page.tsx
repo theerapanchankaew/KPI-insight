@@ -11,33 +11,31 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useUser } from '@/firebase';
 import { writeBatch, collection, doc } from 'firebase/firestore';
-import type { Kpi } from '@/context/KpiDataContext';
+import type { Kpi, Department } from '@/context/KpiDataContext';
 
 
-const exampleJson = `{
-  "version": "1.0",
+const KpiCatalogImport = () => {
+    const [jsonInput, setJsonInput] = useState(`{
   "kpi_catalog": [
     {
       "id": "1bf13fca-25c4-4a04-8390-8b2173a2ffda",
       "perspective": "Sustainability",
       "strategic_objective": "Grow Corporate Value",
+      "objective_statement": "การเติบโตอย่างยั่งยืน โดยการขยายฐานรายได้จากบริการ/ธุรกิจเดิม และบริการ/ธุรกิจใหม่ ตามเป้าหมายของสถาบันฯ",
       "measure": "Total Revenue",
       "target": "≥ 194.10 ล้านบาท",
       "unit": "THB million",
+      "target_statement": "รายรับรวมของสถาบันฯ อย่างน้อย ≥ 194.10 ล้านบาท โดยคิดเป็นผลรวมสะสมของทั้งปีงบประมาณ",
       "category": "Theme:Sustainability Excellence"
     }
   ]
-}`;
-
-const KpiCatalogImport = () => {
-    const [jsonInput, setJsonInput] = useState(exampleJson);
+}`);
     const { toast } = useToast();
     const firestore = useFirestore();
-    const { user } = useUser();
     const [isImporting, setIsImporting] = useState(false);
 
     const handleImport = async () => {
-        if (!firestore || !user) {
+        if (!firestore) {
             toast({ title: "Error", description: "You must be logged in to import data.", variant: "destructive" });
             return;
         }
@@ -96,6 +94,88 @@ const KpiCatalogImport = () => {
     )
 };
 
+const DepartmentImport = () => {
+    const [jsonInput, setJsonInput] = useState(`{
+  "departments": [
+    {
+      "id": "EXEC",
+      "name": "Executive",
+      "nameTH": "ฝ่ายบริหาร",
+      "parentDepartmentId": null,
+      "headOfDepartmentId": "emp-001"
+    },
+    {
+      "id": "SALES",
+      "name": "Sales",
+      "nameTH": "ฝ่ายขาย",
+      "parentDepartmentId": "EXEC",
+      "headOfDepartmentId": "emp-002"
+    }
+  ]
+}`);
+    const { toast } = useToast();
+    const firestore = useFirestore();
+    const [isImporting, setIsImporting] = useState(false);
+
+    const handleImport = async () => {
+        if (!firestore) {
+            toast({ title: "Error", description: "You must be logged in to import data.", variant: "destructive" });
+            return;
+        }
+
+        setIsImporting(true);
+        try {
+            const data = JSON.parse(jsonInput);
+            if (!data.departments || !Array.isArray(data.departments)) {
+                throw new Error("Invalid JSON format: 'departments' array not found.");
+            }
+
+            const departments: Department[] = data.departments;
+            const batch = writeBatch(firestore);
+            const deptCollectionRef = collection(firestore, 'departments');
+
+            departments.forEach(dept => {
+                const docRef = doc(deptCollectionRef, dept.id);
+                batch.set(docRef, dept);
+            });
+
+            await batch.commit();
+
+            toast({
+                title: "Import Successful",
+                description: `${departments.length} departments have been imported.`,
+            });
+
+        } catch (error: any) {
+            toast({
+                title: "Import Failed",
+                description: error.message || "Please check the JSON format and try again.",
+                variant: "destructive",
+            });
+        } finally {
+            setIsImporting(false);
+        }
+    };
+    
+    return (
+        <div className="space-y-6">
+            <p className="text-muted-foreground">
+                Paste your organization's department structure JSON below. Ensure each department has a unique `id`.
+            </p>
+            <Textarea 
+                value={jsonInput}
+                onChange={(e) => setJsonInput(e.target.value)}
+                rows={15}
+                placeholder="Paste your JSON here..."
+                className="font-mono text-xs"
+            />
+            <Button onClick={handleImport} disabled={isImporting}>
+                {isImporting ? "Importing..." : "Import Departments"}
+            </Button>
+        </div>
+    )
+};
+
 
 const MasterDataItem = ({ title, description, icon: Icon }: { title: string, description: string, icon: React.ElementType }) => (
     <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed rounded-lg">
@@ -148,12 +228,8 @@ export default function MasterDataPage() {
             <TabsContent value="kpi-catalog" className="mt-6">
                 <KpiCatalogImport />
             </TabsContent>
-            <TabsContent value="departments" className="mt-4">
-                <MasterDataItem 
-                    title="Departments" 
-                    description="Department management features will be implemented here." 
-                    icon={Building} 
-                />
+            <TabsContent value="departments" className="mt-6">
+                <DepartmentImport />
             </TabsContent>
             <TabsContent value="positions" className="mt-4">
                  <MasterDataItem 
@@ -182,4 +258,3 @@ export default function MasterDataPage() {
     </div>
   );
 }
-
