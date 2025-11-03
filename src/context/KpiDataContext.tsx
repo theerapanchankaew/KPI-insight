@@ -173,17 +173,6 @@ const KpiDataContext = createContext<KpiDataContextType | undefined>(undefined);
 export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   const firestore = useFirestore();
   const { user } = useUser();
-  const [isManager, setIsManager] = useState(false);
-
-  useEffect(() => {
-    if (user) {
-      getIdTokenResult(user)
-        .then((idTokenResult) => {
-          const userRole = idTokenResult.claims.role as string;
-          setIsManager(['Admin', 'VP', 'AVP', 'Manager'].includes(userRole));
-        })
-    }
-  }, [user]);
 
   // Master Data Queries
   const employeesQuery = useMemoFirebase(() => firestore ? collection(firestore, 'employees') : null, [firestore]);
@@ -216,12 +205,12 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
 
   const individualKpisQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
-    const baseQuery = collection(firestore, 'individual_kpis');
-    if (isManager) {
-        return baseQuery; // Managers can see all for filtering
-    }
-    return query(baseQuery, where('employeeId', '==', user.uid));
-  }, [firestore, user, isManager]);
+    // The security rules will handle filtering for managers vs. employees,
+    // so we can use a simpler query here. For a non-manager, this will
+    // only return their own KPIs. For a manager, it will return KPIs for
+    // their direct reports as well.
+    return collection(firestore, 'individual_kpis');
+  }, [firestore, user]);
 
   const { data: individualKpis, isLoading: isIndividualKpisLoading } = useCollection<WithId<IndividualKpi>>(individualKpisQuery);
 
