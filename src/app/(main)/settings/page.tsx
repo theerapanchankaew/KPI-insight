@@ -56,7 +56,8 @@ export default function SettingsPage() {
   const { data: userProfile, isLoading: isProfileLoading } = useDoc<AppUser>(userProfileRef);
 
   const isAdmin = useMemo(() => {
-    if (!userProfile) return false;
+    // Safely check for userProfile and the roles array
+    if (!userProfile || !Array.isArray(userProfile.roles)) return false;
     return userProfile.roles.includes('admin') || userProfile.roles.includes('Admin');
   }, [userProfile]);
 
