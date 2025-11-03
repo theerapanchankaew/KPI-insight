@@ -85,6 +85,7 @@ interface Employee {
   name: string;
   position: string;
   department: string;
+  manager: string;
 }
 
 type Role = 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee';
@@ -316,7 +317,7 @@ export default function ActionCenterPage() {
   }, [user, firestore]);
   
   const { data: userProfile, isLoading: isProfileLoading } = useDoc<AppUser>(userProfileRef);
-
+  
   const isManagerOrAdmin = useMemo(() => userProfile?.role && ['Admin', 'VP', 'AVP', 'Manager'].includes(userProfile.role), [userProfile]);
   const isUpperManager = useMemo(() => userProfile?.role && ['Admin', 'VP'].includes(userProfile.role), [userProfile]);
 

@@ -1,0 +1,697 @@
+
+{
+  "entities": {
+    "UserProfile": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "UserProfile",
+      "type": "object",
+      "description": "Represents a user profile within the KPI dashboard application.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the user profile entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The full name of the user."
+        },
+        "email": {
+          "type": "string",
+          "description": "The email address of the user.",
+          "format": "email"
+        },
+        "ceoName": {
+          "type": "string",
+          "description": "The name of the CEO, if the user is a CEO."
+        },
+        "departmentId": {
+          "type": "string",
+          "description": "Reference to Department. (Relationship: Department 1:N UserProfile)"
+        },
+        "role": {
+          "type": "string",
+          "description": "The role of the user within the organization (e.g., CEO, Manager, Employee)."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "email",
+        "departmentId",
+        "role"
+      ]
+    },
+    "Department": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Department",
+      "type": "object",
+      "description": "Represents a department within the organization.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the department entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the department (e.g., Sales, Operations, Corporate Affairs)."
+        },
+        "description": {
+          "type": "string",
+          "description": "A description of the department's function."
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    "Kpi": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Kpi",
+      "type": "object",
+      "description": "Represents a Key Performance Indicator.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the KPI entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the KPI (e.g., Monthly Revenue, Customer Acquisition Cost)."
+        },
+        "description": {
+          "type": "string",
+          "description": "A description of what the KPI measures."
+        },
+        "target": {
+          "type": "number",
+          "description": "The target value for the KPI."
+        },
+        "unit": {
+          "type": "string",
+          "description": "The unit of measurement for the KPI (e.g., THB, %, Count)."
+        },
+        "period": {
+          "type": "string",
+          "description": "The reporting period for the KPI (e.g., monthly, quarterly, yearly)."
+        },
+        "departmentId": {
+          "type": "string",
+          "description": "Reference to Department. (Relationship: Department 1:N Kpi)"
+        },
+        "kpiCategoryId": {
+          "type": "string",
+          "description": "Reference to KpiCategory. (Relationship: KpiCategory 1:N Kpi)"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "target",
+        "unit",
+        "period",
+        "departmentId",
+        "kpiCategoryId"
+      ]
+    },
+    "KpiCategory": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "KpiCategory",
+      "type": "object",
+      "description": "Represents a category for KPIs.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the KPI Category entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the KPI category (e.g., Financial, Operational, ESG, Customer)."
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    "KpiSubmission": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "KpiSubmission",
+      "type": "object",
+      "description": "Represents a submission of KPI data.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the KPI Submission entity."
+        },
+        "kpiId": {
+          "type": "string",
+          "description": "Reference to Kpi. (Relationship: Kpi 1:N KpiSubmission)"
+        },
+        "submittedByUserId": {
+          "type": "string",
+          "description": "Reference to UserProfile. (Relationship: UserProfile 1:N KpiSubmission)"
+        },
+        "submissionDate": {
+          "type": "string",
+          "description": "The date and time when the KPI data was submitted.",
+          "format": "date-time"
+        },
+        "actualValue": {
+          "type": "number",
+          "description": "The actual value of the KPI for the submission period."
+        },
+        "status": {
+          "type": "string",
+          "description": "The status of the KPI submission (e.g., Manager Review, Upper Manager Approval, Closed).",
+          "enum": [
+            "Manager Review",
+            "Upper Manager Approval",
+            "Closed"
+          ]
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional notes or comments related to the KPI submission."
+        }
+      },
+      "required": [
+        "id",
+        "kpiId",
+        "submittedByUserId",
+        "submissionDate",
+        "actualValue",
+        "status"
+      ]
+    },
+    "KpiApproval": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "KpiApproval",
+      "type": "object",
+      "description": "Represents an approval record for a KPI submission.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the KPI Approval entity."
+        },
+        "kpiSubmissionId": {
+          "type": "string",
+          "description": "Reference to KpiSubmission. (Relationship: KpiSubmission 1:N KpiApproval)"
+        },
+        "approvedByUserId": {
+          "type": "string",
+          "description": "Reference to UserProfile. (Relationship: UserProfile 1:N KpiApproval)"
+        },
+        "approvalDate": {
+          "type": "string",
+          "description": "The date and time when the KPI submission was approved.",
+          "format": "date-time"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Notes or comments from the approver."
+        },
+        "status": {
+          "type": "string",
+          "description": "The approval status (e.g., Approved, Rejected)."
+        }
+      },
+      "required": [
+        "id",
+        "kpiSubmissionId",
+        "approvedByUserId",
+        "approvalDate",
+        "status"
+      ]
+    },
+    "Report": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Report",
+      "type": "object",
+      "description": "Represents a performance report.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Report entity."
+        },
+        "reportPeriod": {
+          "type": "string",
+          "description": "The period covered by the report (e.g., monthly, quarterly, yearly)."
+        },
+        "reportDate": {
+          "type": "string",
+          "description": "The date when the report was generated.",
+          "format": "date-time"
+        },
+        "executiveSummary": {
+          "type": "string",
+          "description": "A summary of the report's findings (generated by GenAI)."
+        },
+        "kpiSubmissionIds": {
+          "type": "array",
+          "description": "References to KpiSubmissions included in this report. (Relationship: Report 1:N KpiSubmission)",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "reportPeriod",
+        "reportDate",
+        "executiveSummary"
+      ]
+    },
+    "Employee": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Employee",
+      "type": "object",
+      "description": "Represents an employee's organizational data.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique employee ID."
+        },
+        "name": {
+          "type": "string",
+          "description": "Employee's full name."
+        },
+        "department": {
+          "type": "string",
+          "description": "Department name."
+        },
+        "position": {
+          "type": "string",
+          "description": "Job position."
+        },
+        "manager": {
+          "type": "string",
+          "description": "Name of the manager."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "department",
+        "position"
+      ]
+    },
+    "MonthlyKpi": {
+      "title": "MonthlyKpi",
+      "type": "object",
+      "description": "Represents a monthly breakdown of a corporate KPI.",
+      "properties": {
+        "parentKpiId": {
+          "type": "string",
+          "description": "ID of the parent yearly KPI."
+        },
+        "measure": {
+          "type": "string"
+        },
+        "perspective": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "year": {
+          "type": "number"
+        },
+        "month": {
+          "type": "number",
+          "description": "1-12 for Jan-Dec"
+        },
+        "target": {
+          "type": "number"
+        },
+        "actual": {
+          "type": "number"
+        },
+        "progress": {
+          "type": "number",
+          "description": "Percentage completion"
+        },
+        "percentage": {
+          "type": "number",
+          "description": "Weight percentage for the month"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "Active",
+            "Completed",
+            "Overdue"
+          ]
+        },
+        "distributionStrategy": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "createdBy": {
+          "type": "string",
+          "description": "UID of the user who deployed it."
+        }
+      },
+      "required": [
+        "parentKpiId",
+        "year",
+        "month",
+        "target",
+        "status",
+        "createdBy"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ],
+    "customClaims": {
+      "role": {
+        "type": "string",
+        "enum": [
+          "Admin",
+          "VP",
+          "AVP",
+          "Manager",
+          "Employee"
+        ]
+      }
+    }
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "UserProfile",
+          "schema": {
+            "$ref": "#/entities/UserProfile"
+          },
+          "description": "Stores user profile information. Users can read their own profile. Admins can read all profiles. Writes are restricted to the user themselves.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique ID of the user."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/employees/{employeeId}",
+        "definition": {
+          "entityName": "Employee",
+          "schema": {
+            "$ref": "#/entities/Employee"
+          },
+          "description": "Stores public employee organizational data. Readable by all authenticated users, writable only by admins.",
+          "params": [
+            {
+              "name": "employeeId",
+              "description": "The unique ID of the employee."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/departments/{departmentId}",
+        "definition": {
+          "entityName": "Department",
+          "schema": {
+            "$ref": "#/entities/Department"
+          },
+          "description": "Stores department information. Readable by authenticated users, writable by admins.",
+          "params": [
+            {
+              "name": "departmentId",
+              "description": "The unique ID of the department."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/kpi_categories/{kpiCategoryId}",
+        "definition": {
+          "entityName": "KpiCategory",
+          "schema": {
+            "$ref": "#/entities/KpiCategory"
+          },
+          "description": "Stores KPI category information. Readable by authenticated users, writable by admins.",
+          "params": [
+            {
+              "name": "kpiCategoryId",
+              "description": "The unique ID of the KPI category."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/kpi_catalog/{kpiId}",
+        "definition": {
+          "entityName": "Kpi",
+          "schema": {
+            "$ref": "#/entities/Kpi"
+          },
+          "description": "The master list of all corporate KPIs. Readable by all authenticated users, writable only by admins.",
+          "params": [
+            {
+              "name": "kpiId",
+              "description": "The unique ID of the KPI."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/cascaded_kpis/{cascadedKpiId}",
+        "definition": {
+          "entityName": "CascadedKpi",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "corporateKpiId": {
+                "type": "string"
+              },
+              "measure": {
+                "type": "string"
+              },
+              "department": {
+                "type": "string"
+              },
+              "weight": {
+                "type": "number"
+              },
+              "target": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "corporateKpiId",
+              "measure",
+              "department",
+              "weight",
+              "target"
+            ]
+          },
+          "description": "KPIs that have been cascaded to departments. Readable by authenticated users, writable by managers/admins.",
+          "params": [
+            {
+              "name": "cascadedKpiId",
+              "description": "The unique ID of the cascaded KPI."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/individual_kpis/{individualKpiId}",
+        "definition": {
+          "entityName": "IndividualKpi",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "employeeId": {
+                "type": "string"
+              },
+              "employeeName": {
+                "type": "string",
+                "description": "Denormalized employee name for easier display."
+              },
+              "department": {
+                "type": "string",
+                "description": "Denormalized employee department for easier filtering."
+              },
+              "kpiId": {
+                "type": "string"
+              },
+              "kpiMeasure": {
+                "type": "string"
+              },
+              "weight": {
+                "type": "number"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "Draft",
+                  "Agreed",
+                  "In-Progress",
+                  "Manager Review",
+                  "Upper Manager Approval",
+                  "Employee Acknowledged",
+                  "Closed",
+                  "Rejected"
+                ]
+              },
+              "notes": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "cascaded",
+                  "committed"
+                ]
+              },
+              "task": {
+                "type": "string",
+                "description": "Task for a 'committed' KPI."
+              },
+              "targets": {
+                "type": "object",
+                "description": "5-level targets for a 'committed' KPI.",
+                "properties": {
+                  "level1": { "type": "string" },
+                  "level2": { "type": "string" },
+                  "level3": { "type": "string" },
+                  "level4": { "type": "string" },
+                  "level5": { "type": "string" }
+                }
+              },
+              "target": {
+                "type": "string",
+                "description": "Target for a 'cascaded' KPI."
+              },
+              "corporateKpiId": {
+                  "type": "string",
+                  "description": "Link to parent corporate KPI for 'cascaded' type."
+              }
+            },
+            "required": [
+              "employeeId",
+              "employeeName",
+              "department",
+              "kpiId",
+              "kpiMeasure",
+              "weight",
+              "status",
+              "type"
+            ]
+          },
+          "description": "KPIs assigned to individual employees. Can be of type 'cascaded' (from corporate) or 'committed' (department-specific). Readable by the assigned user and their manager. Writable by manager/admin. Status updatable by employee.",
+          "params": [
+            {
+              "name": "individualKpiId",
+              "description": "The unique ID of the individual KPI."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/kpi_submissions/{kpiSubmissionId}",
+        "definition": {
+          "entityName": "KpiSubmission",
+          "schema": {
+            "$ref": "#/entities/KpiSubmission"
+          },
+          "description": "Stores KPI submission data. Includes `submittedByUserId` for ownership checks. Readable by submitter and their manager.",
+          "params": [
+            {
+              "name": "kpiSubmissionId",
+              "description": "The unique ID of the KPI submission."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/kpi_approvals/{kpiApprovalId}",
+        "definition": {
+          "entityName": "KpiApproval",
+          "schema": {
+            "$ref": "#/entities/KpiApproval"
+          },
+          "description": "Stores KPI approval records. Includes `approvedByUserId` for tracking approvers. Readable by involved parties.",
+          "params": [
+            {
+              "name": "kpiApprovalId",
+              "description": "The unique ID of the KPI approval."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/reports/{reportId}",
+        "definition": {
+          "entityName": "Report",
+          "schema": {
+            "$ref": "#/entities/Report"
+          },
+          "description": "Stores performance reports. Access control can be implemented using security rules.",
+          "params": [
+            {
+              "name": "reportId",
+              "description": "The unique ID of the report."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/settings/global",
+        "definition": {
+          "entityName": "AppSettings",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "orgName": {
+                "type": "string"
+              },
+              "period": {
+                "type": "string"
+              },
+              "currency": {
+                "type": "string"
+              }
+            }
+          },
+          "description": "Global application settings. Readable by all authenticated users, writable only by admins."
+        }
+      },
+      {
+        "path": "/monthly_kpis/{monthlyKpiId}",
+        "definition": {
+          "entityName": "MonthlyKpi",
+          "schema": {
+            "$ref": "#/entities/MonthlyKpi"
+          },
+          "description": "Stores the monthly breakdown of corporate KPIs. Readable by authenticated users, writable by admins.",
+          "params": [
+            {
+              "name": "monthlyKpiId",
+              "description": "The unique ID of the monthly KPI record."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The permission errors indicate the default-deny security rules are working as intended. The fix is to define the intended access patterns. This updated structure declares that 'employees' and 'kpi_catalog' should be readable by any authenticated user, which is necessary for the UI to function. It also specifies that only Admins can list the sensitive '/users' collection, securing user data while allowing the User Management page to work for authorized personnel. Custom claims for 'role' are also defined to enable role-based access control in the security rules."
+  }
+}

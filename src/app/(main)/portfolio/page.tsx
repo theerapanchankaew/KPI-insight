@@ -966,7 +966,7 @@ export default function MyPortfolioPage() {
   const [isCreateDialogOpen, setCreateDialogOpen] = useState(false);
 
   const userProfileRef = useMemoFirebase(() => {
-    if (!user) return null;
+    if (!user || !firestore) return null;
     return doc(firestore, 'users', user.uid);
   }, [user, firestore]);
 
@@ -1045,7 +1045,8 @@ export default function MyPortfolioPage() {
     if(isManagerOrAdmin) {
         const currentUserEmployee = allEmployees.find(e => e.id === user.uid);
         if(!currentUserEmployee) return [];
-        return [employeeMap.get(currentUserEmployee.name)!];
+        const node = employeeMap.get(currentUserEmployee.name);
+        return node ? [node] : [];
     }
     
     const loggedInUserEmployee = allEmployees.find(e => e.id === user.uid);
@@ -1193,7 +1194,7 @@ export default function MyPortfolioPage() {
         <div>
             <h3 className="text-2xl font-bold text-gray-900 mb-1">Portfolio</h3>
             <p className="text-gray-600">
-              {isManagerOrAdmin ? "Review and manage your team's KPI portfolio by reporting structure." : "Review and manage your personal KPIs for this period."}
+              Review and manage your team's KPI portfolio by reporting structure.
             </p>
         </div>
         <Button onClick={() => setCreateDialogOpen(true)}>
@@ -1263,5 +1264,3 @@ export default function MyPortfolioPage() {
     </div>
   );
 }
-
-    
