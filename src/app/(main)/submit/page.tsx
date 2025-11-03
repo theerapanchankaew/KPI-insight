@@ -412,32 +412,20 @@ export default function SubmitPage() {
   }, [setPageTitle]);
   
   const teamMembers = useMemo(() => {
-    if (!allKpis || !user) return [];
+    if (!allKpis || !user || !employees) return [];
     if (isManagerOrAdmin) {
       // For managers, we find all unique employee IDs from the KPIs they can see
       const employeeIds = [...new Set(allKpis.map(kpi => kpi.employeeId))];
-      return employees?.filter(emp => employeeIds.includes(emp.id)) || [];
+      return employees.filter(emp => employeeIds.includes(emp.id));
     }
     // For regular users, it's just them
-    return employees?.filter(e => e.id === user.uid) || [];
+    return employees.filter(e => e.id === user.uid);
   }, [allKpis, user, isManagerOrAdmin, employees]);
 
   const teamMemberIds = useMemo(() => teamMembers.map(m => m.id), [teamMembers]);
 
-  const kpisForUser = useMemo(() => {
-    if (!allKpis) return [];
-    if (isManagerOrAdmin) return allKpis.filter(k => k.status !== 'Closed');
-    if (user) {
-      return allKpis.filter(k => 
-        k.employeeId === user.uid && 
-        ['Draft', 'In-Progress', 'Rejected', 'Agreed', 'Upper Manager Approval'].includes(k.status)
-      );
-    }
-    return [];
-  }, [allKpis, user, isManagerOrAdmin]);
-
   const submissionsQuery = useMemoFirebase(() => {
-    if (!firestore || teamMemberIds.length === 0) return null;
+    if (!firestore || isIndividualKpisLoading || isEmployeesLoading || teamMemberIds.length === 0) return null;
   
     // Firestore 'in' queries are limited to 30 elements. Chunking is required for larger sets.
     const chunks: string[][] = [];
@@ -451,9 +439,9 @@ export default function SubmitPage() {
     }
   
     return query(collection(firestore, 'kpi_submissions'), where('submittedBy', 'in', chunks[0]));
-  }, [firestore, teamMemberIds]);
+  }, [firestore, teamMemberIds, isIndividualKpisLoading, isEmployeesLoading]);
 
-  const { data: submissions, isLoading: isSubmissionsLoading } = useCollection<KpiSubmission>(submissionsQuery, { disabled: teamMemberIds.length === 0 });
+  const { data: submissions, isLoading: isSubmissionsLoading } = useCollection<KpiSubmission>(submissionsQuery);
   
   const submissionStatusMap = useMemo(() => {
     const newMap = new Map<string, KpiSubmission['status']>();
@@ -477,7 +465,15 @@ export default function SubmitPage() {
   
 
   const filteredKpis = useMemo(() => {
-    if (!kpisForUser) return [];
+    if (!allKpis) return [];
+    
+    const kpisForUser = isManagerOrAdmin 
+      ? allKpis.filter(k => k.status !== 'Closed')
+      : allKpis.filter(k => 
+          k.employeeId === user?.uid && 
+          ['Draft', 'In-Progress', 'Rejected', 'Agreed', 'Upper Manager Approval'].includes(k.status)
+        );
+
     return kpisForUser.filter(kpi => {
         const departmentMatch = departmentFilter === 'all' || kpi.departmentId === departmentFilter;
         
@@ -489,7 +485,7 @@ export default function SubmitPage() {
 
         return departmentMatch && categoryMatch && employeeMatch;
     });
-  }, [kpisForUser, departmentFilter, categoryFilter, employeeFilter, kpiCatalog]);
+  }, [allKpis, user, isManagerOrAdmin, departmentFilter, categoryFilter, employeeFilter, kpiCatalog]);
 
   const kpisByDepartment = useMemo(() => {
       if (!filteredKpis) return {};
@@ -505,8 +501,11 @@ export default function SubmitPage() {
 
 
   const summaryStats = useMemo(() => {
+      const kpisForUser = allKpis?.filter(k => teamMemberIds.includes(k.employeeId)) || [];
       if(!kpisForUser) return { totalInProgress: 0, needsSubmission: 0, submitted: 0 };
-      const submittedIds = new Set(submissionStatusMap.keys());
+      
+      const submittedIds = new Set(Object.keys(Object.fromEntries(submissionStatusMap)));
+
       const inProgressKpis = kpisForUser.filter(k => k.status === 'In-Progress');
       const needsSubmissionCount = inProgressKpis.filter(k => !submittedIds.has(k.id) || submissionStatusMap.get(k.id) === 'Rejected').length;
       
@@ -517,7 +516,7 @@ export default function SubmitPage() {
         needsSubmission: needsSubmissionCount,
         submitted: submittedThisPeriod,
       };
-  }, [kpisForUser, submissionStatusMap]);
+  }, [allKpis, submissionStatusMap, teamMemberIds]);
   
   const handleOpenSubmitDialog = (kpi: WithId<IndividualKpi>) => {
     setSelectedKpi(kpi);
@@ -677,4 +676,3 @@ export default function SubmitPage() {
     </div>
   );
 }
-
