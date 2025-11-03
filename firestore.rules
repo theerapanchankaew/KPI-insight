@@ -73,18 +73,18 @@ service cloud.firestore {
      * Departments, Positions, Roles: Configuration data readable by all, writable by admins.
      */
     match /departments/{departmentId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow read, write: if isAdmin();
+      allow list, get: if isSignedIn();
     }
     
     match /positions/{positionId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow read, write: if isAdmin();
+      allow list, get: if isSignedIn();
     }
     
     match /roles/{roleId} {
+      allow read, write: if isAdmin();
       allow list, get: if isSignedIn(); 
-      allow write: if isAdmin();
     }
 
     /**
@@ -112,19 +112,21 @@ service cloud.firestore {
      */
     match /individual_kpis/{individualKpiId} {
         allow read: if isSignedIn();
-        allow write: if isManager();
+        allow write: if isManager() || isOwner(resource.data.employeeId);
     }
 
     /**
      * KPI Submissions: Data submitted by employees.
-     * - Readable by the submitter, their manager, or an admin.
+     * - Gettable by the submitter, their manager, or an admin.
+     * - List operations are disallowed for security. App should query by kpiId.
      * - Writable only by the submitter.
      */
     match /kpi_submissions/{submissionId} {
-        allow get: if isSignedIn() && (isOwner(resource.data.submittedBy) || isDirectManagerOf(resource.data.submittedBy) || isAdmin());
-        allow list: if isAdmin(); // Only admins can list all submissions
+        allow get: if isSignedIn() && (isAdmin() || isOwner(resource.data.submittedBy) || isDirectManagerOf(resource.data.submittedBy));
         allow create: if isSignedIn();
         allow update, delete: if isAdmin() || isDirectManagerOf(resource.data.submittedBy) || isOwner(resource.data.submittedBy);
+        // Explicitly disallow list to force more specific queries
+        allow list: if false; 
     }
 
     /**

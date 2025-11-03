@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUser, useFirestore, useCollection, useMemoFirebase, WithId, addDocumentNonBlocking, useDoc } from '@/firebase';
-import { collection, query, where, serverTimestamp, doc, Timestamp } from 'firebase/firestore';
+import { collection, query, where, serverTimestamp, doc, Timestamp, getDocs } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Textarea } from '@/components/ui/textarea';
@@ -23,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useRouter } from 'next/navigation';
+import { getIdTokenResult } from 'firebase/auth';
 
 // Consistent type definition with portfolio and cascade pages
 interface IndividualKpiBase {
@@ -61,8 +62,11 @@ interface KpiSubmission {
 }
 
 interface AppUser {
-  roles: ('Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee')[];
+  id: string;
+  employeeId: string;
+  roles: string[];
 }
+
 
 interface Employee {
     id: string;
@@ -384,7 +388,7 @@ const KpiActionCard = ({ kpi, submissionStatus, onOpenSubmit, onViewCommitment, 
 
 export default function SubmitPage() {
   const { setPageTitle } = useAppLayout();
-  const { user, isUserLoading } = useUser();
+  const { user, isUserLoading: isAuthLoading } = useUser();
   const firestore = useFirestore();
   const { toast } = useToast();
   const { employees, isEmployeesLoading, kpiData: kpiCatalog, departments } = useKpiData();
@@ -396,63 +400,101 @@ export default function SubmitPage() {
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [employeeFilter, setEmployeeFilter] = useState('all');
+  
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isCheckingAdmin, setIsCheckingAdmin] = useState(true);
 
-  const userProfileRef = useMemoFirebase(() => {
-    if (!user || !firestore) return null;
-    return doc(firestore, 'users', user.uid);
-  }, [user, firestore]);
-  const { data: userProfile, isLoading: isProfileLoading } = useDoc<AppUser>(userProfileRef);
+  useEffect(() => {
+    if (user) {
+      setIsCheckingAdmin(true);
+      getIdTokenResult(user, true) 
+        .then((idTokenResult) => {
+          const claims = idTokenResult.claims;
+          const userRole = claims.role as string;
+          setIsAdmin(userRole === 'Admin');
+          setIsCheckingAdmin(false);
+        })
+        .catch(() => {
+          setIsAdmin(false);
+          setIsCheckingAdmin(false);
+        });
+    } else if (!isAuthLoading) {
+      setIsAdmin(false);
+      setIsCheckingAdmin(false);
+    }
+  }, [user, isAuthLoading]);
+
+  const [isManager, setIsManager] = useState(false);
+   useEffect(() => {
+    if (user) {
+      getIdTokenResult(user)
+        .then((idTokenResult) => {
+          const userRole = idTokenResult.claims.role as string;
+          setIsManager(['Admin', 'VP', 'AVP', 'Manager'].includes(userRole));
+        })
+    }
+  }, [user]);
 
   useEffect(() => {
     setPageTitle('Submit KPI');
   }, [setPageTitle]);
 
-  const isManagerOrAdmin = useMemo(() => 
-    userProfile?.roles && ['Admin', 'VP', 'AVP', 'Manager'].some(r => userProfile.roles.includes(r)),
-    [userProfile]
-  );
   
   const kpisQuery = useMemoFirebase(() => {
-    if (!firestore || isProfileLoading) return null;
+    if (!firestore || isCheckingAdmin) return null;
     
     const baseQuery = collection(firestore, 'individual_kpis');
     
-    if (isManagerOrAdmin) {
-      // Managers/Admins see all KPIs that are not yet closed
+    if (isManager) {
       return query(baseQuery, where('status', '!=', 'Closed'));
     } else if (user) {
-      // Employees only see their own active KPIs
       return query(baseQuery, 
         where('employeeId', '==', user.uid), 
         where('status', 'in', ['Draft', 'In-Progress', 'Rejected', 'Agreed', 'Upper Manager Approval'])
       );
     }
     return null;
-  }, [firestore, user, isProfileLoading, isManagerOrAdmin]);
-  
-  const submissionsQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
-    // Fetch all submissions to check which KPIs have been submitted
-    return collection(firestore, 'kpi_submissions');
-  }, [firestore]);
+  }, [firestore, user, isCheckingAdmin, isManager]);
 
+  const { data: allKpis, isLoading: isKpisLoading } = useCollection<WithId<IndividualKpi>>(kpisQuery, { disabled: isCheckingAdmin });
 
-  const { data: allKpis, isLoading: isKpisLoading } = useCollection<WithId<IndividualKpi>>(kpisQuery);
-  const { data: allSubmissions, isLoading: isSubmissionsLoading } = useCollection<WithId<KpiSubmission>>(submissionsQuery);
+  const [submissionStatusMap, setSubmissionStatusMap] = useState<Map<string, KpiSubmission['status']>>(new Map());
+  const [isSubmissionsLoading, setIsSubmissionsLoading] = useState(true);
   
-  const submissionStatusMap = useMemo(() => {
-    const map = new Map<string, KpiSubmission['status']>();
-    if (allSubmissions) {
-      // Sort by date to get the most recent status
-      const sortedSubmissions = [...allSubmissions].sort((a, b) => b.submissionDate?.toMillis() - a.submissionDate?.toMillis());
-      sortedSubmissions.forEach(s => {
-        if (!map.has(s.kpiId)) {
-          map.set(s.kpiId, s.status);
+  useEffect(() => {
+    if (!allKpis || allKpis.length === 0 || !firestore) {
+        setIsSubmissionsLoading(false);
+        return;
+    };
+    
+    const fetchSubmissions = async () => {
+        setIsSubmissionsLoading(true);
+        const kpiIds = allKpis.map(kpi => kpi.id);
+        const newMap = new Map<string, KpiSubmission['status']>();
+
+        // Firestore 'in' queries are limited to 30 elements.
+        // We need to chunk the kpiIds array.
+        const chunkSize = 30;
+        for (let i = 0; i < kpiIds.length; i += chunkSize) {
+            const chunk = kpiIds.slice(i, i + chunkSize);
+            if (chunk.length > 0) {
+                const submissionsQuery = query(collection(firestore, 'kpi_submissions'), where('kpiId', 'in', chunk));
+                const querySnapshot = await getDocs(submissionsQuery);
+                querySnapshot.forEach((doc) => {
+                    const submission = doc.data() as KpiSubmission;
+                    // Get the latest status for each KPI
+                    if (!newMap.has(submission.kpiId) || doc.get('submissionDate') > (newMap.get(submission.kpiId) as any)) {
+                         newMap.set(submission.kpiId, submission.status);
+                    }
+                });
+            }
         }
-      });
-    }
-    return map;
-  }, [allSubmissions]);
+        setSubmissionStatusMap(newMap);
+        setIsSubmissionsLoading(false);
+    };
+
+    fetchSubmissions();
+  }, [allKpis, firestore]);
   
   const departmentOptions = useMemo(() => {
     if (!departments) return [];
@@ -468,7 +510,9 @@ export default function SubmitPage() {
   const filteredKpis = useMemo(() => {
     if (!allKpis) return [];
     return allKpis.filter(kpi => {
-        const departmentMatch = departmentFilter === 'all' || kpi.department === departmentFilter;
+        const department = departments?.find(d => d.id === kpi.department);
+        const departmentName = department ? department.name : kpi.department;
+        const departmentMatch = departmentFilter === 'all' || departmentName === departmentFilter;
         
         const kpiInfo = kpi.type === 'cascaded' ? kpiCatalog?.find(k => k.id === kpi.corporateKpiId) : null;
         const category = kpiInfo?.category ?? (kpi as any).category;
@@ -478,7 +522,7 @@ export default function SubmitPage() {
 
         return departmentMatch && categoryMatch && employeeMatch;
     });
-  }, [allKpis, departmentFilter, categoryFilter, employeeFilter, kpiCatalog]);
+  }, [allKpis, departmentFilter, categoryFilter, employeeFilter, kpiCatalog, departments]);
 
   const kpisByDepartment = useMemo(() => {
       if (!filteredKpis) return {};
@@ -495,16 +539,18 @@ export default function SubmitPage() {
 
   const summaryStats = useMemo(() => {
       if(!allKpis) return { totalInProgress: 0, needsSubmission: 0, submitted: 0 };
-      const submittedIds = new Set(allSubmissions?.map(s => s.kpiId));
+      const submittedIds = new Set(submissionStatusMap.keys());
       const inProgressKpis = allKpis.filter(k => k.status === 'In-Progress');
-      const needsSubmissionCount = inProgressKpis.filter(k => !submittedIds.has(k.id)).length;
+      const needsSubmissionCount = inProgressKpis.filter(k => !submittedIds.has(k.id) || submissionStatusMap.get(k.id) === 'Rejected').length;
       
+      const submittedThisPeriod = Array.from(submissionStatusMap.entries()).filter(([id, status]) => status !== 'Rejected').length;
+
       return {
         totalInProgress: allKpis.filter(k=> k.status !== 'Closed').length,
         needsSubmission: needsSubmissionCount,
-        submitted: submittedIds.size,
+        submitted: submittedThisPeriod,
       };
-  }, [allKpis, allSubmissions]);
+  }, [allKpis, submissionStatusMap]);
   
   const handleOpenSubmitDialog = (kpi: WithId<IndividualKpi>) => {
     setSelectedKpi(kpi);
@@ -538,8 +584,9 @@ export default function SubmitPage() {
         submissionDate: serverTimestamp(),
     };
     
-    const submissionsCollection = collection(firestore, 'kpi_submissions');
-    addDocumentNonBlocking(submissionsCollection, submissionData);
+    addDocumentNonBlocking(collection(firestore, 'kpi_submissions'), submissionData);
+    setSubmissionStatusMap(prev => new Map(prev).set(submission.kpiId, 'Manager Review'));
+
 
     toast({
         title: "KPI Data Submitted",
@@ -547,7 +594,7 @@ export default function SubmitPage() {
     });
   };
 
-  const isLoading = isUserLoading || isKpisLoading || isSubmissionsLoading || isEmployeesLoading || isProfileLoading;
+  const isLoading = isAuthLoading || isKpisLoading || isSubmissionsLoading || isEmployeesLoading || isCheckingAdmin;
 
   const statCards = [
     { label: 'Awaiting Action', value: summaryStats.totalInProgress, icon: Briefcase, color: 'text-primary' },
@@ -580,16 +627,16 @@ export default function SubmitPage() {
         <CardHeader>
           <CardTitle>KPI Submission Status</CardTitle>
           <div className="flex flex-col md:flex-row gap-4 pt-2">
-            <Select value={departmentFilter} onValueChange={setDepartmentFilter} disabled={!isManagerOrAdmin}>
+            <Select value={departmentFilter} onValueChange={setDepartmentFilter} disabled={!isManager}>
               <SelectTrigger className="w-full md:w-[200px]">
                 <SelectValue placeholder="Filter by Department" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Departments</SelectItem>
-                {departmentOptions.map(dept => <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>)}
+                {departmentOptions.map(dept => <SelectItem key={dept.id} value={dept.name}>{dept.name}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Select value={employeeFilter} onValueChange={setEmployeeFilter} disabled={!isManagerOrAdmin}>
+            <Select value={employeeFilter} onValueChange={setEmployeeFilter} disabled={!isManager}>
                 <SelectTrigger className="w-full md:w-[200px]">
                     <SelectValue placeholder="Filter by Employee" />
                 </SelectTrigger>
@@ -636,7 +683,7 @@ export default function SubmitPage() {
                              submissionStatus={submissionStatusMap.get(kpi.id)}
                              onOpenSubmit={handleOpenSubmitDialog}
                              onViewCommitment={handleOpenViewCommitmentDialog}
-                             isManager={isManagerOrAdmin || false}
+                             isManager={isManager}
                            />
                         ))}
                     </div>
