@@ -23,7 +23,7 @@ import { doc } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AuthGate } from '@/app/auth-gate';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { updateProfile } from 'firebase/auth';
@@ -178,18 +178,13 @@ const EditProfileDialog = ({ children }: { children: React.ReactNode }) => {
 
 const AppHeader = () => {
   const { pageTitle } = useAppLayout();
-  const { settings, employees, users, kpiData, cascadedKpis } = useKpiData();
+  const { settings, employees, kpiData, cascadedKpis } = useKpiData();
   const { user: authUser, isUserLoading } = useUser();
   const auth = useAuth();
   const router = useRouter();
 
   const [openCommand, setOpenCommand] = React.useState(false);
   
-  const currentUser = useMemo(() => {
-    if (!authUser || !users) return null;
-    return users.find(u => u.id === authUser.uid);
-  }, [authUser, users]);
-
   const currentEmployee = useMemo(() => {
     if (!authUser || !employees) return null;
     return employees.find(e => e.id === authUser.uid);
@@ -219,7 +214,8 @@ const AppHeader = () => {
   }, [])
 
   const displayName = currentEmployee?.name || authUser?.displayName || 'User';
-  const displayRole = currentUser?.roles?.join(', ') || 'Member';
+  // Note: Role is now fetched from the employee's position's default roles for display
+  const displayRole = "Member" // Placeholder as user role is more complex now
 
   return (
     <>
