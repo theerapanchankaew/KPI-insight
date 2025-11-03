@@ -176,8 +176,13 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   const employeesQuery = useMemoFirebase(() => firestore ? collection(firestore, 'employees') : null, [firestore]);
   const { data: employees, isLoading: isEmployeesLoading } = useCollection<Employee>(employeesQuery);
 
-  const usersQuery = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore]);
-  const { data: users, isLoading: isUsersLoading } = useCollection<User>(usersQuery);
+  const usersQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return collection(firestore, 'users');
+  }, [firestore]);
+  const { data: users, isLoading: isUsersLoading } = useCollection<User>(usersQuery, {
+      disabled: !authUser
+  });
 
   const departmentsQuery = useMemoFirebase(() => firestore ? collection(firestore, 'departments') : null, [firestore]);
   const { data: departments, isLoading: isDepartmentsLoading } = useCollection<Department>(departmentsQuery);
