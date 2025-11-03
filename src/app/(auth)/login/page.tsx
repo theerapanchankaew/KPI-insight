@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Button } from '@/components/ui/button';
@@ -6,10 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth, useFirestore, useUser, useCollection } from '@/firebase';
-import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { ShieldCheck, LogIn, UserPlus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, collection, writeBatch, getDocs, limit, query } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
@@ -124,7 +124,6 @@ const SignUpForm = () => {
     setIsSigningUp(true);
 
     try {
-      // Check if any user exists to determine if this is the first user
       const usersQuery = query(collection(firestore, "users"), limit(1));
       const usersSnapshot = await getDocs(usersQuery);
       const isFirstUser = usersSnapshot.empty;
@@ -137,66 +136,55 @@ const SignUpForm = () => {
       const selectedPosition = positions.find(p => p.id === positionId);
       if (!selectedPosition) throw new Error("Selected position not found.");
       
-      const userRole = isFirstUser ? 'admin' : 'Employee';
-
-      // This part is illustrative. In a real app, you'd call a Cloud Function
-      // to set the custom claim, as it cannot be done securely from the client.
-      // For this environment, we'll proceed assuming a backend mechanism handles this.
-      console.log(`Assigning role '${userRole}' to ${email}. A backend function should set this custom claim.`);
-
-      let menuAccess: { [key: string]: boolean } = {};
       let userRolesArray: string[] = [];
+      let menuAccess: { [key: string]: boolean } = {};
+      let primaryRole = 'Employee';
 
       if (isFirstUser) {
-        // First user is an admin, grant all menu access
-        menuAccess = navItems.reduce((acc, item) => {
-          const key = item.href.replace('/', '');
-          if(key) acc[key] = true;
-          return acc;
-        }, {} as { [key: string]: boolean });
-        
-        const adminRole = roles.find(r => r.code === 'admin');
-        if (adminRole) {
-            userRolesArray = [adminRole.code];
-            // Also merge menu access from the 'admin' role definition if it exists, ensuring full coverage
-            menuAccess = { ...menuAccess, ...(adminRole.menuAccess || {}) };
+        primaryRole = 'Admin';
+        const adminRoleTemplate = roles.find(r => r.code.toLowerCase() === 'admin');
+        if (adminRoleTemplate) {
+            userRolesArray = [adminRoleTemplate.code];
+            menuAccess = adminRoleTemplate.menuAccess || {};
         } else {
-            userRolesArray = ['admin']; // Fallback
+            userRolesArray = ['Admin']; // Fallback
         }
+        // Grant all menu access to first admin user as a safeguard
+        navItems.forEach(item => {
+            const key = item.href.replace('/', '');
+            if(key) menuAccess[key] = true;
+        });
 
       } else {
-        // Subsequent users get roles based on their position's defaults
         const defaultRoleCodes = selectedPosition.defaultRoles || [];
         const defaultRoleTemplates = roles.filter(r => defaultRoleCodes.includes(r.code));
         menuAccess = defaultRoleTemplates.reduce((acc, role) => ({...acc, ...role.menuAccess}), {});
         
-        // Always include the base 'employee' role if not already present
-        userRolesArray = ['employee', ...defaultRoleCodes];
+        userRolesArray = ['Employee', ...defaultRoleCodes];
         userRolesArray = [...new Set(userRolesArray)];
+        primaryRole = selectedPosition.category === 'management' ? 'Manager' : 'Employee';
       }
       
       const batch = writeBatch(firestore);
 
-      // Create 'users' document (Authorization data)
       const userRef = doc(firestore, 'users', user.uid);
       const newUserProfile = {
         id: user.uid,
-        employeeId: user.uid, // Link to the employees collection
+        employeeId: user.uid,
         email: email,
         roles: userRolesArray,
         menuAccess: menuAccess,
       };
       batch.set(userRef, newUserProfile);
 
-      // Create 'employees' document (HR Master data)
       const employeeRef = doc(firestore, 'employees', user.uid);
       const newEmployee = {
         id: user.uid,
         name: name,
         email: email,
-        departmentId: '', // To be assigned by admin
+        departmentId: '', 
         positionId: positionId,
-        managerId: '', // To be assigned by admin
+        managerId: '', 
         level: selectedPosition.level,
         status: 'active',
       };
@@ -206,7 +194,7 @@ const SignUpForm = () => {
       
       toast({
           title: "Account Created",
-          description: `Your account has been created with the role: ${userRole}. Please sign in.`
+          description: `Your account has been created with the role: ${primaryRole}. Please sign in.`
       });
 
     } catch (err: any) {
@@ -306,3 +294,5 @@ export default function LoginPage() {
     </div>
   );
 }
+
+    

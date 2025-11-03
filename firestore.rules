@@ -2,11 +2,6 @@
 /**
  * @file Firestore Security Rules
  * @description This ruleset enforces a role-based access control model for a KPI dashboard application.
- *
- * Key Security Decisions:
- * - Admins are granted universal read/write access to all data for management purposes.
- * - Non-admin access is defined on a per-collection basis, generally allowing reads for most data but restricting writes.
- * - User-specific data (like individual KPIs) has rules to ensure users can only access their own information or information of their direct reports.
  */
 rules_version = '2';
 service cloud.firestore {
@@ -21,7 +16,6 @@ service cloud.firestore {
 
     /**
      * @description Checks if the authenticated user's ID matches the provided userId.
-     * @param {string} userId - The user ID to compare against.
      */
     function isOwner(userId) {
       return request.auth.uid == userId;
@@ -31,29 +25,30 @@ service cloud.firestore {
      * @description Checks if the authenticated user is an Admin by checking the 'role' custom claim.
      */
     function isAdmin() {
+      // This function relies on a custom claim set by a backend process.
+      // The claim is NOT automatically set when a user's role is stored in their /users/ document.
       return isSignedIn() && request.auth.token.role == 'Admin';
     }
     
     /**
-     * @description Checks if the user is a manager or above.
+     * @description Checks if the user has a managerial role via custom claims.
      */
     function isManager() {
-      return isSignedIn() && request.auth.token.role in ['Admin', 'VP', 'AVP', 'Manager'];
+       return isSignedIn() && request.auth.token.role in ['Admin', 'VP', 'AVP', 'Manager'];
     }
     
     /**
      * @description Checks if the user is a direct manager of a given employee.
      */
     function isDirectManagerOf(employeeId) {
-        // Use `exists` to prevent errors on non-existent documents
         return exists(/databases/$(database)/documents/employees/$(employeeId)) &&
                get(/databases/$(database)/documents/employees/$(employeeId)).data.managerId == request.auth.uid;
     }
-    
 
     /**
-     * User Profiles: Only the user can read/write their own profile.
-     * Admins can list and manage all users.
+     * User Profiles: Storing user roles and app-specific data.
+     * - Users can read/write their own profile.
+     * - Admins can read/write any user's profile for management.
      */
     match /users/{userId} {
       allow read, write: if isOwner(userId) || isAdmin();
@@ -61,8 +56,9 @@ service cloud.firestore {
     }
 
     /**
-     * Employees Master Data: Readable by all signed-in users.
-     * Writable only by Admins.
+     * Employees Master Data: Core HR information.
+     * - All authenticated users can read employee data (e.g., to see names, departments).
+     * - Only Admins can modify employee records.
      */
     match /employees/{employeeId} {
       allow read: if isSignedIn();
@@ -70,26 +66,29 @@ service cloud.firestore {
     }
 
     /**
-     * Departments, Positions, Roles: Configuration data readable by all, writable by admins.
+     * Departments, Positions, Roles: Core configuration data.
+     * - Readable by all authenticated users to populate UI selectors and understand structure.
+     * - Writable only by Admins.
      */
     match /departments/{departmentId} {
-      allow list, get: if isSignedIn();
-      allow write: if isAdmin();
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if isAdmin();
     }
     
     match /positions/{positionId} {
-      allow list, get: if isSignedIn();
-      allow write: if isAdmin();
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if isAdmin();
     }
     
     match /roles/{roleId} {
-      allow list, get: if isSignedIn();
-      allow write: if isAdmin();
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if isAdmin();
     }
 
     /**
      * KPI Catalog: The master list of all corporate KPIs.
-     * Readable by all, writable only by admins.
+     * - Readable by all signed-in users.
+     * - Writable only by admins.
      */
     match /kpi_catalog/{kpiId} {
       allow read: if isSignedIn();
@@ -97,8 +96,9 @@ service cloud.firestore {
     }
 
     /**
-     * Cascaded KPIs: KPIs that have been cascaded to departments.
-     * Readable by all, writable by managers/admins.
+     * Cascaded KPIs: Department-level versions of corporate KPIs.
+     * - Readable by all signed-in users.
+     * - Writable by managers and admins.
      */
     match /cascaded_kpis/{cascadedKpiId} {
       allow read: if isSignedIn();
@@ -106,9 +106,9 @@ service cloud.firestore {
     }
 
     /**
-     * Individual KPIs: Assigned to employees.
-     * - Readable by the user, their manager, or an admin.
-     * - Writable by the user (for status changes) or their manager/admin.
+     * Individual KPIs: KPIs assigned to specific employees.
+     * - A user can read any KPI (to see cascaded goals).
+     * - A user can only write to their own KPIs, or managers can write to their reports' KPIs.
      */
     match /individual_kpis/{individualKpiId} {
         allow read: if isSignedIn();
@@ -116,22 +116,21 @@ service cloud.firestore {
     }
 
     /**
-     * KPI Submissions: Data submitted by employees.
-     * - Gettable by the submitter, their manager, or an admin.
-     * - List operations are disallowed for security. App should query by kpiId.
-     * - Writable only by the submitter.
+     * KPI Submissions: Data submitted by employees against their KPIs.
+     * - Users can create submissions.
+     * - Only the submitter, their manager, or an admin can view/update/delete a specific submission.
+     * - LISTING is explicitly disallowed to force targeted queries and prevent data leakage.
      */
     match /kpi_submissions/{submissionId} {
-        allow get: if isAdmin() || isOwner(resource.data.submittedBy) || isDirectManagerOf(resource.data.submittedBy);
+        allow get, update, delete: if isAdmin() || isOwner(resource.data.submittedBy) || isDirectManagerOf(resource.data.submittedBy);
         allow create: if isSignedIn();
-        allow update, delete: if isAdmin() || isDirectManagerOf(resource.data.submittedBy) || isOwner(resource.data.submittedBy);
-        // Explicitly disallow list to force more specific queries
         allow list: if false; 
     }
 
     /**
-     * Monthly KPIs: Monthly breakdown of corporate KPIs.
-     * Readable by all, writable by admins.
+     * Monthly KPIs: Monthly breakdown of corporate KPIs for tracking.
+     * - Readable by all signed-in users.
+     * - Writable only by admins.
      */
     match /monthly_kpis/{monthlyKpiId} {
       allow read: if isSignedIn();
@@ -139,11 +138,15 @@ service cloud.firestore {
     }
 
     /**
-     * Global Settings: Readable by all, writable only by admins.
+     * Global Settings: System-wide configuration.
+     * - Readable by any authenticated user.
+     * - Writable only by Admins.
      */
     match /settings/global {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow get: if isSignedIn();
+      allow list, write: if isAdmin();
     }
   }
 }
+
+    
