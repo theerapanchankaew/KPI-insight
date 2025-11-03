@@ -146,8 +146,28 @@ const SignUpForm = () => {
       // For this environment, we'll proceed assuming a backend mechanism handles this.
       console.log(`Assigning role '${userRole}' to ${email}. A backend function should set this custom claim.`);
 
-      const defaultRoleTemplates = roles.filter(r => selectedPosition.defaultRoles.includes(r.code) || r.code === userRoleCode);
-      const menuAccess = defaultRoleTemplates.reduce((acc, role) => ({...acc, ...role.menuAccess}), {});
+      let menuAccess: { [key: string]: boolean };
+      let userRolesArray = [userRoleCode];
+
+      if (isFirstUser) {
+        // First user is an admin, grant all menu access
+        menuAccess = navItems.reduce((acc, item) => {
+          const key = item.href.replace('/', '');
+          if(key) acc[key] = true;
+          return acc;
+        }, {} as { [key: string]: boolean });
+        
+        const adminRole = roles.find(r => r.code === 'admin');
+        if (adminRole) {
+            userRolesArray = [adminRole.code];
+        }
+
+      } else {
+        // Subsequent users get roles based on their position
+        const defaultRoleTemplates = roles.filter(r => selectedPosition.defaultRoles.includes(r.code) || r.code === 'employee');
+        menuAccess = defaultRoleTemplates.reduce((acc, role) => ({...acc, ...role.menuAccess}), {});
+        userRolesArray = defaultRoleTemplates.map(r => r.code);
+      }
       
       const batch = writeBatch(firestore);
 
@@ -157,7 +177,7 @@ const SignUpForm = () => {
         id: user.uid,
         employeeId: user.uid, // Link to the employees collection
         email: email,
-        roles: [userRoleCode],
+        roles: userRolesArray,
         menuAccess: menuAccess,
       };
       batch.set(userRef, newUserProfile);
@@ -280,3 +300,5 @@ export default function LoginPage() {
     </div>
   );
 }
+
+    
