@@ -225,11 +225,6 @@ const SignUpForm = () => {
 export default function LoginPage() {
   const router = useRouter();
   const { user, isUserLoading } = useUser();
-  const [isClient, setIsClient] = useState(false);
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
 
   useEffect(() => {
     if (!isUserLoading && user) {
@@ -237,37 +232,35 @@ export default function LoginPage() {
     }
   }, [user, isUserLoading, router]);
   
-  if (!isClient || isUserLoading || user) {
-     return (
-      <div className="flex h-screen w-full items-center justify-center bg-background">
-        <div className="flex flex-col items-center space-y-4">
-           <ShieldCheck className="h-12 w-12 text-primary animate-pulse" />
-           <p className="text-muted-foreground">Loading authentication state...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex h-screen w-full items-center justify-center bg-gray-100 dark:bg-gray-900">
       <Card className="w-full max-w-md shadow-2xl">
-        <CardHeader className="text-center">
-           <ShieldCheck className="mx-auto h-12 w-12 text-primary" />
-          <CardTitle className="mt-4 text-2xl">KPI Insights Login</CardTitle>
-          <CardDescription>Welcome! Please sign in or create an account.</CardDescription>
-        </CardHeader>
-        <Tabs defaultValue="signin" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+        {isUserLoading || user ? (
+           <CardContent className="flex h-[550px] flex-col items-center justify-center space-y-4">
+             <ShieldCheck className="h-12 w-12 text-primary animate-pulse" />
+             <p className="text-muted-foreground">Loading authentication state...</p>
+           </CardContent>
+        ) : (
+          <>
+            <CardHeader className="text-center">
+              <ShieldCheck className="mx-auto h-12 w-12 text-primary" />
+              <CardTitle className="mt-4 text-2xl">KPI Insights Login</CardTitle>
+              <CardDescription>Welcome! Please sign in or create an account.</CardDescription>
+            </CardHeader>
+            <Tabs defaultValue="signin" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="signin">Sign In</TabsTrigger>
                 <TabsTrigger value="signup">Sign Up</TabsTrigger>
-            </TabsList>
-            <TabsContent value="signin">
+              </TabsList>
+              <TabsContent value="signin">
                 <SignInForm />
-            </TabsContent>
-            <TabsContent value="signup">
+              </TabsContent>
+              <TabsContent value="signup">
                 <SignUpForm />
-            </TabsContent>
-        </Tabs>
+              </TabsContent>
+            </Tabs>
+          </>
+        )}
       </Card>
     </div>
   );
