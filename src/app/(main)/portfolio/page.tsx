@@ -678,23 +678,23 @@ const KpiDetailDialog = ({
         </ScrollArea>
 
         <DialogFooter className="flex-col sm:flex-row gap-2 pt-4">
-          <DialogClose asChild>
-            <Button variant="outline" className="w-full sm:w-auto">Close</Button>
-          </DialogClose>
-          <div className="flex w-full sm:w-auto gap-2">
-            {canAcknowledge && (
-                <Button onClick={handleAcknowledge} className="w-full bg-blue-600 hover:bg-blue-700">
-                    <Award className="mr-2 h-4 w-4" />
-                    Acknowledge & Start KPI
-                </Button>
-            )}
-            {canAgree && (
-                <Button onClick={handleAgree} className={cn("w-full", isRejected ? "bg-orange-500 hover:bg-orange-600" : "bg-green-600 hover:bg-green-700")}>
-                    {isRejected ? <RefreshCw className="mr-2 h-4 w-4" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                    {isRejected ? "Resubmit to Manager" : "Agree & Submit to Manager"}
-                </Button>
-            )}
-          </div>
+            <DialogClose asChild>
+                <Button variant="outline" className="w-full sm:w-auto">Close</Button>
+            </DialogClose>
+            <div className="flex w-full sm:w-auto gap-2">
+                {canAcknowledge && (
+                    <Button onClick={handleAcknowledge} className="w-full bg-blue-600 hover:bg-blue-700">
+                        <Award className="mr-2 h-4 w-4" />
+                        Acknowledge & Start KPI
+                    </Button>
+                )}
+                {canAgree && (
+                    <Button onClick={handleAgree} className={cn("w-full", isRejected ? "bg-orange-500 hover:bg-orange-600" : "bg-green-600 hover:bg-green-700")}>
+                        {isRejected ? <RefreshCw className="mr-2 h-4 w-4" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                        {isRejected ? "Resubmit to Manager" : "Agree & Submit to Manager"}
+                    </Button>
+                )}
+            </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -932,6 +932,30 @@ export default function MyPortfolioPage() {
       return map;
   }, [submissions]);
 
+  const groupedByDepartment = useMemo(() => {
+    if (!teamMembers || !kpis) return {};
+
+    const departmentMap: { [key: string]: { employee: Employee, kpis: WithId<IndividualKpi>[] }[] } = {};
+
+    teamMembers.forEach(employee => {
+      const employeeKpis = kpis.filter(k => k.employeeId === employee.id);
+      const department = employee.department || 'Unassigned';
+      if (!departmentMap[department]) {
+        departmentMap[department] = [];
+      }
+      departmentMap[department].push({ employee, kpis: employeeKpis });
+    });
+    
+    // Sort employees within each department
+    for (const dept in departmentMap) {
+        departmentMap[dept].sort((a, b) => a.employee.name.localeCompare(b.employee.name));
+    }
+
+    return departmentMap;
+  }, [teamMembers, kpis]);
+
+  const sortedDepartments = useMemo(() => Object.keys(groupedByDepartment).sort(), [groupedByDepartment]);
+
   // ==================== HANDLERS ====================
 
   const handleCreateCommittedKpi = (kpiData: Omit<CommittedKpi, 'id' | 'status' | 'kpiId'>) => {
@@ -1065,68 +1089,74 @@ export default function MyPortfolioPage() {
       </div>
       
       <div className="space-y-8">
-        {(teamMembers || []).map(employee => {
-            const employeeKpis = kpis?.filter(k => k.employeeId === employee.id) || [];
-            const totalWeight = employeeKpis.reduce((sum, kpi) => sum + kpi.weight, 0);
+        {sortedDepartments.map(department => (
+          <div key={department}>
+            <h4 className="text-lg font-semibold text-gray-800 mb-4 pb-2 border-b-2">{department}</h4>
+            <div className="space-y-4">
+            {groupedByDepartment[department].map(({ employee, kpis: employeeKpis }) => {
+                const totalWeight = employeeKpis.reduce((sum, kpi) => sum + kpi.weight, 0);
 
-            if (teamMembers.length > 1 && employeeKpis.length === 0 && !isManagerOrAdmin) {
-              return null; // Don't show employees with no KPIs for a cleaner view unless it's a manager looking
-            }
+                if (teamMembers.length > 1 && employeeKpis.length === 0 && !isManagerOrAdmin) {
+                  return null;
+                }
 
-            return (
-              <Collapsible key={employee.id} defaultOpen className="border rounded-lg">
-                  <CollapsibleTrigger asChild>
-                      <div className="flex items-center justify-between p-4 cursor-pointer bg-gray-50 rounded-t-lg">
-                          <div className="flex items-center gap-3">
-                              <Avatar>
-                                  <AvatarFallback>{employee.name.charAt(0)}</AvatarFallback>
-                              </Avatar>
-                              <div>
-                                  <p className="font-semibold">{employee.name}</p>
-                                  <p className="text-sm text-muted-foreground">{employee.position}</p>
+                return (
+                  <Collapsible key={employee.id} defaultOpen={isManagerOrAdmin ? employeeKpis.length > 0 : true} className="border rounded-lg">
+                      <CollapsibleTrigger asChild>
+                          <div className="flex items-center justify-between p-4 cursor-pointer bg-gray-50 rounded-t-lg">
+                              <div className="flex items-center gap-3">
+                                  <Avatar>
+                                      <AvatarFallback>{employee.name.charAt(0)}</AvatarFallback>
+                                  </Avatar>
+                                  <div>
+                                      <p className="font-semibold">{employee.name}</p>
+                                      <p className="text-sm text-muted-foreground">{employee.position}</p>
+                                  </div>
+                              </div>
+                              <div className="flex items-center gap-4">
+                                  <div className="text-right hidden sm:block">
+                                      <p className="font-semibold">{totalWeight}%</p>
+                                      <p className="text-xs text-muted-foreground">Total Weight</p>
+                                  </div>
+                                   <div className="text-right hidden sm:block">
+                                      <p className="font-semibold">{employeeKpis.length}</p>
+                                      <p className="text-xs text-muted-foreground">Total KPIs</p>                              </div>
+                                  <Button variant="ghost" size="sm" className="shrink-0">
+                                      <ChevronsUpDown className="h-4 w-4" />
+                                  </Button>
                               </div>
                           </div>
-                          <div className="flex items-center gap-4">
-                              <div className="text-right hidden sm:block">
-                                  <p className="font-semibold">{totalWeight}%</p>
-                                  <p className="text-xs text-muted-foreground">Total Weight</p>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="p-4">
+                          {employeeKpis.length > 0 ? (
+                              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                                  {employeeKpis.map(kpi => (
+                                      <KpiProgressCard
+                                          key={kpi.id}
+                                          kpi={kpi}
+                                          submission={submissionsMap.get(kpi.id)}
+                                          onViewDetails={handleViewDetails}
+                                          onViewMonthlyReport={handleViewMonthlyReport}
+                                          onEdit={handleEdit}
+                                          onDelete={handleDeleteKpi}
+                                          isManager={isManagerOrAdmin || false}
+                                      />
+                                  ))}
                               </div>
-                               <div className="text-right hidden sm:block">
-                                  <p className="font-semibold">{employeeKpis.length}</p>
-                                  <p className="text-xs text-muted-foreground">Total KPIs</p>                              </div>
-                              <Button variant="ghost" size="sm" className="shrink-0">
-                                  <ChevronsUpDown className="h-4 w-4" />
-                              </Button>
-                          </div>
-                      </div>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="p-4">
-                      {employeeKpis.length > 0 ? (
-                          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                              {employeeKpis.map(kpi => (
-                                  <KpiProgressCard
-                                      key={kpi.id}
-                                      kpi={kpi}
-                                      submission={submissionsMap.get(kpi.id)}
-                                      onViewDetails={handleViewDetails}
-                                      onViewMonthlyReport={handleViewMonthlyReport}
-                                      onEdit={handleEdit}
-                                      onDelete={handleDeleteKpi}
-                                      isManager={isManagerOrAdmin || false}
-                                  />
-                              ))}
-                          </div>
-                      ) : (
-                         <div className="text-center py-10">
-                            <Target className="h-12 w-12 text-gray-300 mx-auto mb-4"/>
-                            <h4 className="font-semibold">{isManagerOrAdmin ? 'No KPIs assigned to this employee' : 'No KPIs assigned yet'}</h4>
-                            <p className="text-sm text-muted-foreground">{isManagerOrAdmin ? 'Use the "Cascade" page to assign KPIs.' : 'Your manager will assign KPIs to you soon.'}</p>
-                         </div>
-                      )}
-                  </CollapsibleContent>
-              </Collapsible>
-            )
-        })}
+                          ) : (
+                             <div className="text-center py-10">
+                                <Target className="h-12 w-12 text-gray-300 mx-auto mb-4"/>
+                                <h4 className="font-semibold">{isManagerOrAdmin ? 'No KPIs assigned to this employee' : 'No KPIs assigned yet'}</h4>
+                                <p className="text-sm text-muted-foreground">{isManagerOrAdmin ? 'Use the "Cascade" page to assign KPIs.' : 'Your manager will assign KPIs to you soon.'}</p>
+                             </div>
+                          )}
+                      </CollapsibleContent>
+                  </Collapsible>
+                )
+            })}
+            </div>
+          </div>
+        ))}
       </div>
       
       <CreateCommittedKpiDialog 
@@ -1174,5 +1204,3 @@ export default function MyPortfolioPage() {
     </div>
   );
 }
-
-    
