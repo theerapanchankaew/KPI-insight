@@ -20,41 +20,10 @@ import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, WithId }
 import { collection, doc, query, where, limit, getDocs, serverTimestamp } from 'firebase/firestore';
 import { addDocumentNonBlocking, deleteDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { Skeleton } from '@/components/ui/skeleton';
-
-type Role = 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee';
-
-export interface Employee {
-  id: string;
-  name: string;
-  department: string;
-  position: string;
-  manager: string;
-}
-
-export interface AppUser {
-  id: string;
-  email?: string;
-  role: Role;
-  menuAccess: { [key: string]: boolean };
-}
-interface IndividualKpiBase {
-    employeeId: string;
-    kpiId: string;
-    kpiMeasure: string;
-    weight: number;
-    status: 'Draft' | 'Agreed' | 'In-Progress' | 'Manager Review' | 'Upper Manager Approval' | 'Employee Acknowledged' | 'Closed' | 'Rejected';
-    notes?: string;
-}
-interface AssignedCascadedKpi extends IndividualKpiBase { type: 'cascaded'; target: string; }
-interface CommittedKpi extends IndividualKpiBase { type: 'committed'; task: string; targets: { [key: string]: string }; }
-type IndividualKpi = AssignedCascadedKpi | CommittedKpi;
+import type { Employee, AppUser, IndividualKpi } from '@/context/KpiDataContext';
 
 
-// Represents the merged data from employees and users collections
-type ManagedUser = Employee & Partial<AppUser>;
-
-
-const defaultPermissions: { [key in Role]: { [key: string]: boolean } } = {
+const defaultPermissions: { [key in AppUser['role']]: { [key: string]: boolean } } = {
   Admin: navItems.reduce((acc, item) => ({ ...acc, [item.href]: true }), {}),
   VP: {
     '/dashboard': true,
@@ -101,6 +70,10 @@ const defaultPermissions: { [key in Role]: { [key: string]: boolean } } = {
     '/settings': false,
   },
 };
+
+// Represents the merged data from employees and users collections
+type ManagedUser = Employee & Partial<AppUser>;
+
 
 const AddUserDialog = ({ isOpen, onOpenChange, onAddUser }: { isOpen: boolean; onOpenChange: (isOpen: boolean) => void; onAddUser: (user: Omit<Employee, 'id'>) => void }) => {
     const [newUser, setNewUser] = useState({ name: '', department: '', position: '', manager: '' });
@@ -212,7 +185,7 @@ export default function UserManagementPage() {
 
   }, [employeesData, usersData, isAdmin, isEmployeesLoading, isUsersLoading]);
   
-  const handleRoleChange = (userId: string, role: Role) => {
+  const handleRoleChange = (userId: string, role: AppUser['role']) => {
     setManagedUsers(prev => prev.map(user => 
       user.id === userId 
       ? { ...user, role, menuAccess: defaultPermissions[role] }
@@ -413,7 +386,7 @@ export default function UserManagementPage() {
         <TableCell>
           <Select
             value={employee.role || 'Employee'}
-            onValueChange={(role: Role) => handleRoleChange(employee.id, role)}
+            onValueChange={(role: AppUser['role']) => handleRoleChange(employee.id, role)}
           >
             <SelectTrigger className="w-full">
               <SelectValue />

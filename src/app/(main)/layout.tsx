@@ -33,7 +33,7 @@ import { Label } from '@/components/ui/label';
 import { updateProfile } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import type { Employee } from '@/context/KpiDataContext';
+import type { Employee, AppUser } from '@/context/KpiDataContext';
 
 
 interface AppLayoutContextType {
@@ -214,7 +214,7 @@ const AppHeader = () => {
     return doc(firestore, 'employees', user.uid);
   }, [user, firestore]);
 
-  const { data: userProfile } = useDoc(userProfileRef);
+  const { data: userProfile } = useDoc<AppUser>(userProfileRef);
   const { data: employeeProfile } = useDoc<Employee>(employeeProfileRef);
 
 

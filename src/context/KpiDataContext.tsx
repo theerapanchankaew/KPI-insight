@@ -24,7 +24,13 @@ export interface Employee {
   department: string;
   position: string;
   manager: string;
-  userId?: string; // Link to auth user
+}
+
+export interface AppUser {
+  id: string;
+  email?: string;
+  role: 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee';
+  menuAccess: { [key: string]: boolean };
 }
 
 export interface AppSettings {
@@ -67,9 +73,44 @@ export interface MonthlyKpi {
   createdBy: string;
 }
 
-interface IndividualKpi {
-    status: 'Draft' | 'Agreed' | 'In-Progress' | 'Manager Review' | 'Upper Manager Approval' | 'Employee Acknowledged' | 'Closed' | 'Rejected';
+interface IndividualKpiBase {
+  employeeId: string;
+  employeeName: string;
+  department: string;
+  kpiId: string;
+  kpiMeasure: string;
+  weight: number;
+  status: 'Draft' | 'Agreed' | 'In-Progress' | 'Manager Review' | 'Upper Manager Approval' | 'Employee Acknowledged' | 'Closed' | 'Rejected';
+  notes?: string; // Manager's initial notes
+  employeeNotes?: string;
+  managerNotes?: string;
+  rejectionReason?: string;
+  agreedAt?: any;
+  reviewedAt?: any;
+  acknowledgedAt?: any;
 }
+
+interface AssignedCascadedKpi extends IndividualKpiBase {
+  type: 'cascaded';
+  target: string;
+  unit: string;
+  corporateKpiId: string;
+}
+
+interface CommittedKpi extends IndividualKpiBase {
+  type: 'committed';
+  task: string;
+  targets: {
+    level1: string;
+    level2: string;
+    level3: string;
+    level4: string;
+    level5: string;
+  };
+}
+
+export type IndividualKpi = (AssignedCascadedKpi | CommittedKpi);
+
 
 interface KpiSubmission {
     status: 'Manager Review' | 'Upper Manager Approval' | 'Closed' | 'Rejected';
@@ -218,5 +259,3 @@ export const useKpiData = () => {
   }
   return context;
 };
-
-    
