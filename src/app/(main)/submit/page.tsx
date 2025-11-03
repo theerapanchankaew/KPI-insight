@@ -391,7 +391,7 @@ export default function SubmitPage() {
   const { user, isUserLoading: isAuthLoading } = useUser();
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { employees, isEmployeesLoading, kpiData: kpiCatalog, departments } = useKpiData();
+  const { employees, isEmployeesLoading, kpiData: kpiCatalog, departments, individualKpis: allKpis, isIndividualKpisLoading } = useKpiData();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isViewCommitmentOpen, setViewCommitmentOpen] = useState(false);
@@ -438,42 +438,33 @@ export default function SubmitPage() {
   useEffect(() => {
     setPageTitle('Submit KPI');
   }, [setPageTitle]);
-
   
-  const kpisQuery = useMemoFirebase(() => {
-    if (!firestore || isCheckingAdmin) return null;
-    
-    const baseQuery = collection(firestore, 'individual_kpis');
-    
-    if (isManager) {
-      return query(baseQuery, where('status', '!=', 'Closed'));
-    } else if (user) {
-      return query(baseQuery, 
-        where('employeeId', '==', user.uid), 
-        where('status', 'in', ['Draft', 'In-Progress', 'Rejected', 'Agreed', 'Upper Manager Approval'])
+  const kpisForUser = useMemo(() => {
+    if (!allKpis) return [];
+    if (isManager) return allKpis.filter(k => k.status !== 'Closed');
+    if (user) {
+      return allKpis.filter(k => 
+        k.employeeId === user.uid && 
+        ['Draft', 'In-Progress', 'Rejected', 'Agreed', 'Upper Manager Approval'].includes(k.status)
       );
     }
-    return null;
-  }, [firestore, user, isCheckingAdmin, isManager]);
-
-  const { data: allKpis, isLoading: isKpisLoading } = useCollection<WithId<IndividualKpi>>(kpisQuery, { disabled: isCheckingAdmin });
+    return [];
+  }, [allKpis, user, isManager]);
 
   const [submissionStatusMap, setSubmissionStatusMap] = useState<Map<string, KpiSubmission['status']>>(new Map());
   const [isSubmissionsLoading, setIsSubmissionsLoading] = useState(true);
   
   useEffect(() => {
-    if (!allKpis || allKpis.length === 0 || !firestore) {
+    if (!kpisForUser || kpisForUser.length === 0 || !firestore) {
         setIsSubmissionsLoading(false);
         return;
     };
     
     const fetchSubmissions = async () => {
         setIsSubmissionsLoading(true);
-        const kpiIds = allKpis.map(kpi => kpi.id);
+        const kpiIds = kpisForUser.map(kpi => kpi.id);
         const newMap = new Map<string, KpiSubmission['status']>();
 
-        // Firestore 'in' queries are limited to 30 elements.
-        // We need to chunk the kpiIds array.
         const chunkSize = 30;
         for (let i = 0; i < kpiIds.length; i += chunkSize) {
             const chunk = kpiIds.slice(i, i + chunkSize);
@@ -482,7 +473,6 @@ export default function SubmitPage() {
                 const querySnapshot = await getDocs(submissionsQuery);
                 querySnapshot.forEach((doc) => {
                     const submission = doc.data() as KpiSubmission;
-                    // Get the latest status for each KPI
                     if (!newMap.has(submission.kpiId) || doc.get('submissionDate') > (newMap.get(submission.kpiId) as any)) {
                          newMap.set(submission.kpiId, submission.status);
                     }
@@ -494,7 +484,7 @@ export default function SubmitPage() {
     };
 
     fetchSubmissions();
-  }, [allKpis, firestore]);
+  }, [kpisForUser, firestore]);
   
   const departmentOptions = useMemo(() => {
     if (!departments) return [];
@@ -508,8 +498,8 @@ export default function SubmitPage() {
   
 
   const filteredKpis = useMemo(() => {
-    if (!allKpis) return [];
-    return allKpis.filter(kpi => {
+    if (!kpisForUser) return [];
+    return kpisForUser.filter(kpi => {
         const department = departments?.find(d => d.id === kpi.department);
         const departmentName = department ? department.name : kpi.department;
         const departmentMatch = departmentFilter === 'all' || departmentName === departmentFilter;
@@ -522,7 +512,7 @@ export default function SubmitPage() {
 
         return departmentMatch && categoryMatch && employeeMatch;
     });
-  }, [allKpis, departmentFilter, categoryFilter, employeeFilter, kpiCatalog, departments]);
+  }, [kpisForUser, departmentFilter, categoryFilter, employeeFilter, kpiCatalog, departments]);
 
   const kpisByDepartment = useMemo(() => {
       if (!filteredKpis) return {};
@@ -538,19 +528,19 @@ export default function SubmitPage() {
 
 
   const summaryStats = useMemo(() => {
-      if(!allKpis) return { totalInProgress: 0, needsSubmission: 0, submitted: 0 };
+      if(!kpisForUser) return { totalInProgress: 0, needsSubmission: 0, submitted: 0 };
       const submittedIds = new Set(submissionStatusMap.keys());
-      const inProgressKpis = allKpis.filter(k => k.status === 'In-Progress');
+      const inProgressKpis = kpisForUser.filter(k => k.status === 'In-Progress');
       const needsSubmissionCount = inProgressKpis.filter(k => !submittedIds.has(k.id) || submissionStatusMap.get(k.id) === 'Rejected').length;
       
       const submittedThisPeriod = Array.from(submissionStatusMap.entries()).filter(([id, status]) => status !== 'Rejected').length;
 
       return {
-        totalInProgress: allKpis.filter(k=> k.status !== 'Closed').length,
+        totalInProgress: kpisForUser.filter(k=> k.status !== 'Closed').length,
         needsSubmission: needsSubmissionCount,
         submitted: submittedThisPeriod,
       };
-  }, [allKpis, submissionStatusMap]);
+  }, [kpisForUser, submissionStatusMap]);
   
   const handleOpenSubmitDialog = (kpi: WithId<IndividualKpi>) => {
     setSelectedKpi(kpi);
@@ -594,7 +584,7 @@ export default function SubmitPage() {
     });
   };
 
-  const isLoading = isAuthLoading || isKpisLoading || isSubmissionsLoading || isEmployeesLoading || isCheckingAdmin;
+  const isLoading = isAuthLoading || isIndividualKpisLoading || isSubmissionsLoading || isEmployeesLoading || isCheckingAdmin;
 
   const statCards = [
     { label: 'Awaiting Action', value: summaryStats.totalInProgress, icon: Briefcase, color: 'text-primary' },

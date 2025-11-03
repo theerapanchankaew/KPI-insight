@@ -122,7 +122,7 @@ interface Employee {
     name: string;
     position: string;
     department: string;
-    manager: string;
+    managerId: string;
 }
 
 interface TreeNode extends Employee {
@@ -957,7 +957,7 @@ export default function MyPortfolioPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
-  const { employees: allEmployees, isEmployeesLoading, monthlyKpisData, isMonthlyKpisLoading } = useKpiData();
+  const { employees: allEmployees, isEmployeesLoading, monthlyKpisData, isMonthlyKpisLoading, individualKpis: allKpis, isIndividualKpisLoading } = useKpiData();
 
   const [selectedKpi, setSelectedKpi] = useState<WithId<IndividualKpi> | null>(null);
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
@@ -976,12 +976,6 @@ export default function MyPortfolioPage() {
   useEffect(() => {
     setPageTitle("My Portfolio");
   }, [setPageTitle]);
-  
-  const kpisQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
-    return collection(firestore, 'individual_kpis');
-  }, [firestore]);
-  const { data: kpis, isLoading: isKpisLoading } = useCollection<WithId<IndividualKpi>>(kpisQuery);
   
   const submissionsQuery = useMemoFirebase(() => {
     if (!firestore) return null;
@@ -1157,7 +1151,7 @@ export default function MyPortfolioPage() {
 
   // ==================== RENDER ====================
 
-  const isLoading = isUserLoading || isKpisLoading || isProfileLoading || isEmployeesLoading || isSubmissionsLoading || isMonthlyKpisLoading;
+  const isLoading = isUserLoading || isIndividualKpisLoading || isProfileLoading || isEmployeesLoading || isSubmissionsLoading || isMonthlyKpisLoading;
 
   if (isLoading) {
     return (
@@ -1206,7 +1200,7 @@ export default function MyPortfolioPage() {
       <div className="space-y-4">
         {organizationalTree && organizationalTree.length > 0 ? (
            organizationalTree.map(node => (
-                <EmployeeNode key={node.id} node={node} allKpis={kpis || []} submissionsMap={submissionsMap} handlers={handlers} />
+                <EmployeeNode key={node.id} node={node} allKpis={allKpis || []} submissionsMap={submissionsMap} handlers={handlers} />
             ))
         ) : (
             <Card>

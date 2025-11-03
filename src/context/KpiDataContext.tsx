@@ -6,6 +6,7 @@ import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@
 import { collection, doc, query, where } from 'firebase/firestore';
 import { WithId } from '@/firebase/firestore/use-collection';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { getIdTokenResult } from 'firebase/auth';
 
 // ==================== NORMALIZED ENTITY TYPES ====================
 
@@ -154,6 +155,9 @@ interface KpiDataContextType {
   isCascadedKpisLoading: boolean;
   monthlyKpisData: WithId<MonthlyKpi>[] | null;
   isMonthlyKpisLoading: boolean;
+  individualKpis: WithId<IndividualKpi>[] | null;
+  isIndividualKpisLoading: boolean;
+
 
   settings: AppSettings;
   setSettings: (settings: Partial<AppSettings>) => void;
@@ -168,6 +172,18 @@ const KpiDataContext = createContext<KpiDataContextType | undefined>(undefined);
 
 export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   const firestore = useFirestore();
+  const { user } = useUser();
+  const [isManager, setIsManager] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      getIdTokenResult(user)
+        .then((idTokenResult) => {
+          const userRole = idTokenResult.claims.role as string;
+          setIsManager(['Admin', 'VP', 'AVP', 'Manager'].includes(userRole));
+        })
+    }
+  }, [user]);
 
   // Master Data Queries
   const employeesQuery = useMemoFirebase(() => firestore ? collection(firestore, 'employees') : null, [firestore]);
@@ -197,6 +213,17 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
     return query(collection(firestore, 'monthly_kpis'), where('year', 'in', [fiscalYearStartYear, fiscalYearStartYear + 1]));
   }, [firestore]);
   const { data: monthlyKpisData, isLoading: isMonthlyKpisLoading } = useCollection<MonthlyKpi>(monthlyKpisQuery);
+
+  const individualKpisQuery = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    const baseQuery = collection(firestore, 'individual_kpis');
+    if (isManager) {
+        return baseQuery; // Managers can see all for filtering
+    }
+    return query(baseQuery, where('employeeId', '==', user.uid));
+  }, [firestore, user, isManager]);
+
+  const { data: individualKpis, isLoading: isIndividualKpisLoading } = useCollection<WithId<IndividualKpi>>(individualKpisQuery);
 
   // Settings
   const settingsDocRef = useMemoFirebase(() => firestore ? doc(firestore, 'settings', 'global') : null, [firestore]);
@@ -230,6 +257,7 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
     kpiData, isKpiDataLoading,
     cascadedKpis, isCascadedKpisLoading,
     monthlyKpisData, isMonthlyKpisLoading,
+    individualKpis, isIndividualKpisLoading,
     
     settings: localSettings,
     setSettings,

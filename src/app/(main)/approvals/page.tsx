@@ -304,7 +304,9 @@ export default function ActionCenterPage() {
   
   const {
       employees: employeesData, 
-      isEmployeesLoading
+      isEmployeesLoading,
+      individualKpis,
+      isIndividualKpisLoading,
   } = useKpiData();
 
   const userProfileRef = useMemoFirebase(() => {
@@ -324,8 +326,7 @@ export default function ActionCenterPage() {
 
 
   const directReportsQuery = useMemoFirebase(() => {
-    if (!firestore || !currentEmployeeRecord) return null;
-    // Find employees who report directly to the logged-in user
+    if (!firestore || !currentEmployeeRecord?.id) return null;
     return query(collection(firestore, 'employees'), where('managerId', '==', currentEmployeeRecord.id));
   }, [firestore, currentEmployeeRecord]);
 
@@ -334,26 +335,19 @@ export default function ActionCenterPage() {
   const reportIds = useMemo(() => directReports?.map(r => r.id) || [], [directReports]);
 
   // KPIs submitted by direct reports for Manager Review
-  const pendingCommitmentRequestsQuery = useMemoFirebase(() => {
-    if (!firestore || reportIds.length === 0) return null;
-    return query(
-        collection(firestore, 'individual_kpis'), 
-        where('employeeId', 'in', reportIds),
-        where('status', '==', 'Manager Review')
-    );
-  }, [firestore, reportIds]);
-  const { data: pendingCommitmentRequests, isLoading: isPendingCommitmentRequestsLoading } = useCollection<IndividualKpi>(pendingCommitmentRequestsQuery, { disabled: reportIds.length === 0 });
+  const pendingCommitmentRequests = useMemo(() => {
+    if (!individualKpis || reportIds.length === 0) return [];
+    return individualKpis.filter(kpi => reportIds.includes(kpi.employeeId) && kpi.status === 'Manager Review');
+  }, [individualKpis, reportIds]);
+  const isPendingCommitmentRequestsLoading = isIndividualKpisLoading;
+
 
   // KPIs submitted by this manager's reports, that have been agreed by the manager, now needing upper approval
-  const pendingUpperManagerApprovalsQuery = useMemoFirebase(() => {
-      if (!firestore || !isUpperManager || reportIds.length === 0) return null;
-      return query(
-          collection(firestore, 'individual_kpis'),
-          where('employeeId', 'in', reportIds),
-          where('status', '==', 'Upper Manager Approval')
-      );
-  }, [firestore, isUpperManager, reportIds]);
-  const { data: pendingUpperManagerApprovals, isLoading: isPendingUpperManagerApprovalsLoading } = useCollection<IndividualKpi>(pendingUpperManagerApprovalsQuery, { disabled: !isUpperManager || reportIds.length === 0 });
+  const pendingUpperManagerApprovals = useMemo(() => {
+      if (!individualKpis || !isUpperManager || reportIds.length === 0) return [];
+      return individualKpis.filter(kpi => reportIds.includes(kpi.employeeId) && kpi.status === 'Upper Manager Approval');
+  }, [individualKpis, isUpperManager, reportIds]);
+  const isPendingUpperManagerApprovalsLoading = isIndividualKpisLoading;
 
 
   // Data Submissions from direct reports
