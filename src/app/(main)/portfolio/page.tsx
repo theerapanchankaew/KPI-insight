@@ -36,7 +36,8 @@ import {
   Edit,
   PlusCircle,
   BadgeCheck,
-  Trash2
+  Trash2,
+  Users
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useUser, useCollection, useMemoFirebase, WithId, useDoc, addDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
@@ -121,6 +122,11 @@ interface Employee {
     name: string;
     position: string;
     department: string;
+    manager: string;
+}
+
+interface TreeNode extends Employee {
+  reports: TreeNode[];
 }
 
 // ==================== UTILITY FUNCTIONS ====================
@@ -852,6 +858,96 @@ const KpiProgressCard = ({
   );
 };
 
+// ==================== HIERARCHICAL COMPONENTS ====================
+
+const EmployeePortfolio = ({ employee, kpis, submissionsMap, handlers }: {
+    employee: Employee;
+    kpis: WithId<IndividualKpi>[];
+    submissionsMap: Map<string, WithId<KpiSubmission>>;
+    handlers: any;
+}) => {
+    const totalWeight = kpis.reduce((sum, kpi) => sum + kpi.weight, 0);
+
+    return (
+        <Collapsible defaultOpen={kpis.length > 0} className="border rounded-lg">
+            <CollapsibleTrigger asChild>
+                <div className="flex items-center justify-between p-4 cursor-pointer bg-gray-50 hover:bg-gray-100 rounded-t-lg">
+                    <div className="flex items-center gap-3">
+                        <Avatar>
+                            <AvatarFallback>{employee.name.charAt(0)}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                            <p className="font-semibold">{employee.name}</p>
+                            <p className="text-sm text-muted-foreground">{employee.position}</p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <div className="text-right hidden sm:block">
+                            <p className="font-semibold">{totalWeight}%</p>
+                            <p className="text-xs text-muted-foreground">Total Weight</p>
+                        </div>
+                        <div className="text-right hidden sm:block">
+                            <p className="font-semibold">{kpis.length}</p>
+                            <p className="text-xs text-muted-foreground">Total KPIs</p>
+                        </div>
+                        <Button variant="ghost" size="sm" className="shrink-0">
+                            <ChevronsUpDown className="h-4 w-4" />
+                        </Button>
+                    </div>
+                </div>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="p-4">
+                {kpis.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                        {kpis.map(kpi => (
+                            <KpiProgressCard
+                                key={kpi.id}
+                                kpi={kpi}
+                                submission={submissionsMap.get(kpi.id)}
+                                onViewDetails={handlers.onViewDetails}
+                                onViewMonthlyReport={handlers.onViewMonthlyReport}
+                                onEdit={handlers.onEdit}
+                                onDelete={handlers.onDelete}
+                                isManager={handlers.isManager}
+                            />
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-center py-10">
+                        <Target className="h-12 w-12 text-gray-300 mx-auto mb-4"/>
+                        <h4 className="font-semibold">No KPIs assigned</h4>
+                        <p className="text-sm text-muted-foreground">This employee does not have any KPIs assigned yet.</p>
+                    </div>
+                )}
+            </CollapsibleContent>
+        </Collapsible>
+    );
+};
+
+const EmployeeNode = ({ node, allKpis, submissionsMap, handlers, level = 0 }: {
+    node: TreeNode;
+    allKpis: WithId<IndividualKpi>[];
+    submissionsMap: Map<string, WithId<KpiSubmission>>;
+    handlers: any;
+    level?: number;
+}) => {
+    const employeeKpis = allKpis.filter(kpi => kpi.employeeId === node.id);
+
+    return (
+        <div style={{ marginLeft: `${level * 20}px` }} className={cn("space-y-4", level > 0 && "mt-4")}>
+            <EmployeePortfolio employee={node} kpis={employeeKpis} submissionsMap={submissionsMap} handlers={handlers} />
+            
+            {node.reports && node.reports.length > 0 && (
+                <div className="space-y-4">
+                    {node.reports.map(report => (
+                        <EmployeeNode key={report.id} node={report} allKpis={allKpis} submissionsMap={submissionsMap} handlers={handlers} level={level + 1} />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
 
 // ==================== MAIN COMPONENT ====================
 
@@ -879,45 +975,17 @@ export default function MyPortfolioPage() {
   useEffect(() => {
     setPageTitle("My Portfolio");
   }, [setPageTitle]);
-
-  const teamMembers = useMemo(() => {
-    if (!allEmployees || !userProfile || !user) return [];
-    if (isManagerOrAdmin) {
-        if (userProfile.role === 'Admin' || userProfile.role === 'VP') {
-            return allEmployees; 
-        }
-        return allEmployees.filter(emp => emp.department === userProfile.department);
-    }
-    return allEmployees.filter(emp => emp.id === user.uid);
-  }, [isManagerOrAdmin, allEmployees, userProfile, user]);
-
   
-  const kpiQueryIds = useMemo(() => {
-    if (teamMembers.length === 0) return null;
-    const ids = teamMembers.map(tm => tm.id);
-    return ids.length > 0 ? ids.slice(0, 30) : null; // Firestore 'in' query limit is 30
-  }, [teamMembers]);
-
-
   const kpisQuery = useMemoFirebase(() => {
-    if (!firestore || !kpiQueryIds) return null;
-    // Show all KPIs for the user/team regardless of status to give a full picture.
-    return query(collection(firestore, 'individual_kpis'), where('employeeId', 'in', kpiQueryIds));
-  }, [firestore, kpiQueryIds]);
-
+    if (!firestore) return null;
+    return collection(firestore, 'individual_kpis');
+  }, [firestore]);
   const { data: kpis, isLoading: isKpisLoading } = useCollection<WithId<IndividualKpi>>(kpisQuery);
   
-  const submissionKpiIds = useMemo(() => {
-    if(!kpis || kpis.length === 0) return null;
-    const ids = kpis.map(k => k.id);
-    return ids.length > 0 ? ids.slice(0,30) : null;
-  }, [kpis]);
-
   const submissionsQuery = useMemoFirebase(() => {
-    if (!firestore || !submissionKpiIds) return null;
-    return query(collection(firestore, 'submissions'), where('kpiId', 'in', submissionKpiIds));
-  }, [firestore, submissionKpiIds]);
-
+    if (!firestore) return null;
+    return collection(firestore, 'submissions');
+  }, [firestore]);
   const { data: submissions, isLoading: isSubmissionsLoading } = useCollection<WithId<KpiSubmission>>(submissionsQuery);
 
   const submissionsMap = useMemo(() => {
@@ -932,29 +1000,43 @@ export default function MyPortfolioPage() {
       return map;
   }, [submissions]);
 
-  const groupedByDepartment = useMemo(() => {
-    if (!teamMembers || !kpis) return {};
+  const organizationalTree = useMemo(() => {
+      if (!allEmployees) return [];
 
-    const departmentMap: { [key: string]: { employee: Employee, kpis: WithId<IndividualKpi>[] }[] } = {};
+      const employeeMap = new Map<string, TreeNode>();
+      allEmployees.forEach(emp => {
+          employeeMap.set(emp.name, { ...emp, reports: [] });
+      });
 
-    teamMembers.forEach(employee => {
-      const employeeKpis = kpis.filter(k => k.employeeId === employee.id);
-      const department = employee.department || 'Unassigned';
-      if (!departmentMap[department]) {
-        departmentMap[department] = [];
+      const rootNodes: TreeNode[] = [];
+      employeeMap.forEach(employee => {
+          if (employee.manager && employeeMap.has(employee.manager)) {
+              employeeMap.get(employee.manager)!.reports.push(employee);
+          } else {
+              rootNodes.push(employee);
+          }
+      });
+      
+      // Filter the tree based on the user's role and position in the hierarchy
+      if (!user || !userProfile) return [];
+
+      if (userProfile.role === 'Admin') {
+          return rootNodes;
       }
-      departmentMap[department].push({ employee, kpis: employeeKpis });
-    });
-    
-    // Sort employees within each department
-    for (const dept in departmentMap) {
-        departmentMap[dept].sort((a, b) => a.employee.name.localeCompare(b.employee.name));
-    }
+      
+      const userNode = Array.from(employeeMap.values()).find(e => e.id === user.uid);
+      if (userNode) {
+          if (isManagerOrAdmin) {
+              return [userNode]; // Managers see their own tree
+          } else {
+              userNode.reports = []; // Employees see only themselves
+              return [userNode];
+          }
+      }
 
-    return departmentMap;
-  }, [teamMembers, kpis]);
+      return [];
+  }, [allEmployees, user, userProfile, isManagerOrAdmin]);
 
-  const sortedDepartments = useMemo(() => Object.keys(groupedByDepartment).sort(), [groupedByDepartment]);
 
   // ==================== HANDLERS ====================
 
@@ -1039,6 +1121,15 @@ export default function MyPortfolioPage() {
       setDocumentNonBlocking(kpiRef, updates, { merge: true });
       toast({ title: "KPI Updated", description: "The KPI details have been saved."});
   };
+  
+  const handlers = {
+    onViewDetails: handleViewDetails,
+    onViewMonthlyReport: handleViewMonthlyReport,
+    onEdit: handleEdit,
+    onDelete: handleDeleteKpi,
+    isManager: isManagerOrAdmin,
+  };
+
 
   // ==================== RENDER ====================
 
@@ -1079,7 +1170,7 @@ export default function MyPortfolioPage() {
         <div>
             <h3 className="text-2xl font-bold text-gray-900 mb-1">Portfolio</h3>
             <p className="text-gray-600">
-              {isManagerOrAdmin ? "Review and manage your team's KPI portfolio." : "Review and manage your personal KPIs for this period."}
+              {isManagerOrAdmin ? "Review and manage your team's KPI portfolio by reporting structure." : "Review and manage your personal KPIs for this period."}
             </p>
         </div>
         <Button onClick={() => setCreateDialogOpen(true)}>
@@ -1088,82 +1179,27 @@ export default function MyPortfolioPage() {
         </Button>
       </div>
       
-      <div className="space-y-8">
-        {sortedDepartments.map(department => (
-          <div key={department}>
-            <h4 className="text-lg font-semibold text-gray-800 mb-4 pb-2 border-b-2">{department}</h4>
-            <div className="space-y-4">
-            {groupedByDepartment[department].map(({ employee, kpis: employeeKpis }) => {
-                const totalWeight = employeeKpis.reduce((sum, kpi) => sum + kpi.weight, 0);
-
-                if (teamMembers.length > 1 && employeeKpis.length === 0 && !isManagerOrAdmin) {
-                  return null;
-                }
-
-                return (
-                  <Collapsible key={employee.id} defaultOpen={isManagerOrAdmin ? employeeKpis.length > 0 : true} className="border rounded-lg">
-                      <CollapsibleTrigger asChild>
-                          <div className="flex items-center justify-between p-4 cursor-pointer bg-gray-50 rounded-t-lg">
-                              <div className="flex items-center gap-3">
-                                  <Avatar>
-                                      <AvatarFallback>{employee.name.charAt(0)}</AvatarFallback>
-                                  </Avatar>
-                                  <div>
-                                      <p className="font-semibold">{employee.name}</p>
-                                      <p className="text-sm text-muted-foreground">{employee.position}</p>
-                                  </div>
-                              </div>
-                              <div className="flex items-center gap-4">
-                                  <div className="text-right hidden sm:block">
-                                      <p className="font-semibold">{totalWeight}%</p>
-                                      <p className="text-xs text-muted-foreground">Total Weight</p>
-                                  </div>
-                                   <div className="text-right hidden sm:block">
-                                      <p className="font-semibold">{employeeKpis.length}</p>
-                                      <p className="text-xs text-muted-foreground">Total KPIs</p>                              </div>
-                                  <Button variant="ghost" size="sm" className="shrink-0">
-                                      <ChevronsUpDown className="h-4 w-4" />
-                                  </Button>
-                              </div>
-                          </div>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="p-4">
-                          {employeeKpis.length > 0 ? (
-                              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                                  {employeeKpis.map(kpi => (
-                                      <KpiProgressCard
-                                          key={kpi.id}
-                                          kpi={kpi}
-                                          submission={submissionsMap.get(kpi.id)}
-                                          onViewDetails={handleViewDetails}
-                                          onViewMonthlyReport={handleViewMonthlyReport}
-                                          onEdit={handleEdit}
-                                          onDelete={handleDeleteKpi}
-                                          isManager={isManagerOrAdmin || false}
-                                      />
-                                  ))}
-                              </div>
-                          ) : (
-                             <div className="text-center py-10">
-                                <Target className="h-12 w-12 text-gray-300 mx-auto mb-4"/>
-                                <h4 className="font-semibold">{isManagerOrAdmin ? 'No KPIs assigned to this employee' : 'No KPIs assigned yet'}</h4>
-                                <p className="text-sm text-muted-foreground">{isManagerOrAdmin ? 'Use the "Cascade" page to assign KPIs.' : 'Your manager will assign KPIs to you soon.'}</p>
-                             </div>
-                          )}
-                      </CollapsibleContent>
-                  </Collapsible>
-                )
-            })}
-            </div>
-          </div>
-        ))}
+      <div className="space-y-4">
+        {organizationalTree.length > 0 ? (
+           organizationalTree.map(node => (
+                <EmployeeNode key={node.id} node={node} allKpis={kpis || []} submissionsMap={submissionsMap} handlers={handlers} />
+            ))
+        ) : (
+            <Card>
+                <CardContent className="p-12 text-center">
+                    <Users className="h-12 w-12 mx-auto text-gray-300 mb-4" />
+                    <h4 className="font-semibold text-gray-700">No Organizational Data</h4>
+                    <p className="text-sm text-muted-foreground">Your user profile could not be found in the organizational structure. <br/> Please contact an administrator.</p>
+                </CardContent>
+            </Card>
+        )}
       </div>
       
       <CreateCommittedKpiDialog 
         isOpen={isCreateDialogOpen}
         onClose={() => setCreateDialogOpen(false)}
         onCreate={handleCreateCommittedKpi}
-        teamMembers={teamMembers}
+        teamMembers={allEmployees || []}
         currentUserId={user.uid}
         isManager={isManagerOrAdmin || false}
       />
