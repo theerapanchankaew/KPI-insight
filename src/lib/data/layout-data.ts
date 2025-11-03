@@ -63,12 +63,6 @@ export const navItems = [
     icon: FileUp,
   },
   {
-    href: '/user-management',
-    label: 'User Management',
-    description: 'จัดการผู้ใช้และสิทธิ์',
-    icon: Users,
-  },
-  {
     href: '/settings',
     label: 'Settings',
     description: 'การตั้งค่า',
