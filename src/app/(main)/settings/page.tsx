@@ -1,14 +1,13 @@
 
 "use client";
 
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAppLayout } from '../layout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useKpiData } from '@/context/KpiDataContext';
-import { useUser, useFirestore, useMemoFirebase, useDoc } from '@/firebase';
-import { doc } from 'firebase/firestore';
+import { useUser, useFirestore } from '@/firebase';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   ChevronRight,
@@ -17,17 +16,13 @@ import {
   Building,
   Briefcase,
   GitMerge,
-  GitBranch,
-  Users2,
-  Share,
   FileCheck,
-  FileCog
+  Share,
+  FileCog,
+  Users2,
 } from 'lucide-react';
 import Link from 'next/link';
-
-interface UserProfile {
-  roles?: string[];
-}
+import { getIdTokenResult } from 'firebase/auth';
 
 const SettingsItem = ({ title, description, href, icon: Icon }: { title: string, description: string, href: string, icon: React.ElementType }) => (
   <Link href={href} passHref>
@@ -50,22 +45,39 @@ export default function SettingsPage() {
   const { setPageTitle } = useAppLayout();
   const { toast } = useToast();
   const { isSettingsLoading } = useKpiData();
-  const { user, isUserLoading: isAuthLoading } = useUser();
-  const firestore = useFirestore();
+  const { user: authUser, isUserLoading: isAuthLoading } = useUser();
+  
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isCheckingAdmin, setIsCheckingAdmin] = useState(true);
 
-  const userProfileRef = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
-    return doc(firestore, 'users', user.uid);
-  }, [firestore, user]);
+  // Securely check for admin role from the auth token claims
+  useEffect(() => {
+    if (authUser) {
+      setIsCheckingAdmin(true);
+      getIdTokenResult(authUser, true) // Force refresh the token
+        .then((idTokenResult) => {
+          const claims = idTokenResult.claims;
+          // The roles claim might be an array.
+          const userRoles = (claims.roles || []) as string[];
+          setIsAdmin(userRoles.includes('admin'));
+          setIsCheckingAdmin(false);
+        })
+        .catch(() => {
+          setIsAdmin(false);
+          setIsCheckingAdmin(false);
+        });
+    } else if (!isAuthLoading) {
+      setIsAdmin(false);
+      setIsCheckingAdmin(false);
+    }
+  }, [authUser, isAuthLoading]);
 
-  const { data: userProfile, isLoading: isProfileLoading } = useDoc<UserProfile>(userProfileRef);
-  const isAdmin = useMemo(() => userProfile?.roles?.includes('admin'), [userProfile]);
 
   useEffect(() => {
     setPageTitle('Settings');
   }, [setPageTitle]);
 
-  const isLoading = isSettingsLoading || isAuthLoading || isProfileLoading;
+  const isLoading = isSettingsLoading || isAuthLoading || isCheckingAdmin;
 
   if (isLoading) {
     return (
@@ -144,3 +156,5 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+    
