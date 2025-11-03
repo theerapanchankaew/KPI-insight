@@ -16,6 +16,9 @@ import {
   Share,
   FileCog,
   Users2,
+  BookUser,
+  List,
+  UserCog,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useUserProfile } from '@/hooks/use-user-profile';
@@ -55,9 +58,9 @@ export default function SettingsPage() {
     setPageTitle('Settings');
   }, [setPageTitle]);
 
-  // This is the critical change. We now wait for BOTH auth to finish AND the user profile to be explicitly available.
-  // isProfileLoading is true while fetching, but userProfile will be null if the doc doesn't exist yet.
-  if (isUserLoading || (user && isProfileLoading)) {
+  const isLoading = isUserLoading || isProfileLoading;
+
+  if (isLoading) {
     return (
         <div className="space-y-6">
             <h3 className="text-2xl font-bold text-gray-900">Hierarchy Management</h3>
@@ -88,7 +91,7 @@ export default function SettingsPage() {
   return (
     <div className="fade-in space-y-8">
       <div>
-        <h3 className="text-2xl font-bold text-gray-900">Hierarchy Management</h3>
+        <h3 className="text-2xl font-bold text-gray-900">System Administration Center</h3>
         <p className="text-gray-600 mt-1">Configure and manage all aspects of your organizational structure and system rules.</p>
       </div>
       
@@ -114,6 +117,7 @@ export default function SettingsPage() {
             <CardDescription>Manage the core building blocks of your organization.</CardDescription>
           </CardHeader>
           <CardContent className="divide-y">
+            <SettingsItem title="Employees" description="Manage the employee master list." href="#" icon={BookUser} />
             <SettingsItem title="Departments" description="Manage business units." href="#" icon={Building} />
             <SettingsItem title="Positions" description="Manage job titles and levels." href="#" icon={Briefcase} />
             <SettingsItem title="Roles" description="Manage system roles and permissions." href="#" icon={Users} />
@@ -127,6 +131,8 @@ export default function SettingsPage() {
             <CardDescription>Configure system-wide rules and templates.</CardDescription>
           </CardHeader>
           <CardContent className="divide-y">
+            <SettingsItem title="User Management" description="Administer user accounts and access." href="#" icon={UserCog} />
+            <SettingsItem title="KPI Catalog" description="Manage the central library of KPIs." href="#" icon={List} />
             <SettingsItem title="Approval Rules" description="Set rules for automated approvals." href="#" icon={FileCog} />
             <SettingsItem title="Permission Templates" description="Create default permission sets." href="#" icon={Users2} />
           </CardContent>
