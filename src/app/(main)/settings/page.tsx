@@ -1,243 +1,145 @@
 
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useAppLayout } from '../layout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useKpiData } from '@/context/KpiDataContext';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon, Loader2, ShieldAlert } from 'lucide-react';
-import { Calendar } from '@/components/ui/calendar';
-import { format } from 'date-fns';
-import { cn } from '@/lib/utils';
-import { Skeleton } from '@/components/ui/skeleton';
-import { useDoc, useFirestore, useUser, useMemoFirebase } from '@/firebase';
+import { useUser, useFirestore, useMemoFirebase, useDoc } from '@/firebase';
 import { doc } from 'firebase/firestore';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  ChevronRight,
+  ShieldAlert,
+  Users,
+  Building,
+  Briefcase,
+  GitMerge,
+  GitBranch,
+  Users2,
+  Share,
+  FileCheck,
+  FileCog
+} from 'lucide-react';
+import Link from 'next/link';
 
 interface UserProfile {
-  role?: 'Admin' | 'Employee' | 'Manager';
+  roles?: string[];
 }
+
+const SettingsItem = ({ title, description, href, icon: Icon }: { title: string, description: string, href: string, icon: React.ElementType }) => (
+  <Link href={href} passHref>
+    <div className="flex items-center justify-between p-4 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
+      <div className="flex items-center gap-4">
+        <div className="bg-muted p-3 rounded-lg">
+          <Icon className="h-6 w-6 text-muted-foreground" />
+        </div>
+        <div>
+          <h4 className="font-semibold">{title}</h4>
+          <p className="text-sm text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      <ChevronRight className="h-5 w-5 text-muted-foreground" />
+    </div>
+  </Link>
+);
 
 export default function SettingsPage() {
   const { setPageTitle } = useAppLayout();
   const { toast } = useToast();
-  const { settings, setSettings, isSettingsLoading } = useKpiData();
+  const { isSettingsLoading } = useKpiData();
   const { user, isUserLoading: isAuthLoading } = useUser();
   const firestore = useFirestore();
 
-  // State for General Settings
-  const [orgName, setOrgName] = useState('');
-  const [currentPeriod, setCurrentPeriod] = useState("รายไตรมาส (Quarterly)");
-  const [periodDate, setPeriodDate] = useState<Date | undefined>();
-  const [defaultCurrency, setDefaultCurrency] = useState("thb");
-
-  // State for Notification Settings
-  const [kpiAlerts, setKpiAlerts] = useState(true);
-  const [approvalNotifications, setApprovalNotifications] = useState(true);
-  const [weeklyReports, setWeeklyReports] = useState(false);
-  
   const userProfileRef = useMemoFirebase(() => {
     if (!firestore || !user) return null;
     return doc(firestore, 'users', user.uid);
   }, [firestore, user]);
 
   const { data: userProfile, isLoading: isProfileLoading } = useDoc<UserProfile>(userProfileRef);
-  const isAdmin = userProfile?.role === 'Admin';
-
+  const isAdmin = useMemo(() => userProfile?.roles?.includes('admin'), [userProfile]);
 
   useEffect(() => {
     setPageTitle('Settings');
   }, [setPageTitle]);
-  
-  useEffect(() => {
-    if (settings && !isSettingsLoading) {
-      setOrgName(settings.orgName);
-      setCurrentPeriod(settings.period);
-      setDefaultCurrency(settings.currency);
-      if (settings.periodDate) {
-        try {
-          setPeriodDate(new Date(settings.periodDate));
-        } catch (e) {
-          console.error("Invalid date from settings:", settings.periodDate);
-          setPeriodDate(undefined);
-        }
-      }
-    }
-  }, [settings, isSettingsLoading]);
 
-  const handleGeneralSave = () => {
-    if (!isAdmin) {
-      toast({ title: 'Permission Denied', description: 'Only admins can change general settings.', variant: 'destructive' });
-      return;
-    }
-    const newSettings: any = { 
-      orgName, 
-      period: currentPeriod, 
-      currency: defaultCurrency 
-    };
-    if (currentPeriod === 'รายเดือน (Monthly)') {
-      newSettings.periodDate = periodDate?.toISOString();
-    }
-    setSettings(newSettings);
-    toast({
-      title: "Settings Saved",
-      description: "Your general settings have been updated and stored in Firestore.",
-    });
-  };
-
-  const handleNotificationSave = () => {
-    toast({
-      title: "Preferences Saved",
-      description: "Your notification preferences have been updated.",
-    });
-  };
-  
   const isLoading = isSettingsLoading || isAuthLoading || isProfileLoading;
 
-  return (
-    <div className="fade-in space-y-6">
-      <h3 className="text-xl font-semibold text-gray-800">Settings</h3>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-3 space-y-6">
-          <Card>
-              <CardHeader>
-                  <CardTitle>General Settings</CardTitle>
-                  {!isLoading && !isAdmin && (
-                    <CardDescription className="!mt-2 flex items-center gap-2 text-destructive">
-                      <ShieldAlert className="h-4 w-4" />
-                      These settings are read-only. Only an Admin can make changes.
-                    </CardDescription>
-                  )}
-              </CardHeader>
-              <CardContent className="space-y-6">
-                 {isLoading ? (
-                    <div className="space-y-6">
-                        <div className="space-y-2">
-                           <Skeleton className="h-4 w-24" />
-                           <Skeleton className="h-10 w-full" />
-                        </div>
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                           <div className="space-y-2">
-                              <Skeleton className="h-4 w-24" />
-                              <Skeleton className="h-10 w-full" />
-                           </div>
-                         </div>
-                         <div className="space-y-2">
-                           <Skeleton className="h-4 w-24" />
-                           <Skeleton className="h-10 w-48" />
-                         </div>
-                         <Skeleton className="h-10 w-32" />
-                    </div>
-                 ) : (
-                   <>
-                    <div className="space-y-2">
-                        <Label htmlFor="org-name">Organization Name</Label>
-                        <Input id="org-name" value={orgName} onChange={(e) => setOrgName(e.target.value)} disabled={!isAdmin} />
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                          <Label htmlFor="current-period">Current Period</Label>
-                          <Select value={currentPeriod} onValueChange={setCurrentPeriod} disabled={!isAdmin}>
-                              <SelectTrigger id="current-period">
-                                  <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                  <SelectItem value="รายเดือน (Monthly)">รายเดือน (Monthly)</SelectItem>
-                                  <SelectItem value="รายไตรมาส (Quarterly)">รายไตรมาส (Quarterly)</SelectItem>
-                                  <SelectItem value="รายปี (Yearly)">รายปี (Yearly)</SelectItem>
-                              </SelectContent>
-                          </Select>
-                      </div>
-                      {currentPeriod === 'รายเดือน (Monthly)' && (
-                        <div className="space-y-2">
-                          <Label htmlFor="period-date">Select Month</Label>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button
-                                variant={"outline"}
-                                className={cn(
-                                  "w-full justify-start text-left font-normal",
-                                  !periodDate && "text-muted-foreground"
-                                )}
-                                disabled={!isAdmin}
-                              >
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {periodDate ? format(periodDate, "MMMM yyyy") : <span>Pick a date</span>}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0">
-                              <Calendar
-                                mode="single"
-                                selected={periodDate}
-                                onSelect={setPeriodDate}
-                                initialFocus
-                                disabled={!isAdmin}
-                              />
-                            </PopoverContent>
-                          </Popover>
-                        </div>
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="default-currency">Default Currency</Label>
-                        <Select value={defaultCurrency} onValueChange={setDefaultCurrency} disabled={!isAdmin}>
-                            <SelectTrigger id="default-currency" className="w-[180px]">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="thb">THB (฿)</SelectItem>
-                                <SelectItem value="usd">USD ($)</SelectItem>
-                                <SelectItem value="eur">EUR (€)</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    {isAdmin && (
-                      <div className="pt-4">
-                          <Button onClick={handleGeneralSave}>Save Changes</Button>
-                      </div>
-                    )}
-                   </>
-                 )}
-              </CardContent>
-          </Card>
-           <Card>
-              <CardHeader>
-                  <CardTitle>Notification Settings</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                  <div className="flex items-center justify-between">
-                      <div>
-                          <p className="font-medium text-gray-800">KPI Alerts</p>
-                          <p className="text-sm text-gray-600">แจ้งเตือนเมื่อ KPI ต่ำกว่าเป้า</p>
-                      </div>
-                      <Switch checked={kpiAlerts} onCheckedChange={setKpiAlerts} />
-                  </div>
-                   <div className="flex items-center justify-between">
-                      <div>
-                          <p className="font-medium text-gray-800">Approval Notifications</p>
-                          <p className="text-sm text-gray-600">แจ้งเตือนเมื่อมี KPI รออนุมัติ</p>
-                      </div>
-                      <Switch checked={approvalNotifications} onCheckedChange={setApprovalNotifications} />
-                  </div>
-                  <div className="flex items-center justify-between">
-                      <div>
-                          <p className="font-medium text-gray-800">Weekly Reports</p>
-                          <p className="text-sm text-gray-600">ส่งรายงานสรุปทุกสัปดาห์</p>
-                      </div>
-                      <Switch checked={weeklyReports} onCheckedChange={setWeeklyReports} />
-                  </div>
-                  <div className="pt-4">
-                      <Button onClick={handleNotificationSave}>Save Preferences</Button>
-                  </div>
-              </CardContent>
-          </Card>
+  if (isLoading) {
+    return (
+        <div className="space-y-6">
+            <Skeleton className="h-8 w-48" />
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <Skeleton className="h-72 w-full" />
+                <Skeleton className="h-72 w-full" />
+                <Skeleton className="h-72 w-full" />
+            </div>
         </div>
+    )
+  }
+
+  if (!isAdmin) {
+    return (
+        <Card className="mt-8">
+            <CardContent className="p-12 text-center">
+                <ShieldAlert className="h-16 w-16 mx-auto text-destructive mb-4" />
+                <h3 className="text-xl font-semibold">Access Denied</h3>
+                <p className="text-muted-foreground mt-2">Only administrators can access the settings page.</p>
+            </CardContent>
+        </Card>
+    )
+  }
+
+
+  return (
+    <div className="fade-in space-y-8">
+      <div>
+        <h3 className="text-2xl font-bold text-gray-900">Hierarchy Management</h3>
+        <p className="text-gray-600 mt-1">Configure and manage all aspects of your organizational structure and system rules.</p>
+      </div>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+        {/* Organization Structure */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Organization Structure</CardTitle>
+            <CardDescription>Define how your company is organized and how decisions are made.</CardDescription>
+          </CardHeader>
+          <CardContent className="divide-y">
+            <SettingsItem title="Reporting Hierarchy" description="Manage the chain of command." href="/user-management" icon={GitMerge} />
+            <SettingsItem title="Approval Hierarchy" description="Define who approves what." href="#" icon={FileCheck} />
+            <SettingsItem title="Delegation Management" description="Assign temporary responsibilities." href="#" icon={Share} />
+          </CardContent>
+        </Card>
+        
+        {/* Master Data */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Master Data</CardTitle>
+            <CardDescription>Manage the core building blocks of your organization.</CardDescription>
+          </CardHeader>
+          <CardContent className="divide-y">
+            <SettingsItem title="Departments" description="Manage business units." href="#" icon={Building} />
+            <SettingsItem title="Positions" description="Manage job titles and levels." href="#" icon={Briefcase} />
+            <SettingsItem title="Roles" description="Manage system roles and permissions." href="/user-management" icon={Users} />
+          </CardContent>
+        </Card>
+
+        {/* System Settings */}
+        <Card>
+          <CardHeader>
+            <CardTitle>System Settings</CardTitle>
+            <CardDescription>Configure system-wide rules and templates.</CardDescription>
+          </CardHeader>
+          <CardContent className="divide-y">
+            <SettingsItem title="Approval Rules" description="Set rules for automated approvals." href="#" icon={FileCog} />
+            <SettingsItem title="Permission Templates" description="Create default permission sets." href="#" icon={Users2} />
+          </CardContent>
+        </Card>
+        
       </div>
     </div>
   );
