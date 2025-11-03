@@ -35,10 +35,11 @@ import {
   RefreshCw,
   Edit,
   PlusCircle,
-  BadgeCheck
+  BadgeCheck,
+  Trash2
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useUser, useCollection, useMemoFirebase, WithId, useDoc, addDocumentNonBlocking } from '@/firebase';
+import { useFirestore, useUser, useCollection, useMemoFirebase, WithId, useDoc, addDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
 import { collection, query, where, doc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -50,6 +51,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Input } from '@/components/ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { format } from 'date-fns';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+
 
 // ==================== TYPE DEFINITIONS ====================
 
@@ -306,26 +309,33 @@ const EditKpiDialog = ({
 }) => {
     const [weight, setWeight] = useState('');
     const [cascadedTarget, setCascadedTarget] = useState('');
-    // Add state for other editable fields if needed, e.g., committed task or targets
+    const [task, setTask] = useState('');
+    const [committedTargets, setCommittedTargets] = useState({ level1: '', level2: '', level3: '', level4: '', level5: '' });
 
     useEffect(() => {
         if (kpi) {
             setWeight(String(kpi.weight || ''));
             if (kpi.type === 'cascaded') {
                 setCascadedTarget(kpi.target);
+            } else {
+                setTask(kpi.task);
+                setCommittedTargets(kpi.targets);
             }
         }
     }, [kpi]);
 
     const handleSave = () => {
         if (!kpi) return;
-        const updates: Partial<IndividualKpi> = {
+        let updates: Partial<IndividualKpi> = {
             weight: Number(weight)
         };
         if (kpi.type === 'cascaded') {
             updates.target = cascadedTarget;
+        } else {
+            updates.task = task;
+            updates.kpiMeasure = task;
+            updates.targets = committedTargets;
         }
-        // Add logic to update other fields for committed KPIs if necessary
         onSave(kpi.id, updates);
         onClose();
     };
@@ -334,11 +344,17 @@ const EditKpiDialog = ({
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent>
+            <DialogContent className="max-w-2xl">
                 <DialogHeader>
                     <DialogTitle>Edit KPI: {kpi.kpiMeasure}</DialogTitle>
                 </DialogHeader>
                 <div className="py-4 space-y-4">
+                    {kpi.type === 'committed' && (
+                         <div className="space-y-2">
+                            <Label>Task / KPI Measure</Label>
+                            <Input value={task} onChange={e => setTask(e.target.value)} />
+                        </div>
+                    )}
                     <div className="space-y-2">
                         <Label>Weight (%)</Label>
                         <Input type="number" value={weight} onChange={e => setWeight(e.target.value)} />
@@ -350,7 +366,21 @@ const EditKpiDialog = ({
                         </div>
                      )}
                      {kpi.type === 'committed' && (
-                         <p className="text-sm text-muted-foreground">Editing 5-level targets for committed KPIs would be done here.</p>
+                         <div>
+                            <Label>5-Level Performance Targets</Label>
+                            <div className="space-y-2 mt-2">
+                                {Object.keys(committedTargets).map((level, i) => (
+                                    <div key={level} className="flex items-center gap-3">
+                                        <Label className="w-24 text-sm text-right">Level {i+1}</Label>
+                                        <Input 
+                                            value={committedTargets[level as keyof typeof committedTargets]}
+                                            onChange={e => setCommittedTargets(prev => ({...prev, [level]: e.target.value}))}
+                                            placeholder={`Description for level ${i+1} performance...`}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
                      )}
                 </div>
                 <DialogFooter>
@@ -458,10 +488,8 @@ const KpiDetailDialog = ({
 }) => {
   const [employeeNotes, setEmployeeNotes] = useState('');
   
-  // This hook needs to be at the top level
   const sortedTargetEntries = useMemo(() => {
     if (!kpi || kpi.type !== 'committed' || !kpi.targets) return [];
-    // Sort keys like 'level1', 'level2' numerically
     return Object.entries(kpi.targets).sort(([keyA], [keyB]) => {
         const numA = parseInt(keyA.replace('level', ''), 10);
         const numB = parseInt(keyB.replace('level', ''), 10);
@@ -669,12 +697,16 @@ const KpiProgressCard = ({
   onViewDetails,
   onViewMonthlyReport,
   onEdit,
+  onDelete,
+  isManager
 }: { 
   kpi: WithId<IndividualKpi>; 
   submission: WithId<KpiSubmission> | undefined;
   onViewDetails: (kpi: WithId<IndividualKpi>) => void;
   onViewMonthlyReport: (kpi: WithId<IndividualKpi>) => void;
   onEdit: (kpi: WithId<IndividualKpi>) => void;
+  onDelete: (kpiId: string) => void;
+  isManager: boolean;
 }) => {
   
   const { targetValue, actualValue, achievement, isPositive } = useMemo(() => {
@@ -685,8 +717,6 @@ const KpiProgressCard = ({
       targetNum = parseValue(kpi.target);
       actualNum = submission ? parseValue(submission.actualValue) : 0;
     }
-    // For 'committed' KPIs, a numeric progress might not be applicable in the same way.
-    // We can show a placeholder or a different kind of progress.
     const ach = targetNum > 0 ? (actualNum / targetNum) * 100 : 0;
     const isPos = actualNum >= targetNum;
 
@@ -698,8 +728,9 @@ const KpiProgressCard = ({
     };
   }, [kpi, submission]);
   
+  const canEditOrDelete = isManager || kpi.status === 'Draft' || kpi.status === 'Rejected';
+
   const getActionButtons = () => {
-    // Show 'Acknowledge' button if status is 'Upper Manager Approval'
     if (kpi.status === 'Upper Manager Approval') {
         return (
           <Button size="sm" variant="default" onClick={() => onViewDetails(kpi)} className="bg-blue-600 hover:bg-blue-700">
@@ -708,7 +739,6 @@ const KpiProgressCard = ({
           </Button>
         );
     }
-    // Show 'Review' button for Draft and Rejected states
     if (['Draft', 'Rejected'].includes(kpi.status)) {
         return (
           <Button size="sm" variant="default" onClick={() => onViewDetails(kpi)}>
@@ -718,7 +748,6 @@ const KpiProgressCard = ({
         );
     }
     
-    // For all other statuses, show a generic 'Details' button
     return (
        <Button size="sm" variant="outline" onClick={() => onViewDetails(kpi)}>
           <Eye className="mr-2 h-4 w-4" />
@@ -727,9 +756,8 @@ const KpiProgressCard = ({
     );
   };
 
-
   return (
-    <Card className="hover:shadow-lg transition-shadow duration-300 flex flex-col">
+    <Card className="hover:shadow-lg transition-shadow duration-300 flex flex-col group">
         <CardHeader className="pb-2">
             <div className="flex justify-between items-start">
                 <h4 className="font-semibold text-gray-900 flex-1 pr-2">{kpi.kpiMeasure}</h4>
@@ -772,12 +800,42 @@ const KpiProgressCard = ({
                 </div>
             )}
         </CardContent>
-        <div className="p-4 pt-2 flex justify-end gap-2">
-            <Button size="sm" variant="ghost" onClick={() => onViewMonthlyReport(kpi)}>
-              <CalendarDays className="mr-2 h-4 w-4" />
-              Monthly Report
-            </Button>
-            {getActionButtons()}
+        <div className="p-4 pt-2 flex justify-between items-center">
+            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                {canEditOrDelete && (
+                    <>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit(kpi)}>
+                            <Edit className="h-4 w-4 text-gray-500" />
+                        </Button>
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                 <Button variant="ghost" size="icon" className="h-7 w-7">
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        This will permanently delete the KPI "{kpi.kpiMeasure}". This action cannot be undone.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => onDelete(kpi.id)} className="bg-destructive hover:bg-destructive/90">Delete KPI</AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                    </>
+                )}
+            </div>
+            <div className="flex justify-end gap-2">
+                <Button size="sm" variant="ghost" onClick={() => onViewMonthlyReport(kpi)}>
+                  <CalendarDays className="mr-2 h-4 w-4" />
+                  Monthly
+                </Button>
+                {getActionButtons()}
+            </div>
         </div>
     </Card>
   );
@@ -911,6 +969,16 @@ export default function MyPortfolioPage() {
        toast({ title: "Error", description: "Failed to acknowledge KPI", variant: 'destructive' });
     }
   };
+  
+  const handleDeleteKpi = (kpiId: string) => {
+    if (!firestore) return;
+    deleteDocumentNonBlocking(doc(firestore, 'individual_kpis', kpiId));
+    toast({
+        title: "KPI Deleted",
+        description: "The individual KPI has been removed.",
+        variant: "destructive"
+    });
+  }
 
   const handleViewDetails = (kpi: WithId<IndividualKpi>) => {
     setSelectedKpi(kpi);
@@ -1032,6 +1100,8 @@ export default function MyPortfolioPage() {
                                       onViewDetails={handleViewDetails}
                                       onViewMonthlyReport={handleViewMonthlyReport}
                                       onEdit={handleEdit}
+                                      onDelete={handleDeleteKpi}
+                                      isManager={isManagerOrAdmin || false}
                                   />
                               ))}
                           </div>
@@ -1093,3 +1163,5 @@ export default function MyPortfolioPage() {
     </div>
   );
 }
+
+    
