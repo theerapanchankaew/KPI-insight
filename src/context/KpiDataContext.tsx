@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo } from 'react';
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@/firebase';
 import { collection, doc, query, where } from 'firebase/firestore';
 import { WithId } from '@/firebase/firestore/use-collection';
@@ -141,8 +141,6 @@ const defaultSettings: AppSettings = {
 interface KpiDataContextType {
   employees: WithId<Employee>[] | null;
   isEmployeesLoading: boolean;
-  users: WithId<User>[] | null;
-  isUsersLoading: boolean;
   departments: WithId<Department>[] | null;
   isDepartmentsLoading: boolean;
   positions: WithId<Position>[] | null;
@@ -170,19 +168,10 @@ const KpiDataContext = createContext<KpiDataContextType | undefined>(undefined);
 
 export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   const firestore = useFirestore();
-  const { user: authUser, isUserLoading: isAuthLoading } = useUser();
 
   // Master Data Queries
   const employeesQuery = useMemoFirebase(() => firestore ? collection(firestore, 'employees') : null, [firestore]);
   const { data: employees, isLoading: isEmployeesLoading } = useCollection<Employee>(employeesQuery);
-
-  const usersQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
-    return collection(firestore, 'users');
-  }, [firestore]);
-  const { data: users, isLoading: isUsersLoading } = useCollection<User>(usersQuery, {
-      disabled: !authUser
-  });
 
   const departmentsQuery = useMemoFirebase(() => firestore ? collection(firestore, 'departments') : null, [firestore]);
   const { data: departments, isLoading: isDepartmentsLoading } = useCollection<Department>(departmentsQuery);
@@ -230,11 +219,10 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
     }
   };
   
-  const isLoading = isAuthLoading || isEmployeesLoading || isUsersLoading || isDepartmentsLoading || isPositionsLoading || isRolesLoading;
+  const isLoading = isEmployeesLoading || isDepartmentsLoading || isPositionsLoading || isRolesLoading;
 
   const contextValue: KpiDataContextType = {
     employees, isEmployeesLoading: isLoading,
-    users, isUsersLoading: isLoading,
     departments, isDepartmentsLoading: isLoading,
     positions, isPositionsLoading: isLoading,
     roles, isRolesLoading: isLoading,

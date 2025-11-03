@@ -14,14 +14,15 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { useUser, useFirestore, addDocumentNonBlocking, deleteDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase';
-import { doc } from 'firebase/firestore';
+import { useUser, useFirestore, addDocumentNonBlocking, deleteDocumentNonBlocking, setDocumentNonBlocking, useCollection, useDoc, useMemoFirebase } from '@/firebase';
+import { doc, collection } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useKpiData } from '@/context/KpiDataContext';
 import type { Employee, User, Department, Position, Role } from '@/context/KpiDataContext';
 
 type ManagedUser = Employee & {
   userRoles?: string[];
+  userDocId?: string;
 };
 
 const AddUserDialog = ({ isOpen, onOpenChange, onAddUser, departments, positions }: { 
@@ -94,18 +95,22 @@ export default function UserManagementPage() {
   const firestore = useFirestore();
   const { user: authUser, isUserLoading: isAuthLoading } = useUser();
 
+  // Fetch all users - secure because it's only enabled for admins.
+  const usersQuery = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore]);
+  const { data: users, isLoading: isUsersLoading } = useCollection<User>(usersQuery);
+
   const {
       employees, isEmployeesLoading,
-      users, isUsersLoading,
       departments, isDepartmentsLoading,
       positions, isPositionsLoading,
       roles, isRolesLoading,
   } = useKpiData();
   
-  const currentUser = useMemo(() => {
-    if (!authUser || !users) return null;
-    return users.find(u => u.id === authUser.uid);
-  }, [authUser, users]);
+  const currentUserDocRef = useMemoFirebase(() => {
+    if (!authUser || !firestore) return null;
+    return doc(firestore, 'users', authUser.uid);
+  }, [authUser, firestore]);
+  const { data: currentUser, isLoading: isCurrentUserLoading } = useDoc<User>(currentUserDocRef);
 
   const isAdmin = useMemo(() => currentUser?.roles?.includes('admin'), [currentUser]);
 
@@ -118,6 +123,7 @@ export default function UserManagementPage() {
   const [isAddUserModalOpen, setAddUserModalOpen] = useState(false);
 
   useEffect(() => {
+    if (isEmployeesLoading || isUsersLoading) return;
     if (!employees) {
         setManagedUsers([]);
         return;
@@ -133,11 +139,12 @@ export default function UserManagementPage() {
         return {
             ...employee,
             userRoles: userAccount?.roles || [],
+            userDocId: userAccount?.id,
         };
     });
     setManagedUsers(merged);
 
-  }, [employees, users]);
+  }, [employees, users, isEmployeesLoading, isUsersLoading]);
   
   const handleRoleChange = (employeeId: string, newRoles: string[]) => {
     setManagedUsers(prev => prev.map(user => 
@@ -154,16 +161,12 @@ export default function UserManagementPage() {
     }
 
     const managedUser = managedUsers.find(u => u.id === employeeId);
-    if (!managedUser) return;
-    
-    // Find the corresponding user document
-    const userDoc = users?.find(u => u.employeeId === employeeId);
-    if (!userDoc) {
+    if (!managedUser || !managedUser.userDocId) {
         toast({ title: "No Login Account", description: "This employee does not have a login account. Cannot save roles.", variant: 'destructive'});
         return;
     }
     
-    const userRef = doc(firestore, 'users', userDoc.id);
+    const userRef = doc(firestore, 'users', managedUser.userDocId);
     const roleTemplates = roles?.filter(r => managedUser.userRoles?.includes(r.code)) || [];
     const menuAccess = roleTemplates.reduce((acc, role) => ({...acc, ...role.menuAccess}), {});
     
@@ -209,7 +212,7 @@ export default function UserManagementPage() {
       toast({ title: 'User Removed', description: 'The employee record and any associated user account have been removed.', variant: 'destructive' });
   };
 
-  const isLoading = isAuthLoading || isEmployeesLoading || isUsersLoading || isDepartmentsLoading || isPositionsLoading || isRolesLoading;
+  const isLoading = isAuthLoading || isEmployeesLoading || isUsersLoading || isDepartmentsLoading || isPositionsLoading || isRolesLoading || isCurrentUserLoading;
   
   const getDepartmentName = (id: string) => departments?.find(d => d.id === id)?.name || 'N/A';
   const getPositionName = (id: string) => positions?.find(p => p.id === id)?.name || 'N/A';
@@ -268,8 +271,9 @@ export default function UserManagementPage() {
           <Select
             value={employee.userRoles?.[0] || ''} // Simplified to single role for this UI
             onValueChange={(roleCode) => handleRoleChange(employee.id, [roleCode])}
+            disabled={!employee.userDocId}
           >
-            <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-[150px]"><SelectValue placeholder="No Role" /></SelectTrigger>
             <SelectContent>
                 {roles?.map(r => <SelectItem key={r.id} value={r.code}>{r.name}</SelectItem>)}
             </SelectContent>
@@ -277,7 +281,7 @@ export default function UserManagementPage() {
         </TableCell>
         <TableCell className="text-center">
            <div className='flex items-center justify-center gap-1'>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleSaveUser(employee.id)}>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleSaveUser(employee.id)} disabled={!employee.userDocId}>
                 <Send className="h-4 w-4" />
             </Button>
             <AlertDialog>
