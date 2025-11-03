@@ -95,9 +95,24 @@ export default function UserManagementPage() {
   const firestore = useFirestore();
   const { user: authUser, isUserLoading: isAuthLoading } = useUser();
 
-  // Fetch all users - secure because it's only enabled for admins.
-  const usersQuery = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore]);
-  const { data: users, isLoading: isUsersLoading } = useCollection<User>(usersQuery);
+  const currentUserDocRef = useMemoFirebase(() => {
+    if (!authUser || !firestore) return null;
+    return doc(firestore, 'users', authUser.uid);
+  }, [authUser, firestore]);
+  const { data: currentUser, isLoading: isCurrentUserLoading } = useDoc<User>(currentUserDocRef);
+
+  const isAdmin = useMemo(() => currentUser?.roles?.includes('admin'), [currentUser]);
+
+  // Fetch all users only if the current user is an admin
+  const usersQuery = useMemoFirebase(() => {
+    if (firestore && isAdmin) {
+      return collection(firestore, 'users');
+    }
+    return null; // Don't fetch if not admin
+  }, [firestore, isAdmin]);
+
+  const { data: users, isLoading: isUsersLoading } = useCollection<User>(usersQuery, { disabled: !isAdmin });
+
 
   const {
       employees, isEmployeesLoading,
@@ -106,13 +121,6 @@ export default function UserManagementPage() {
       roles, isRolesLoading,
   } = useKpiData();
   
-  const currentUserDocRef = useMemoFirebase(() => {
-    if (!authUser || !firestore) return null;
-    return doc(firestore, 'users', authUser.uid);
-  }, [authUser, firestore]);
-  const { data: currentUser, isLoading: isCurrentUserLoading } = useDoc<User>(currentUserDocRef);
-
-  const isAdmin = useMemo(() => currentUser?.roles?.includes('admin'), [currentUser]);
 
   useEffect(() => {
     setPageTitle('User Management');
@@ -123,14 +131,14 @@ export default function UserManagementPage() {
   const [isAddUserModalOpen, setAddUserModalOpen] = useState(false);
 
   useEffect(() => {
-    if (isEmployeesLoading || isUsersLoading) return;
+    if (isEmployeesLoading || (isAdmin && isUsersLoading)) return;
     if (!employees) {
         setManagedUsers([]);
         return;
     };
 
     const usersMap = new Map<string, User>();
-    if (users) {
+    if (users && isAdmin) {
         users.forEach(user => usersMap.set(user.employeeId, user));
     }
 
@@ -144,7 +152,7 @@ export default function UserManagementPage() {
     });
     setManagedUsers(merged);
 
-  }, [employees, users, isEmployeesLoading, isUsersLoading]);
+  }, [employees, users, isEmployeesLoading, isUsersLoading, isAdmin]);
   
   const handleRoleChange = (employeeId: string, newRoles: string[]) => {
     setManagedUsers(prev => prev.map(user => 
