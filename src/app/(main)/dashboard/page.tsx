@@ -136,9 +136,9 @@ const KpiCard = ({ kpi, monthlyData }: { kpi: WithId<CorporateKpi>, monthlyData:
 
         return FISCAL_MONTH_NAMES.map((name, index) => {
             const monthIndex1Based = (9 + index) % 12 + 1; // Oct is 10, Jan is 1
-            const year = fiscalYearStartYear + (monthIndex1Based < 10 ? 1 : 0);
+            const yearForMonth = fiscalYearStartYear + (monthIndex1Based < 10 ? 1 : 0);
 
-            const monthData = dataForKpi.find(d => d.month === monthIndex1Based && d.year === year);
+            const monthData = dataForKpi.find(d => d.month === monthIndex1Based && d.year === yearForMonth);
             return {
                 month: name,
                 Actual: monthData?.actual ?? null, // Use null for missing data to create gaps
@@ -171,8 +171,17 @@ const KpiCard = ({ kpi, monthlyData }: { kpi: WithId<CorporateKpi>, monthlyData:
     const handlePointClick = (data: any) => {
         if (data && data.activePayload && data.activePayload.length > 0) {
             const monthName = data.activePayload[0].payload.month;
+            
+            const today = new Date();
+            const currentMonth = today.getMonth();
+            const fiscalYearStartYear = currentMonth >= 9 ? today.getFullYear() : today.getFullYear() - 1;
+            
             const monthIndex = MONTH_NAMES.indexOf(monthName);
-            const kpiForMonth = dataForKpi.find(d => d.month === monthIndex + 1);
+            const monthIndex1Based = monthIndex + 1;
+            const yearForMonth = fiscalYearStartYear + (monthIndex1Based < 10 ? 1 : 0);
+            
+            const kpiForMonth = dataForKpi.find(d => d.month === monthIndex1Based && d.year === yearForMonth);
+
             if (kpiForMonth) {
                 setSelectedMonthKpi(kpiForMonth);
                 setEditDialogOpen(true);
@@ -456,6 +465,8 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+    
 
     
 
