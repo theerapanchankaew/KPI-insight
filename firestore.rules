@@ -73,18 +73,18 @@ service cloud.firestore {
      * Departments, Positions, Roles: Configuration data readable by all, writable by admins.
      */
     match /departments/{departmentId} {
-      allow read, write: if isAdmin();
       allow list, get: if isSignedIn();
+      allow write: if isAdmin();
     }
     
     match /positions/{positionId} {
-      allow read, write: if isAdmin();
       allow list, get: if isSignedIn();
+      allow write: if isAdmin();
     }
     
     match /roles/{roleId} {
-      allow read, write: if isAdmin();
       allow list, get: if isSignedIn();
+      allow write: if isAdmin();
     }
 
     /**
