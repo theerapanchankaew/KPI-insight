@@ -14,6 +14,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useFirestore, useUser } from '@/firebase';
 import { collection, doc, writeBatch } from 'firebase/firestore';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { FirestorePermissionError } from '@/firebase/errors';
+import { errorEmitter } from '@/firebase/error-emitter';
 import { exampleJson, exampleOrgData } from '@/lib/data/kpi-import-data';
 
 const KpiImportTab = () => {
@@ -91,25 +93,29 @@ const KpiImportTab = () => {
         const kpisToUpload = fileContent.kpi_catalog;
         const totalKpis = kpisToUpload.length;
         
-        try {
-            const batch = writeBatch(firestore);
-            kpisToUpload.forEach((kpi, index) => {
-                const docRef = doc(firestore, 'kpi_catalog', kpi.id);
-                batch.set(docRef, kpi, { merge: true });
-            });
+        const batch = writeBatch(firestore);
+        kpisToUpload.forEach((kpi) => {
+            const docRef = doc(firestore, 'kpi_catalog', kpi.id);
+            batch.set(docRef, kpi, { merge: true });
+        });
 
-            await batch.commit();
-
+        batch.commit().then(() => {
             setUploadProgress(100);
             setUploading(false);
             setUploadComplete(true);
             toast({ title: 'Upload Complete', description: `${totalKpis} KPIs have been saved to Firestore.` });
             router.push('/cascade');
-        } catch (error) {
-            console.error(error);
+        }).catch(error => {
             setUploading(false);
-            toast({ title: 'Upload Failed', description: 'Could not save KPIs to Firestore.', variant: 'destructive'});
-        }
+            errorEmitter.emit(
+                'permission-error',
+                new FirestorePermissionError({
+                  path: 'kpi_catalog',
+                  operation: 'write',
+                  requestResourceData: { kpi_catalog: kpisToUpload }
+                })
+            );
+        });
     };
 
     const removeFile = () => {
@@ -224,9 +230,12 @@ const OrgImportTab = () => {
                 const employeeData = {
                     id: employeeId,
                     name: item.name || 'N/A',
-                    department: item.department || 'N/A',
-                    position: item.position || 'N/A',
-                    manager: item.manager || ''
+                    departmentId: item.departmentId || '',
+                    positionId: item.positionId || '',
+                    managerId: item.managerId || '',
+                    level: item.level || 0,
+                    email: item.email || '',
+                    status: 'active'
                 };
                 batch.set(employeeDocRef, employeeData, { merge: true });
             });
@@ -235,8 +244,14 @@ const OrgImportTab = () => {
                 toast({ title: 'Import Complete', description: 'Organization data has been saved to the "employees" collection.' });
                 router.push('/user-management');
             }).catch(error => {
-                console.error("Error writing batch: ", error);
-                toast({ variant: 'destructive', title: 'Import Failed', description: 'Could not save organization data.' });
+                errorEmitter.emit(
+                    'permission-error',
+                    new FirestorePermissionError({
+                      path: 'employees',
+                      operation: 'write',
+                      requestResourceData: { employees: fileContent }
+                    })
+                );
             });
 
         } else {

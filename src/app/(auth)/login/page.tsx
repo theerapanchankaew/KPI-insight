@@ -234,14 +234,13 @@ export default function LoginPage() {
   
   return (
     <div className="flex h-screen w-full items-center justify-center bg-gray-100 dark:bg-gray-900">
-      <Card className="w-full max-w-md shadow-2xl">
-        {isUserLoading || user ? (
-           <CardContent className="flex h-[550px] flex-col items-center justify-center space-y-4">
+       {isUserLoading || user ? (
+           <div className="flex flex-col items-center space-y-4">
              <ShieldCheck className="h-12 w-12 text-primary animate-pulse" />
              <p className="text-muted-foreground">Loading authentication state...</p>
-           </CardContent>
+           </div>
         ) : (
-          <>
+          <Card className="w-full max-w-md shadow-2xl">
             <CardHeader className="text-center">
               <ShieldCheck className="mx-auto h-12 w-12 text-primary" />
               <CardTitle className="mt-4 text-2xl">KPI Insights Login</CardTitle>
@@ -259,9 +258,8 @@ export default function LoginPage() {
                 <SignUpForm />
               </TabsContent>
             </Tabs>
-          </>
+          </Card>
         )}
-      </Card>
     </div>
   );
 }

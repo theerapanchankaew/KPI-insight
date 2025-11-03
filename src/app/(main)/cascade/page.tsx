@@ -13,6 +13,8 @@ import { Button } from '@/components/ui/button';
 import { ChevronDown, ChevronRight, Share2, Edit, Trash2, PlusCircle, Save, UserPlus } from 'lucide-react';
 import { useFirestore, useUser, useCollection, useMemoFirebase, WithId, addDocumentNonBlocking, setDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
 import { collection, doc, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { FirestorePermissionError } from '@/firebase/errors';
+import { errorEmitter } from '@/firebase/error-emitter';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -24,7 +26,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 
 
 // ==================== TYPE DEFINITIONS ====================
-import type { Employee, Kpi as CorporateKpi, CascadedKpi, MonthlyKpi } from '@/context/KpiDataContext';
+import type { Employee, Kpi as CorporateKpi, CascadedKpi, MonthlyKpi, Department } from '@/context/KpiDataContext';
 
 // This was missing from the context, let's define it here for this page's purpose
 interface IndividualKpiBase {
@@ -112,6 +114,7 @@ const AssignKpiDialog = ({
     const [weight, setWeight] = useState(0);
     const [target, setTarget] = useState('');
     const [notes, setNotes] = useState('');
+    const { departments } = useKpiData();
 
     useEffect(() => {
         if (!isOpen) {
@@ -129,6 +132,8 @@ const AssignKpiDialog = ({
         }
 
         const selectedEmployee = teamMembers.find(e => e.id === employeeId);
+        const departmentName = departments?.find(d => d.id === selectedEmployee?.departmentId)?.name || 'N/A';
+
         if (!selectedEmployee) {
             toast({ title: "Employee not found", description: "The selected employee could not be found.", variant: 'destructive'});
             return;
@@ -137,7 +142,7 @@ const AssignKpiDialog = ({
         const individualKpi: Omit<AssignedCascadedKpi, 'id'> = {
             employeeId,
             employeeName: selectedEmployee.name,
-            department: selectedEmployee.department,
+            department: departmentName,
             kpiId: departmentKpi.id, // Link to the department KPI
             corporateKpiId: departmentKpi.corporateKpiId,
             kpiMeasure: departmentKpi.measure,
@@ -213,7 +218,7 @@ const DeployAndCascadeDialog = ({
     isOpen: boolean;
     onClose: () => void;
     corporateKpi: WithId<CorporateKpi> | null;
-    departments: string[];
+    departments: WithId<Department>[];
     existingCascades: WithId<CascadedKpi>[];
 }) => {
     const firestore = useFirestore();
@@ -300,69 +305,75 @@ const DeployAndCascadeDialog = ({
             return;
         }
 
-        try {
-            const batch = writeBatch(firestore);
-            
-            // Save/Update Cascaded KPIs
-            cascades.forEach(c => {
-                if (c.department && c.weight && c.target) {
-                    const cascadeData: Omit<CascadedKpi, 'id'> = {
-                        corporateKpiId: corporateKpi.id,
-                        measure: corporateKpi.measure,
-                        department: c.department!,
-                        weight: Number(c.weight),
-                        target: c.target!,
-                        unit: corporateKpi.unit,
-                        category: corporateKpi.category,
-                    };
-
-                    let docRef;
-                    if ((c as WithId<CascadedKpi>).id) {
-                        docRef = doc(firestore, 'cascaded_kpis', (c as WithId<CascadedKpi>).id);
-                        batch.set(docRef, cascadeData, { merge: true });
-                    } else {
-                        docRef = doc(collection(firestore, 'cascaded_kpis'));
-                        batch.set(docRef, cascadeData);
-                    }
-                }
-            });
-
-            // Deploy Monthly KPIs based on Corporate KPI
-            const currentYear = new Date().getFullYear();
-            const currentMonth = new Date().getMonth(); // 0-11
-            const fiscalYearStartYear = currentMonth >= 9 ? currentYear : currentYear - 1;
-
-
-            monthlyBreakdown.forEach(monthData => {
-                 const yearForMonth = fiscalYearStartYear + (monthData.month < 10 ? 1 : 0);
-                 const monthlyKpi: Omit<MonthlyKpi, 'id'> = {
-                    parentKpiId: corporateKpi.id,
+        const batch = writeBatch(firestore);
+        
+        // Save/Update Cascaded KPIs
+        cascades.forEach(c => {
+            if (c.department && c.weight && c.target) {
+                const departmentName = departments.find(d => d.id === c.department)?.name || 'N/A';
+                const cascadeData: Omit<CascadedKpi, 'id'> = {
+                    corporateKpiId: corporateKpi.id,
                     measure: corporateKpi.measure,
-                    perspective: corporateKpi.perspective,
-                    category: corporateKpi.category,
-                    year: yearForMonth,
-                    month: monthData.month,
-                    target: distributionStrategy === 'equal' ? yearlyTargetValue / 12 : monthData.target,
-                    actual: 0,
-                    progress: 0,
-                    percentage: distributionStrategy === 'equal' ? 100/12 : monthData.percentage,
+                    department: departmentName,
+                    weight: Number(c.weight),
+                    target: c.target!,
                     unit: corporateKpi.unit,
-                    status: 'Active',
-                    distributionStrategy: distributionStrategy,
-                    createdAt: serverTimestamp(),
-                    createdBy: user.uid,
-                 };
-                 const monthlyDocRef = doc(collection(firestore, 'monthly_kpis'), `${corporateKpi.id}_${yearForMonth}_${monthData.month}`);
-                 batch.set(monthlyDocRef, monthlyKpi, { merge: true });
-            });
+                    category: corporateKpi.category,
+                };
 
-            await batch.commit();
+                let docRef;
+                if ((c as WithId<CascadedKpi>).id) {
+                    docRef = doc(firestore, 'cascaded_kpis', (c as WithId<CascadedKpi>).id);
+                    batch.set(docRef, cascadeData, { merge: true });
+                } else {
+                    docRef = doc(collection(firestore, 'cascaded_kpis'));
+                    batch.set(docRef, cascadeData);
+                }
+            }
+        });
+
+        // Deploy Monthly KPIs based on Corporate KPI
+        const currentYear = new Date().getFullYear();
+        const currentMonth = new Date().getMonth(); // 0-11
+        const fiscalYearStartYear = currentMonth >= 9 ? currentYear : currentYear - 1;
+
+
+        monthlyBreakdown.forEach(monthData => {
+             const yearForMonth = fiscalYearStartYear + (monthData.month < 10 ? 1 : 0);
+             const monthlyKpi: Omit<MonthlyKpi, 'id'> = {
+                parentKpiId: corporateKpi.id,
+                measure: corporateKpi.measure,
+                perspective: corporateKpi.perspective,
+                category: corporateKpi.category,
+                year: yearForMonth,
+                month: monthData.month,
+                target: distributionStrategy === 'equal' ? yearlyTargetValue / 12 : monthData.target,
+                actual: 0,
+                progress: 0,
+                percentage: distributionStrategy === 'equal' ? 100/12 : monthData.percentage,
+                unit: corporateKpi.unit,
+                status: 'Active',
+                distributionStrategy: distributionStrategy,
+                createdAt: serverTimestamp(),
+                createdBy: user.uid,
+             };
+             const monthlyDocRef = doc(collection(firestore, 'monthly_kpis'), `${corporateKpi.id}_${yearForMonth}_${monthData.month}`);
+             batch.set(monthlyDocRef, monthlyKpi, { merge: true });
+        });
+
+        batch.commit().then(() => {
             toast({ title: 'Success', description: 'KPI cascade and monthly breakdown have been saved.' });
             onClose();
-        } catch (error) {
-            console.error("Error saving cascades:", error);
-            toast({ title: 'Error', description: 'Could not save KPI cascade.', variant: 'destructive' });
-        }
+        }).catch(error => {
+            errorEmitter.emit(
+              'permission-error',
+              new FirestorePermissionError({
+                path: 'batch operation', // path is tricky for batches
+                operation: 'write',
+                requestResourceData: { cascades, monthlyBreakdown }
+              })
+            );
+        });
     };
 
     return (
@@ -390,7 +401,7 @@ const DeployAndCascadeDialog = ({
                                         >
                                             <SelectTrigger><SelectValue placeholder="Select Department" /></SelectTrigger>
                                             <SelectContent>
-                                                {departments.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                                                {departments.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -722,8 +733,9 @@ export default function KPICascadeManagement() {
   const { 
     kpiData, isKpiDataLoading,
     cascadedKpis, isCascadedKpisLoading,
-    orgData: employeesData, isOrgDataLoading,
+    employees, isEmployeesLoading,
     monthlyKpisData, isMonthlyKpisLoading,
+    departments, isDepartmentsLoading,
    } = useKpiData();
 
   const individualKpisQuery = useMemoFirebase(
@@ -733,9 +745,9 @@ export default function KPICascadeManagement() {
   const { data: individualKpis, isLoading: isIndividualKpisLoading } = useCollection<WithId<IndividualKpi>>(individualKpisQuery);
   
   const departmentsList = useMemo(() => {
-    if(!employeesData) return [];
-    return [...new Set(employeesData.map(e => e.department))].filter(Boolean);
-  }, [employeesData]);
+    if(!departments) return [];
+    return departments;
+  }, [departments]);
 
   const existingCascadesForSelectedKpi = useMemo(() => {
       if (!selectedCorporateKpi || !cascadedKpis) return [];
@@ -743,12 +755,15 @@ export default function KPICascadeManagement() {
   }, [selectedCorporateKpi, cascadedKpis]);
 
   const teamMembersForSelectedDept = useMemo(() => {
-      if (!selectedDepartmentKpi || !employeesData) return [];
-      return employeesData.filter(emp => emp.department === selectedDepartmentKpi.department);
-  }, [selectedDepartmentKpi, employeesData]);
+      if (!selectedDepartmentKpi || !employees) return [];
+      const departmentName = selectedDepartmentKpi.department;
+      const deptId = departments?.find(d => d.name === departmentName)?.id;
+      if (!deptId) return [];
+      return employees.filter(emp => emp.departmentId === deptId);
+  }, [selectedDepartmentKpi, employees, departments]);
 
 
-  const isLoading = isKpiDataLoading || isCascadedKpisLoading || isOrgDataLoading || isIndividualKpisLoading || isMonthlyKpisLoading;
+  const isLoading = isKpiDataLoading || isCascadedKpisLoading || isEmployeesLoading || isIndividualKpisLoading || isMonthlyKpisLoading || isDepartmentsLoading;
   
   const handleOpenCascadeDialog = (kpi: WithId<CorporateKpi>) => {
       setSelectedCorporateKpi(kpi);
@@ -860,4 +875,3 @@ export default function KPICascadeManagement() {
     </>
   );
 }
-
