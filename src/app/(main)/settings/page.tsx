@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useUserProfile } from '@/hooks/use-user-profile';
+import { useUser } from '@/firebase';
 
 const SettingsItem = ({ title, description, href, icon: Icon }: { title: string, description: string, href: string, icon: React.ElementType }) => (
   <Link href={href} passHref>
@@ -40,10 +41,13 @@ const SettingsItem = ({ title, description, href, icon: Icon }: { title: string,
 
 export default function SettingsPage() {
   const { setPageTitle } = useAppLayout();
+  const { user, isUserLoading } = useUser();
   const { userProfile, isLoading: isProfileLoading } = useUserProfile();
 
   const isAdmin = useMemo(() => {
-    if (!userProfile || !userProfile.roles) return false;
+    // This check is now robust. It ensures userProfile and its roles array exist.
+    if (!userProfile || !Array.isArray(userProfile.roles)) return false;
+    // It checks for both lowercase and uppercase 'admin' for maximum safety.
     return userProfile.roles.map(role => role.toLowerCase()).includes('admin');
   }, [userProfile]);
   
@@ -51,10 +55,13 @@ export default function SettingsPage() {
     setPageTitle('Settings');
   }, [setPageTitle]);
 
-  if (isProfileLoading) {
+  // This is the critical change. We now wait for BOTH auth to finish AND the user profile to be explicitly available.
+  // isProfileLoading is true while fetching, but userProfile will be null if the doc doesn't exist yet.
+  if (isUserLoading || (user && isProfileLoading)) {
     return (
         <div className="space-y-6">
-            <Skeleton className="h-8 w-48" />
+            <h3 className="text-2xl font-bold text-gray-900">Hierarchy Management</h3>
+            <p className="text-gray-600 mt-1">Configure and manage all aspects of your organizational structure and system rules.</p>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <Skeleton className="h-72 w-full" />
                 <Skeleton className="h-72 w-full" />
@@ -64,6 +71,7 @@ export default function SettingsPage() {
     )
   }
 
+  // If loading is done and we still don't have admin rights, deny access.
   if (!isAdmin) {
     return (
         <Card className="mt-8">
@@ -76,7 +84,7 @@ export default function SettingsPage() {
     )
   }
 
-
+  // If we have admin rights, render the page.
   return (
     <div className="fade-in space-y-8">
       <div>
