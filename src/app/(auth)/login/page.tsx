@@ -17,6 +17,55 @@ import { useToast } from '@/hooks/use-toast';
 import { navItems } from '@/lib/data/layout-data';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
+const defaultPermissions: { [key: string]: { [key: string]: boolean } } = {
+  Admin: navItems.reduce((acc, item) => ({ ...acc, [item.href]: true }), {}),
+  VP: {
+    '/dashboard': true,
+    '/cascade': true,
+    '/portfolio': true,
+    '/submit': false,
+    '/approvals': true,
+    '/reports': true,
+    '/kpi-import': false,
+    '/user-management': true,
+    '/settings': false,
+  },
+  AVP: {
+    '/dashboard': true,
+    '/cascade': true,
+    '/portfolio': true,
+    '/submit': false,
+    '/approvals': true,
+    '/reports': true,
+    '/kpi-import': false,
+    '/user-management': false,
+    '/settings': false,
+  },
+  Manager: {
+    '/dashboard': true,
+    '/cascade': true,
+    '/portfolio': true,
+    '/submit': false,
+    '/approvals': true,
+    '/reports': true,
+    '/kpi-import': false,
+    '/user-management': false,
+    '/settings': false,
+  },
+  Employee: {
+    '/dashboard': true,
+    '/cascade': false,
+    '/portfolio': true,
+    '/submit': true,
+    '/approvals': false,
+    '/reports': true, // Changed from false
+    '/kpi-import': false,
+    '/user-management': false,
+    '/settings': false,
+  },
+};
+
+
 const SignInForm = () => {
   const auth = useAuth();
   const [email, setEmail] = useState('');
@@ -116,6 +165,8 @@ const SignUpForm = () => {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
+      
+      // Update the user's Auth profile (this doesn't affect Firestore)
       await updateProfile(user, { displayName: name });
       
       // Create user profile in 'users' collection (for roles and permissions)
@@ -124,7 +175,7 @@ const SignUpForm = () => {
         id: user.uid,
         email: email,
         role: role,
-        menuAccess: navItems.reduce((acc, item) => ({...acc, [item.href]: false}), {}),
+        menuAccess: defaultPermissions[role as keyof typeof defaultPermissions] || defaultPermissions.Employee,
       };
       setDocumentNonBlocking(userRef, newUserProfile, { merge: true });
 

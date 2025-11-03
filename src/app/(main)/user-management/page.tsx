@@ -72,7 +72,7 @@ const defaultPermissions: { [key in AppUser['role']]: { [key: string]: boolean }
 };
 
 // Represents the merged data from employees and users collections
-type ManagedUser = Employee & Partial<AppUser>;
+type ManagedUser = Employee & Partial<Omit<AppUser, 'id'>>;
 
 
 const AddUserDialog = ({ isOpen, onOpenChange, onAddUser }: { isOpen: boolean; onOpenChange: (isOpen: boolean) => void; onAddUser: (user: Omit<Employee, 'id'>) => void }) => {
