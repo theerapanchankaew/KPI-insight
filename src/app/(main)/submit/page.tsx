@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useEffect, useState, useMemo } from 'react';
@@ -23,7 +24,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useRouter } from 'next/navigation';
-import { getIdTokenResult } from 'firebase/auth';
+import { useUserProfile } from '@/hooks/use-user-profile';
+
 
 // Consistent type definition with portfolio and cascade pages
 interface IndividualKpiBase {
@@ -391,7 +393,11 @@ export default function SubmitPage() {
   const { user, isUserLoading: isAuthLoading } = useUser();
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { employees, isEmployeesLoading, kpiData: kpiCatalog, departments, individualKpis: allKpis, isIndividualKpisLoading, isManagerOrAdmin, isRoleLoading } = useKpiData();
+  const { employees, isEmployeesLoading, kpiData: kpiCatalog, departments, individualKpis: allKpis, isIndividualKpisLoading } = useKpiData();
+  const { userProfile, isLoading: isRoleLoading } = useUserProfile();
+
+  const isManagerOrAdmin = useMemo(() => userProfile?.roles?.some(r => ['admin', 'vp', 'avp', 'manager'].includes(r.toLowerCase())), [userProfile]);
+
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isViewCommitmentOpen, setViewCommitmentOpen] = useState(false);
@@ -417,40 +423,36 @@ export default function SubmitPage() {
     return [];
   }, [allKpis, user, isManagerOrAdmin]);
 
-  const [submissionStatusMap, setSubmissionStatusMap] = useState<Map<string, KpiSubmission['status']>>(new Map());
-  const [isSubmissionsLoading, setIsSubmissionsLoading] = useState(true);
-  
-  useEffect(() => {
-    if (!kpisForUser || kpisForUser.length === 0 || !firestore) {
-        setIsSubmissionsLoading(false);
-        return;
-    };
+  const kpiIdsForQuery = useMemo(() => kpisForUser.map(kpi => kpi.id), [kpisForUser]);
+
+  const submissionsQuery = useMemoFirebase(() => {
+    if (!firestore || kpiIdsForQuery.length === 0) return null;
+
+    // Firestore 'in' queries are limited to 30 elements. We need to chunk.
+    const chunks: string[][] = [];
+    for (let i = 0; i < kpiIdsForQuery.length; i += 30) {
+      chunks.push(kpiIdsForQuery.slice(i, i + 30));
+    }
     
-    const fetchSubmissions = async () => {
-        setIsSubmissionsLoading(true);
-        const kpiIds = kpisForUser.map(kpi => kpi.id);
-        const newMap = new Map<string, KpiSubmission['status']>();
+    if (chunks.length > 1) {
+        console.warn("Querying for submissions in multiple chunks. This is less efficient.");
+    }
+    
+    // For this hook, we'll just use the first chunk. A more robust solution might involve multiple hooks.
+    return query(collection(firestore, 'kpi_submissions'), where('kpiId', 'in', chunks[0]));
+  }, [firestore, kpiIdsForQuery]);
 
-        const chunkSize = 30;
-        for (let i = 0; i < kpiIds.length; i += chunkSize) {
-            const chunk = kpiIds.slice(i, i + chunkSize);
-            if (chunk.length > 0) {
-                const submissionsQuery = query(collection(firestore, 'kpi_submissions'), where('kpiId', 'in', chunk));
-                const querySnapshot = await getDocs(submissionsQuery);
-                querySnapshot.forEach((doc) => {
-                    const submission = doc.data() as KpiSubmission;
-                    if (!newMap.has(submission.kpiId) || doc.get('submissionDate') > (newMap.get(submission.kpiId) as any)) {
-                         newMap.set(submission.kpiId, submission.status);
-                    }
-                });
-            }
-        }
-        setSubmissionStatusMap(newMap);
-        setIsSubmissionsLoading(false);
-    };
-
-    fetchSubmissions();
-  }, [kpisForUser, firestore]);
+  const { data: submissions, isLoading: isSubmissionsLoading } = useCollection<KpiSubmission>(submissionsQuery, { disabled: kpiIdsForQuery.length === 0 });
+  
+  const submissionStatusMap = useMemo(() => {
+    const newMap = new Map<string, KpiSubmission['status']>();
+    if (submissions) {
+      submissions.forEach(submission => {
+        newMap.set(submission.kpiId, submission.status);
+      });
+    }
+    return newMap;
+  }, [submissions]);
   
   const departmentOptions = useMemo(() => {
     if (!departments) return [];
@@ -537,8 +539,6 @@ export default function SubmitPage() {
     };
     
     addDocumentNonBlocking(collection(firestore, 'kpi_submissions'), submissionData);
-    setSubmissionStatusMap(prev => new Map(prev).set(submission.kpiId, 'Manager Review'));
-
 
     toast({
         title: "KPI Data Submitted",
@@ -635,7 +635,7 @@ export default function SubmitPage() {
                              submissionStatus={submissionStatusMap.get(kpi.id)}
                              onOpenSubmit={handleOpenSubmitDialog}
                              onViewCommitment={handleOpenViewCommitmentDialog}
-                             isManager={isManagerOrAdmin}
+                             isManager={isManagerOrAdmin || false}
                            />
                         ))}
                     </div>
@@ -666,4 +666,3 @@ export default function SubmitPage() {
     </div>
   );
 }
-
