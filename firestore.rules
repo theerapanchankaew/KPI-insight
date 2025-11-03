@@ -47,6 +47,14 @@ service cloud.firestore {
     function isAdmin() {
       return request.auth.token.role == 'Admin';
     }
+    
+    /**
+     * @description Checks if the user is a manager or above.
+     */
+    function isManager() {
+      return request.auth.token.role in ['Admin', 'VP', 'AVP', 'Manager'];
+    }
+
 
     /**
      * @description Checks if the user is the owner and the document exists.
@@ -147,9 +155,9 @@ service cloud.firestore {
      */
     match /cascaded_kpis/{cascadedKpiId} {
       allow get, list: if isSignedIn();
-      allow create: if isAdmin(); // TODO: Managers should also be able to create
-      allow update: if isAdmin() && resource != null; // TODO: Managers should also be able to update
-      allow delete: if isAdmin() && resource != null;
+      allow create: if isManager();
+      allow update: if isManager() && resource != null;
+      allow delete: if isManager() && resource != null;
     }
 
     /**
@@ -158,9 +166,9 @@ service cloud.firestore {
      */
     match /individual_kpis/{individualKpiId} {
       allow get, list: if isSignedIn(); // TODO: Refine to the assigned user and their manager.
-      allow create: if isAdmin(); // TODO: Managers should also be able to create
-      allow update: if isAdmin() && resource != null; // TODO: Managers should also be able to update
-      allow delete: if isAdmin() && resource != null;
+      allow create: if isManager(); // A manager can create a KPI for their reports.
+      allow update: if isManager() && resource != null; // TODO: Managers should also be able to update
+      allow delete: if isManager() && resource != null;
     }
 
     /**
@@ -221,3 +229,5 @@ service cloud.firestore {
     }
   }
 }
+
+    
