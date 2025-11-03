@@ -6,64 +6,17 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useAuth, useFirestore, useUser } from '@/firebase';
+import { useAuth, useFirestore, useUser, useCollection } from '@/firebase';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { ShieldCheck, LogIn, UserPlus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { doc } from 'firebase/firestore';
+import { doc, collection } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { navItems } from '@/lib/data/layout-data';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-
-const defaultPermissions: { [key: string]: { [key: string]: boolean } } = {
-  Admin: navItems.reduce((acc, item) => ({ ...acc, [item.href]: true }), {}),
-  VP: {
-    '/dashboard': true,
-    '/cascade': true,
-    '/portfolio': true,
-    '/submit': false,
-    '/approvals': true,
-    '/reports': true,
-    '/kpi-import': false,
-    '/user-management': true,
-    '/settings': false,
-  },
-  AVP: {
-    '/dashboard': true,
-    '/cascade': true,
-    '/portfolio': true,
-    '/submit': false,
-    '/approvals': true,
-    '/reports': true,
-    '/kpi-import': false,
-    '/user-management': false,
-    '/settings': false,
-  },
-  Manager: {
-    '/dashboard': true,
-    '/cascade': true,
-    '/portfolio': true,
-    '/submit': false,
-    '/approvals': true,
-    '/reports': true,
-    '/kpi-import': false,
-    '/user-management': false,
-    '/settings': false,
-  },
-  Employee: {
-    '/dashboard': true,
-    '/cascade': false,
-    '/portfolio': true,
-    '/submit': true,
-    '/approvals': false,
-    '/reports': true, // Changed from false
-    '/kpi-import': false,
-    '/user-management': false,
-    '/settings': false,
-  },
-};
+import type { Role, Position } from '@/context/KpiDataContext';
 
 
 const SignInForm = () => {
@@ -141,23 +94,32 @@ const SignUpForm = () => {
   const auth = useAuth();
   const firestore = useFirestore();
   const { toast } = useToast();
+  
+  const { data: positions } = useCollection<Position>(firestore ? collection(firestore, 'positions') : null);
+  const { data: roles } = useCollection<Role>(firestore ? collection(firestore, 'roles') : null);
+
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [role, setRole] = useState<string>('Employee');
+  const [positionId, setPositionId] = useState<string>('');
+
   const [error, setError] = useState<string | null>(null);
   const [isSigningUp, setIsSigningUp] = useState(false);
   
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!auth || !firestore) {
-        setError('Authentication service not available.');
+    if (!auth || !firestore || !positions || !roles) {
+        setError('Core services not available. Please try again later.');
         return;
     }
     if (password !== confirmPassword) {
       setError("Passwords do not match.");
       return;
+    }
+    if (!positionId) {
+        setError("Please select a position.");
+        return;
     }
     setError(null);
     setIsSigningUp(true);
@@ -166,27 +128,36 @@ const SignUpForm = () => {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
       
-      // Update the user's Auth profile (this doesn't affect Firestore)
       await updateProfile(user, { displayName: name });
       
-      // Create user profile in 'users' collection (for roles and permissions)
+      const selectedPosition = positions.find(p => p.id === positionId);
+      if (!selectedPosition) throw new Error("Selected position not found.");
+
+      const defaultRoleTemplates = roles.filter(r => selectedPosition.defaultRoles.includes(r.code));
+      const menuAccess = defaultRoleTemplates.reduce((acc, role) => ({...acc, ...role.menuAccess}), {});
+      
+      // Create 'users' document (Authorization data)
       const userRef = doc(firestore, 'users', user.uid);
       const newUserProfile = {
         id: user.uid,
+        employeeId: user.uid, // Link to the employees collection
         email: email,
-        role: role,
-        menuAccess: defaultPermissions[role as keyof typeof defaultPermissions] || defaultPermissions.Employee,
+        roles: selectedPosition.defaultRoles,
+        menuAccess: menuAccess,
       };
       setDocumentNonBlocking(userRef, newUserProfile, { merge: true });
 
-      // Create corresponding employee document in 'employees' collection (for organizational data)
+      // Create 'employees' document (HR Master data)
       const employeeRef = doc(firestore, 'employees', user.uid);
       const newEmployee = {
         id: user.uid,
         name: name,
-        department: 'Unassigned',
-        position: 'Unassigned',
-        manager: '',
+        email: email,
+        departmentId: '', // To be assigned by admin
+        positionId: positionId,
+        managerId: '', // To be assigned by admin
+        level: selectedPosition.level,
+        status: 'active',
       };
       setDocumentNonBlocking(employeeRef, newEmployee, { merge: true });
       
@@ -194,7 +165,6 @@ const SignUpForm = () => {
           title: "Account Created",
           description: "Your account has been successfully created. Please sign in."
       });
-      // The auth state listener in the layout will handle the redirect.
 
     } catch (err: any) {
       setError(err.message);
@@ -223,17 +193,15 @@ const SignUpForm = () => {
           <Input id="confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required disabled={isSigningUp} />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="role">Role (Initial)</Label>
-            <Select value={role} onValueChange={setRole} disabled={isSigningUp}>
+          <Label htmlFor="role">Position</Label>
+            <Select value={positionId} onValueChange={setPositionId} disabled={isSigningUp || !positions}>
                 <SelectTrigger id="role">
-                    <SelectValue placeholder="Select a role" />
+                    <SelectValue placeholder="Select a position" />
                 </SelectTrigger>
                 <SelectContent>
-                    <SelectItem value="Admin">Admin</SelectItem>
-                    <SelectItem value="VP">VP</SelectItem>
-                    <SelectItem value="AVP">AVP</SelectItem>
-                    <SelectItem value="Manager">Manager</SelectItem>
-                    <SelectItem value="Employee">Employee</SelectItem>
+                    {positions?.map(pos => (
+                        <SelectItem key={pos.id} value={pos.id}>{pos.name}</SelectItem>
+                    ))}
                 </SelectContent>
             </Select>
         </div>
@@ -260,19 +228,15 @@ export default function LoginPage() {
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
-    // This ensures the component has mounted on the client.
     setIsClient(true);
   }, []);
 
   useEffect(() => {
-    // If user is logged in, redirect to dashboard
     if (!isUserLoading && user) {
       router.push('/dashboard');
     }
   }, [user, isUserLoading, router]);
   
-  // Always render the loading screen on the server and initial client render.
-  // This guarantees the client and server match, preventing the hydration error.
   if (!isClient || isUserLoading || user) {
      return (
       <div className="flex h-screen w-full items-center justify-center bg-background">

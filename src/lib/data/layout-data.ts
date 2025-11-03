@@ -7,7 +7,6 @@ import {
   FileText,
   Settings,
   FileUp,
-  User,
   Users,
   Target
 } from 'lucide-react';
@@ -19,6 +18,7 @@ export const appConfig = {
   ceoTitle: 'CEO',
 };
 
+// This now serves as a master list for the UI, but permissions are controlled by roles in Firestore.
 export const navItems = [
   {
     href: '/dashboard',

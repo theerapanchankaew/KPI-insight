@@ -7,7 +7,53 @@ import { collection, doc, query, where } from 'firebase/firestore';
 import { WithId } from '@/firebase/firestore/use-collection';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
-// Define the shape of your KPI data based on the JSON structure
+// ==================== NORMALIZED ENTITY TYPES ====================
+
+export interface Employee {
+  id: string;
+  name: string;
+  email: string;
+  departmentId: string;
+  positionId: string;
+  managerId: string;
+  level: number;
+  status: 'active' | 'inactive' | 'resigned';
+}
+
+export interface User {
+  id: string;
+  employeeId: string;
+  email: string;
+  roles: string[]; // Array of role codes
+  menuAccess: { [key: string]: boolean };
+  permissions: { [key: string]: boolean };
+}
+
+export interface Department {
+  id: string;
+  name: string;
+  nameTH: string;
+  parentDepartmentId: string;
+  headOfDepartmentId: string;
+}
+
+export interface Position {
+  id: string;
+  name: string;
+  nameTH: string;
+  level: number;
+  category: 'management' | 'specialist' | 'staff';
+  defaultRoles: string[];
+}
+
+export interface Role {
+  id: string;
+  code: string;
+  name: string;
+  defaultPermissions: { [key: string]: boolean };
+  menuAccess: { [key: string]: boolean };
+}
+
 export interface Kpi {
   id: string;
   perspective: string;
@@ -17,30 +63,6 @@ export interface Kpi {
   category: string;
 }
 
-// Define the shape for an Employee
-export interface Employee {
-  id: string;
-  name: string;
-  department: string;
-  position: string;
-  manager: string;
-}
-
-export interface AppUser {
-  id: string;
-  email?: string;
-  role: 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee';
-  menuAccess: { [key: string]: boolean };
-}
-
-export interface AppSettings {
-  orgName: string;
-  period: string;
-  currency: string;
-  periodDate?: string;
-}
-
-// Type for a cascaded KPI in a department
 export interface CascadedKpi {
   id: string;
   corporateKpiId: string;
@@ -52,7 +74,6 @@ export interface CascadedKpi {
   unit?: string;
 }
 
-// Type for a monthly deployed KPI
 export interface MonthlyKpi {
   id: string;
   parentKpiId: string;
@@ -75,13 +96,10 @@ export interface MonthlyKpi {
 
 interface IndividualKpiBase {
   employeeId: string;
-  employeeName: string;
-  department: string;
-  kpiId: string;
   kpiMeasure: string;
   weight: number;
   status: 'Draft' | 'Agreed' | 'In-Progress' | 'Manager Review' | 'Upper Manager Approval' | 'Employee Acknowledged' | 'Closed' | 'Rejected';
-  notes?: string; // Manager's initial notes
+  notes?: string;
   employeeNotes?: string;
   managerNotes?: string;
   rejectionReason?: string;
@@ -89,32 +107,28 @@ interface IndividualKpiBase {
   reviewedAt?: any;
   acknowledgedAt?: any;
 }
-
-interface AssignedCascadedKpi extends IndividualKpiBase {
-  type: 'cascaded';
-  target: string;
-  unit: string;
-  corporateKpiId: string;
-}
-
-interface CommittedKpi extends IndividualKpiBase {
-  type: 'committed';
-  task: string;
-  targets: {
-    level1: string;
-    level2: string;
-    level3: string;
-    level4: string;
-    level5: string;
-  };
-}
-
+interface AssignedCascadedKpi extends IndividualKpiBase { type: 'cascaded'; target: string; unit: string; corporateKpiId: string; }
+interface CommittedKpi extends IndividualKpiBase { type: 'committed'; task: string; targets: { [key: string]: string }; }
 export type IndividualKpi = (AssignedCascadedKpi | CommittedKpi);
 
 
-interface KpiSubmission {
+export interface KpiSubmission {
+    id: string;
+    kpiId: string;
+    submittedBy: string;
+    actualValue: string;
+    notes: string;
+    submissionDate: any;
     status: 'Manager Review' | 'Upper Manager Approval' | 'Closed' | 'Rejected';
 }
+
+export interface AppSettings {
+  orgName: string;
+  period: string;
+  currency: string;
+  periodDate?: string;
+}
+
 
 const defaultSettings: AppSettings = {
     orgName: 'บริษัท ABC จำกัด (เริ่มต้น)',
@@ -122,95 +136,85 @@ const defaultSettings: AppSettings = {
     currency: 'thb',
 };
 
+// ==================== CONTEXT SHAPE ====================
 
-// Define the context shape
 interface KpiDataContextType {
+  employees: WithId<Employee>[] | null;
+  isEmployeesLoading: boolean;
+  users: WithId<User>[] | null;
+  isUsersLoading: boolean;
+  departments: WithId<Department>[] | null;
+  isDepartmentsLoading: boolean;
+  positions: WithId<Position>[] | null;
+  isPositionsLoading: boolean;
+  roles: WithId<Role>[] | null;
+  isRolesLoading: boolean;
+  
   kpiData: WithId<Kpi>[] | null;
   isKpiDataLoading: boolean;
-  orgData: WithId<Employee>[] | null;
-  isOrgDataLoading: boolean;
   cascadedKpis: WithId<CascadedKpi>[] | null;
   isCascadedKpisLoading: boolean;
   monthlyKpisData: WithId<MonthlyKpi>[] | null;
   isMonthlyKpisLoading: boolean;
+
   settings: AppSettings;
   setSettings: (settings: Partial<AppSettings>) => void;
   isSettingsLoading: boolean;
-  pendingSubmissions: WithId<KpiSubmission>[] | null;
-  isPendingSubmissionsLoading: boolean;
-  pendingCommitmentRequests: WithId<IndividualKpi>[] | null;
-  isPendingCommitmentRequestsLoading: boolean;
-  pendingUpperManagerApprovals: WithId<IndividualKpi>[] | null;
-  isPendingUpperManagerApprovalsLoading: boolean;
 }
 
-// Create the context
+// ==================== CONTEXT DEFINITION ====================
+
 const KpiDataContext = createContext<KpiDataContextType | undefined>(undefined);
 
-// Create the provider component
+// ==================== PROVIDER COMPONENT ====================
+
 export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   const firestore = useFirestore();
-  const { user, isUserLoading: isAuthLoading } = useUser();
+  const { user: authUser, isUserLoading: isAuthLoading } = useUser();
 
-  // Queries are now dependent on having a logged-in user.
-  // Firestore security rules will enforce admin-only access on the backend.
-  const kpiQuery = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
-    return collection(firestore, 'kpi_catalog');
-  }, [firestore, user]);
+  // Master Data Queries
+  const employeesQuery = useMemoFirebase(() => firestore ? collection(firestore, 'employees') : null, [firestore]);
+  const { data: employees, isLoading: isEmployeesLoading } = useCollection<Employee>(employeesQuery);
+
+  const usersQuery = useMemoFirebase(() => firestore ? collection(firestore, 'users') : null, [firestore]);
+  const { data: users, isLoading: isUsersLoading } = useCollection<User>(usersQuery);
+
+  const departmentsQuery = useMemoFirebase(() => firestore ? collection(firestore, 'departments') : null, [firestore]);
+  const { data: departments, isLoading: isDepartmentsLoading } = useCollection<Department>(departmentsQuery);
+
+  const positionsQuery = useMemoFirebase(() => firestore ? collection(firestore, 'positions') : null, [firestore]);
+  const { data: positions, isLoading: isPositionsLoading } = useCollection<Position>(positionsQuery);
+  
+  const rolesQuery = useMemoFirebase(() => firestore ? collection(firestore, 'roles') : null, [firestore]);
+  const { data: roles, isLoading: isRolesLoading } = useCollection<Role>(rolesQuery);
+
+  // Transactional Data Queries
+  const kpiQuery = useMemoFirebase(() => firestore ? collection(firestore, 'kpi_catalog') : null, [firestore]);
   const { data: kpiData, isLoading: isKpiDataLoading } = useCollection<Kpi>(kpiQuery);
 
-  const orgQuery = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
-    return collection(firestore, 'employees');
-  }, [firestore, user]);
-  const { data: orgData, isLoading: isOrgDataLoading } = useCollection<Employee>(orgQuery);
-  
-  const cascadedKpisQuery = useMemoFirebase(() => {
-      if (!firestore || !user) return null;
-      return collection(firestore, 'cascaded_kpis');
-  }, [firestore, user]);
+  const cascadedKpisQuery = useMemoFirebase(() => firestore ? collection(firestore, 'cascaded_kpis') : null, [firestore]);
   const { data: cascadedKpis, isLoading: isCascadedKpisLoading } = useCollection<CascadedKpi>(cascadedKpisQuery);
   
   const monthlyKpisQuery = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
-    
+    if (!firestore) return null;
     const today = new Date();
-    const currentMonth = today.getMonth(); // 0-11
     const currentYear = today.getFullYear();
-    const fiscalYearStartYear = currentMonth >= 9 ? currentYear : currentYear - 1;
-    const fiscalYearEndYear = fiscalYearStartYear + 1;
-    
-    return query(collection(firestore, 'monthly_kpis'), where('year', 'in', [fiscalYearStartYear, fiscalYearEndYear]));
-  }, [firestore, user]);
+    const fiscalYearStartYear = today.getMonth() >= 9 ? currentYear : currentYear - 1;
+    return query(collection(firestore, 'monthly_kpis'), where('year', 'in', [fiscalYearStartYear, fiscalYearStartYear + 1]));
+  }, [firestore]);
   const { data: monthlyKpisData, isLoading: isMonthlyKpisLoading } = useCollection<MonthlyKpi>(monthlyKpisQuery);
 
-  const settingsDocRef = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
-    return doc(firestore, 'settings', 'global');
-  }, [firestore, user]);
-  
+  // Settings
+  const settingsDocRef = useMemoFirebase(() => firestore ? doc(firestore, 'settings', 'global') : null, [firestore]);
   const { data: settingsData, isLoading: isSettingsLoading } = useDoc<AppSettings>(settingsDocRef);
-  
-  // These queries are now fully managed inside the approvals page to support the hierarchical approval flow.
-  // We keep the state variables here so other components don't break.
-  const [pendingSubmissions, setPendingSubmissions] = useState<WithId<KpiSubmission>[] | null>(null);
-  const [isPendingSubmissionsLoading, setPendingSubmissionsLoading] = useState(true);
-  const [pendingCommitmentRequests, setPendingCommitmentRequests] = useState<WithId<IndividualKpi>[] | null>(null);
-  const [isPendingCommitmentRequestsLoading, setPendingCommitmentRequestsLoading] = useState(true);
-  const [pendingUpperManagerApprovals, setPendingUpperManagerApprovals] = useState<WithId<IndividualKpi>[] | null>(null);
-  const [isPendingUpperManagerApprovalsLoading, setPendingUpperManagerApprovalsLoading] = useState(true);
-
 
   const [localSettings, setLocalSettings] = useState<AppSettings>(defaultSettings);
 
   useEffect(() => {
     if (settingsData) {
       setLocalSettings(settingsData);
-    } else if (!isSettingsLoading && !user) {
-      setLocalSettings(defaultSettings);
     }
-  }, [settingsData, isSettingsLoading, user]);
+  }, [settingsData]);
 
 
   const setSettings = (newSettings: Partial<AppSettings>) => {
@@ -221,26 +225,22 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
     }
   };
   
-  const isLoading = isAuthLoading || isSettingsLoading;
+  const isLoading = isAuthLoading || isEmployeesLoading || isUsersLoading || isDepartmentsLoading || isPositionsLoading || isRolesLoading;
 
-  const contextValue = {
-    kpiData,
-    isKpiDataLoading: isLoading || isKpiDataLoading,
-    orgData,
-    isOrgDataLoading: isLoading || isOrgDataLoading,
-    cascadedKpis,
-    isCascadedKpisLoading: isLoading || isCascadedKpisLoading,
-    monthlyKpisData,
-    isMonthlyKpisLoading: isLoading || isMonthlyKpisLoading,
+  const contextValue: KpiDataContextType = {
+    employees, isEmployeesLoading: isLoading,
+    users, isUsersLoading: isLoading,
+    departments, isDepartmentsLoading: isLoading,
+    positions, isPositionsLoading: isLoading,
+    roles, isRolesLoading: isLoading,
+
+    kpiData, isKpiDataLoading,
+    cascadedKpis, isCascadedKpisLoading,
+    monthlyKpisData, isMonthlyKpisLoading,
+    
     settings: localSettings,
     setSettings,
-    isSettingsLoading: isLoading,
-    pendingSubmissions,
-    isPendingSubmissionsLoading,
-    pendingCommitmentRequests,
-    isPendingCommitmentRequestsLoading,
-    pendingUpperManagerApprovals,
-    isPendingUpperManagerApprovalsLoading
+    isSettingsLoading: isSettingsLoading,
   };
 
 
@@ -251,7 +251,8 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
-// Create a custom hook for using the context
+// ==================== HOOK ====================
+
 export const useKpiData = () => {
   const context = useContext(KpiDataContext);
   if (context === undefined) {
