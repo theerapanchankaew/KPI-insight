@@ -118,21 +118,17 @@ const SignUpForm = () => {
       const user = userCredential.user;
       await updateProfile(user, { displayName: name });
       
-      // Create user profile in 'users' collection
+      // Create user profile in 'users' collection (for roles and permissions)
       const userRef = doc(firestore, 'users', user.uid);
       const newUserProfile = {
         id: user.uid,
-        name: name,
         email: email,
         role: role,
-        department: "Unassigned",
-        position: "Unassigned",
-        manager: "",
         menuAccess: navItems.reduce((acc, item) => ({...acc, [item.href]: false}), {}),
       };
       setDocumentNonBlocking(userRef, newUserProfile, { merge: true });
 
-      // Create corresponding employee document in 'employees' collection
+      // Create corresponding employee document in 'employees' collection (for organizational data)
       const employeeRef = doc(firestore, 'employees', user.uid);
       const newEmployee = {
         id: user.uid,

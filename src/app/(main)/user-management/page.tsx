@@ -33,14 +33,9 @@ export interface Employee {
 
 export interface AppUser {
   id: string;
-  name: string;
   email?: string;
   role: Role;
   menuAccess: { [key: string]: boolean };
-  // Properties from Employee that might be on the user doc
-  department?: string;
-  position?: string;
-  manager?: string;
 }
 interface IndividualKpiBase {
     employeeId: string;
@@ -56,7 +51,7 @@ type IndividualKpi = AssignedCascadedKpi | CommittedKpi;
 
 
 // Represents the merged data from employees and users collections
-type ManagedUser = WithId<Employee & Partial<AppUser>>;
+type ManagedUser = WithId<Employee & AppUser>;
 
 
 const defaultPermissions: { [key in Role]: { [key: string]: boolean } } = {
@@ -192,38 +187,28 @@ export default function UserManagementPage() {
   useEffect(() => {
     if (!isAdmin) return; // Don't process if not admin
 
-    const allKnownUsers = new Map<string, ManagedUser>();
+    if (isEmployeesLoading || isUsersLoading) return;
+
+    const usersMap = new Map<string, AppUser>();
+    if (usersData) {
+        usersData.forEach(user => usersMap.set(user.id, user));
+    }
 
     if (employeesData) {
-        employeesData.forEach(employee => {
-            allKnownUsers.set(employee.id, {
+        const merged: ManagedUser[] = employeesData.map(employee => {
+            const userAccount = usersMap.get(employee.id);
+            return {
                 ...employee,
-                role: 'Employee',
-                menuAccess: defaultPermissions.Employee
-            });
+                id: employee.id, // ensure employee ID is the primary ID
+                email: userAccount?.email,
+                role: userAccount?.role || 'Employee', // Default to Employee if no user record
+                menuAccess: userAccount?.menuAccess || defaultPermissions.Employee
+            };
         });
+        setManagedUsers(merged);
     }
 
-    if (usersData) {
-        usersData.forEach(userAuthProfile => {
-            const existing = allKnownUsers.get(userAuthProfile.id);
-            if (existing) {
-                allKnownUsers.set(userAuthProfile.id, { ...existing, ...userAuthProfile });
-            } else {
-                allKnownUsers.set(userAuthProfile.id, {
-                    id: userAuthProfile.id,
-                    name: userAuthProfile.name || 'N/A',
-                    department: userAuthProfile.department || 'Unassigned',
-                    position: userAuthProfile.position || 'N/A',
-                    manager: userAuthProfile.manager || '',
-                    ...userAuthProfile
-                });
-            }
-        });
-    }
-
-    setManagedUsers(Array.from(allKnownUsers.values()));
-  }, [employeesData, usersData, isAdmin]);
+  }, [employeesData, usersData, isAdmin, isEmployeesLoading, isUsersLoading]);
   
   const handleRoleChange = (userId: string, role: Role) => {
     setManagedUsers(prev => prev.map(user => 
@@ -249,16 +234,13 @@ export default function UserManagementPage() {
 
     let usersUpdated = 0;
     managedUsers.forEach(user => {
-      // Always save permissions. This will create a document in 'users' if it doesn't exist.
+      // Always save permissions to the 'users' collection.
       const userRef = doc(firestore, 'users', user.id);
-      const userDataToSave = {
+      const userDataToSave: AppUser = {
           id: user.id,
-          name: user.name,
-          email: user.email || '',
+          email: user.email,
           role: user.role,
           menuAccess: user.menuAccess,
-          department: user.department,
-          position: user.position
       };
       setDocumentNonBlocking(userRef, userDataToSave, { merge: true });
       usersUpdated++;
@@ -266,7 +248,7 @@ export default function UserManagementPage() {
     
     toast({
         title: "User Permissions Saved",
-        description: `Permissions for ${usersUpdated} user(s) have been updated/created.`,
+        description: `Permissions for ${usersUpdated} user(s) have been updated/created in the 'users' collection.`,
     });
   };
 
@@ -276,6 +258,7 @@ export default function UserManagementPage() {
         return;
     }
     const employeesCollection = collection(firestore, 'employees');
+    // For non-logged-in users, create a descriptive ID.
     const newId = newUser.name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now().toString().slice(-5);
     const employeeDocRef = doc(employeesCollection, newId);
     setDocumentNonBlocking(employeeDocRef, {id: newId, ...newUser}, { merge: true });
@@ -288,16 +271,15 @@ export default function UserManagementPage() {
         toast({ title: 'Permission Denied', description: 'Only admins can delete users.', variant: 'destructive'});
         return;
       }
+      // Delete from employees collection
       const employeeRef = doc(firestore, 'employees', employeeId);
       deleteDocumentNonBlocking(employeeRef);
 
-      const userProfileToDelete = usersData?.find(u => u.id === employeeId);
-      if(userProfileToDelete) {
-        const userRef = doc(firestore, 'users', userProfileToDelete.id);
-        deleteDocumentNonBlocking(userRef);
-      }
+      // Also delete from users collection if exists
+      const userRef = doc(firestore, 'users', employeeId);
+      deleteDocumentNonBlocking(userRef);
 
-      toast({ title: 'User Removed', description: 'The user has been removed.', variant: 'destructive' });
+      toast({ title: 'User Removed', description: 'The user and employee records have been removed.', variant: 'destructive' });
   };
 
   const handleForceSubmit = async (employee: ManagedUser) => {

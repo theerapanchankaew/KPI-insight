@@ -33,6 +33,8 @@ import { Label } from '@/components/ui/label';
 import { updateProfile } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import type { Employee } from '@/context/KpiDataContext';
+
 
 interface AppLayoutContextType {
   pageTitle: string;
@@ -109,30 +111,36 @@ const EditProfileDialog = ({ children }: { children: React.ReactNode }) => {
         if (!firestore || !user) return null;
         return doc(firestore, 'users', user.uid);
     }, [firestore, user]);
+
+    const employeeDocRef = useMemoFirebase(() => {
+        if (!firestore || !user) return null;
+        return doc(firestore, 'employees', user.uid);
+    }, [firestore, user]);
     
     const { data: userProfile, isLoading: isProfileLoading } = useDoc(userDocRef);
+    const { data: employeeProfile, isLoading: isEmployeeLoading } = useDoc<Employee>(employeeDocRef);
 
     const [displayName, setDisplayName] = useState('');
     
     useEffect(() => {
-        if (userProfile) {
-            setDisplayName(userProfile.name || user?.displayName || '');
+        if (employeeProfile) {
+            setDisplayName(employeeProfile.name || '');
         } else if (user) {
             setDisplayName(user.displayName || '');
         }
-    }, [user, userProfile]);
+    }, [user, employeeProfile]);
 
     const handleSave = async () => {
-        if (user && userDocRef) {
+        if (user && employeeDocRef) {
             try {
                 // Update Firebase Auth profile
                 if(user.displayName !== displayName) {
                     await updateProfile(user, { displayName });
                 }
                 
-                // Update Firestore document
-                const updatedData = { ...userProfile, name: displayName };
-                setDocumentNonBlocking(userDocRef, updatedData, { merge: true });
+                // Update Firestore 'employees' document
+                const updatedData = { ...employeeProfile, name: displayName };
+                setDocumentNonBlocking(employeeDocRef, updatedData, { merge: true });
 
                 toast({ title: 'Profile Updated', description: 'Your display name has been changed.' });
             } catch (error) {
@@ -141,6 +149,8 @@ const EditProfileDialog = ({ children }: { children: React.ReactNode }) => {
             }
         }
     };
+    
+    const isLoading = isProfileLoading || isEmployeeLoading;
 
     return (
         <Dialog>
@@ -149,7 +159,7 @@ const EditProfileDialog = ({ children }: { children: React.ReactNode }) => {
                 <DialogHeader>
                     <DialogTitle>Edit Profile</DialogTitle>
                 </DialogHeader>
-                 {isProfileLoading ? (
+                 {isLoading ? (
                     <div className="space-y-4 py-4">
                         <Skeleton className="h-4 w-1/4" />
                         <Skeleton className="h-10 w-full" />
@@ -184,7 +194,7 @@ const EditProfileDialog = ({ children }: { children: React.ReactNode }) => {
                         <Button variant="outline">Cancel</Button>
                     </DialogClose>
                     <DialogClose asChild>
-                        <Button onClick={handleSave} disabled={isProfileLoading}>Save Changes</Button>
+                        <Button onClick={handleSave} disabled={isLoading}>Save Changes</Button>
                     </DialogClose>
                 </DialogFooter>
             </DialogContent>
@@ -207,8 +217,15 @@ const AppHeader = () => {
     if(!user || !firestore) return null;
     return doc(firestore, 'users', user.uid);
   }, [user, firestore]);
+  
+  const employeeProfileRef = useMemoFirebase(() => {
+    if(!user || !firestore) return null;
+    return doc(firestore, 'employees', user.uid);
+  }, [user, firestore]);
 
   const { data: userProfile } = useDoc(userProfileRef);
+  const { data: employeeProfile } = useDoc<Employee>(employeeProfileRef);
+
 
   const notificationCount = useMemo(() => {
     if (!userProfile) return 0;
@@ -254,6 +271,8 @@ const AppHeader = () => {
       if (!orgData) return [];
       return [...new Set(orgData.map(e => e.department))];
   }, [orgData]);
+  
+  const displayName = employeeProfile?.name || user?.displayName || user?.email || 'User';
 
   return (
     <>
@@ -345,12 +364,12 @@ const AppHeader = () => {
                   <DropdownMenuTrigger asChild>
                       <div className="flex items-center space-x-3 cursor-pointer">
                           <div className="hidden sm:block text-right">
-                            <p className="text-sm font-medium text-foreground">{user.isAnonymous ? 'Anonymous User' : (user.displayName || user.email)}</p>
+                            <p className="text-sm font-medium text-foreground">{user.isAnonymous ? 'Anonymous' : displayName}</p>
                             <p className="text-xs text-muted-foreground">{userProfile?.role || 'Member'}</p>
                           </div>
                           <Avatar>
                             <AvatarFallback className="bg-gradient-to-r from-primary to-secondary text-white font-semibold">
-                              {user.isAnonymous ? 'A' : (user.displayName || user.email || 'U').charAt(0).toUpperCase()}
+                              {user.isAnonymous ? 'A' : displayName.charAt(0).toUpperCase()}
                             </AvatarFallback>
                           </Avatar>
                       </div>
