@@ -128,23 +128,14 @@ const SignUpForm = () => {
       const user = userCredential.user;
       await updateProfile(user, { displayName });
       
+      // Create document in 'users' collection for auth/permissions
       const userRef = doc(firestore, 'users', user.uid);
       const userRole = email.includes('admin') || email.includes('theerapan@masci') ? 'Admin' : 'Employee';
       
-      // Default permissions for the new user's role
       const defaultPermissions: { [key: string]: boolean } = navItems.reduce((acc, item) => {
-        let hasAccess = false;
-        if (userRole === 'Admin') {
-            hasAccess = true;
-        } else if (userRole === 'Employee') {
-            hasAccess = ['/dashboard', '/portfolio', '/submit', '/reports'].includes(item.href);
-        } else { // Managerial roles
-            hasAccess = !['/kpi-import', '/user-management'].includes(item.href);
-        }
-        acc[item.href] = hasAccess;
+        acc[item.href] = defaultPermissions[userRole]?.[item.href] ?? false;
         return acc;
       }, {} as { [key: string]: boolean });
-
 
       const newUserProfile = {
         id: user.uid,
@@ -153,12 +144,22 @@ const SignUpForm = () => {
         role: userRole,
         department: department,
         position: position,
-        manager: '',
+        manager: '', 
         menuAccess: defaultPermissions,
       };
-      
-      // Save user profile to Firestore
       setDocumentNonBlocking(userRef, newUserProfile, { merge: true });
+
+      // ALSO create document in 'employees' collection for organizational structure
+      const employeeRef = doc(firestore, 'employees', user.uid);
+      const newEmployeeRecord = {
+          id: user.uid,
+          name: displayName,
+          department,
+          position,
+          manager: '', // Manager to be assigned later by an Admin
+      };
+      setDocumentNonBlocking(employeeRef, newEmployeeRecord, { merge: true });
+
       
       toast({
           title: "Account Created",

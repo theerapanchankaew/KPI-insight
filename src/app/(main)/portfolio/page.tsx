@@ -860,16 +860,17 @@ const KpiProgressCard = ({
 
 // ==================== HIERARCHICAL COMPONENTS ====================
 
-const EmployeePortfolio = ({ employee, kpis, submissionsMap, handlers }: {
+const EmployeePortfolio = ({ employee, kpis, submissionsMap, handlers, isManagerView }: {
     employee: Employee;
     kpis: WithId<IndividualKpi>[];
     submissionsMap: Map<string, WithId<KpiSubmission>>;
     handlers: any;
+    isManagerView: boolean;
 }) => {
     const totalWeight = kpis.reduce((sum, kpi) => sum + kpi.weight, 0);
 
     return (
-        <Collapsible defaultOpen={kpis.length > 0} className="border rounded-lg">
+        <Collapsible defaultOpen={isManagerView || kpis.length > 0} className="border rounded-lg">
             <CollapsibleTrigger asChild>
                 <div className="flex items-center justify-between p-4 cursor-pointer bg-gray-50 hover:bg-gray-100 rounded-t-lg">
                     <div className="flex items-center gap-3">
@@ -924,23 +925,24 @@ const EmployeePortfolio = ({ employee, kpis, submissionsMap, handlers }: {
     );
 };
 
-const EmployeeNode = ({ node, allKpis, submissionsMap, handlers, level = 0 }: {
+const EmployeeNode = ({ node, allKpis, submissionsMap, handlers, level = 0, isManagerView }: {
     node: TreeNode;
     allKpis: WithId<IndividualKpi>[];
     submissionsMap: Map<string, WithId<KpiSubmission>>;
     handlers: any;
     level?: number;
+    isManagerView: boolean;
 }) => {
     const employeeKpis = allKpis.filter(kpi => kpi.employeeId === node.id);
 
     return (
         <div style={{ marginLeft: `${level * 20}px` }} className={cn("space-y-4", level > 0 && "mt-4")}>
-            <EmployeePortfolio employee={node} kpis={employeeKpis} submissionsMap={submissionsMap} handlers={handlers} />
+            <EmployeePortfolio employee={node} kpis={employeeKpis} submissionsMap={submissionsMap} handlers={handlers} isManagerView={isManagerView}/>
             
             {node.reports && node.reports.length > 0 && (
                 <div className="space-y-4">
                     {node.reports.map(report => (
-                        <EmployeeNode key={report.id} node={report} allKpis={allKpis} submissionsMap={submissionsMap} handlers={handlers} level={level + 1} />
+                        <EmployeeNode key={report.id} node={report} allKpis={allKpis} submissionsMap={submissionsMap} handlers={handlers} level={level + 1} isManagerView={isManagerView} />
                     ))}
                 </div>
             )}
@@ -984,7 +986,7 @@ export default function MyPortfolioPage() {
   
   const submissionsQuery = useMemoFirebase(() => {
     if (!firestore) return null;
-    return collection(firestore, 'submissions');
+    return collection(firestore, 'kpi_submissions');
   }, [firestore]);
   const { data: submissions, isLoading: isSubmissionsLoading } = useCollection<WithId<KpiSubmission>>(submissionsQuery);
 
@@ -999,43 +1001,70 @@ export default function MyPortfolioPage() {
       }
       return map;
   }, [submissions]);
+  
+  const teamMembers = useMemo(() => {
+      if (!allEmployees || !user || !isManagerOrAdmin) return [];
+      
+      const userEmployeeRecord = allEmployees.find(e => e.id === user.uid);
+      if (!userEmployeeRecord) return [];
+
+      if (userProfile?.role === 'Admin') return allEmployees;
+
+      // Create a map for easy lookup
+      const employeeMap = new Map(allEmployees.map(e => [e.name, e]));
+      
+      // Recursive function to get all reports
+      const getAllReports = (managerName: string) => {
+          let reports: Employee[] = [];
+          const directReports = allEmployees.filter(e => e.manager === managerName);
+          reports = reports.concat(directReports);
+          directReports.forEach(report => {
+              reports = reports.concat(getAllReports(report.name));
+          });
+          return reports;
+      };
+
+      return [userEmployeeRecord, ...getAllReports(userEmployeeRecord.name)];
+  }, [allEmployees, user, isManagerOrAdmin, userProfile]);
 
   const organizationalTree = useMemo(() => {
-      if (!allEmployees) return [];
+      if (!teamMembers || teamMembers.length === 0) return [];
 
       const employeeMap = new Map<string, TreeNode>();
-      allEmployees.forEach(emp => {
+      teamMembers.forEach(emp => {
           employeeMap.set(emp.name, { ...emp, reports: [] });
       });
 
       const rootNodes: TreeNode[] = [];
+      let loggedInUserNode: TreeNode | undefined;
+
       employeeMap.forEach(employee => {
+          if (employee.id === user?.uid) {
+              loggedInUserNode = employee;
+          }
           if (employee.manager && employeeMap.has(employee.manager)) {
               employeeMap.get(employee.manager)!.reports.push(employee);
           } else {
+              // This is a root node within the visible set
               rootNodes.push(employee);
           }
       });
       
-      // Filter the tree based on the user's role and position in the hierarchy
       if (!user || !userProfile) return [];
+      
+      // If the user is a manager, they are the root of their own tree.
+      if (isManagerOrAdmin && loggedInUserNode) {
+          return [loggedInUserNode];
+      }
 
-      if (userProfile.role === 'Admin') {
-          return rootNodes;
+      // For non-managers, just show themselves
+      if (loggedInUserNode) {
+        loggedInUserNode.reports = [];
+        return [loggedInUserNode];
       }
       
-      const userNode = Array.from(employeeMap.values()).find(e => e.id === user.uid);
-      if (userNode) {
-          if (isManagerOrAdmin) {
-              return [userNode]; // Managers see their own tree
-          } else {
-              userNode.reports = []; // Employees see only themselves
-              return [userNode];
-          }
-      }
-
-      return [];
-  }, [allEmployees, user, userProfile, isManagerOrAdmin]);
+      return []; // Should not happen if data is consistent
+  }, [teamMembers, user, userProfile, isManagerOrAdmin]);
 
 
   // ==================== HANDLERS ====================
@@ -1182,7 +1211,7 @@ export default function MyPortfolioPage() {
       <div className="space-y-4">
         {organizationalTree.length > 0 ? (
            organizationalTree.map(node => (
-                <EmployeeNode key={node.id} node={node} allKpis={kpis || []} submissionsMap={submissionsMap} handlers={handlers} />
+                <EmployeeNode key={node.id} node={node} allKpis={kpis || []} submissionsMap={submissionsMap} handlers={handlers} isManagerView={isManagerOrAdmin || false} />
             ))
         ) : (
             <Card>
@@ -1199,7 +1228,7 @@ export default function MyPortfolioPage() {
         isOpen={isCreateDialogOpen}
         onClose={() => setCreateDialogOpen(false)}
         onCreate={handleCreateCommittedKpi}
-        teamMembers={allEmployees || []}
+        teamMembers={teamMembers || []}
         currentUserId={user.uid}
         isManager={isManagerOrAdmin || false}
       />
