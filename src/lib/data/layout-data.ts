@@ -6,7 +6,7 @@ import {
   ShieldCheck,
   FileText,
   Settings,
-  Database, // Added icon for Master Data
+  Database,
   Target
 } from 'lucide-react';
 
@@ -56,15 +56,9 @@ export const navItems = [
     icon: FileText,
   },
   {
-    href: '/master-data',
-    label: 'Master Data',
-    description: 'จัดการข้อมูลหลัก',
-    icon: Database,
-  },
-  {
     href: '/settings',
-    label: 'Settings',
-    description: 'การตั้งค่า',
+    label: 'System Administration',
+    description: 'การตั้งค่าระบบ',
     icon: Settings,
   },
 ];

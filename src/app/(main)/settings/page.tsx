@@ -5,6 +5,8 @@ import React, { useEffect, useMemo } from 'react';
 import { useAppLayout } from '../layout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+
 import {
   ChevronRight,
   ShieldAlert,
@@ -19,26 +21,51 @@ import {
   BookUser,
   List,
   UserCog,
+  Sitemap,
+  Network,
+  ListTree,
+  BarChart,
+  ClipboardList,
+  FileClock,
+  FlaskConical,
+  History,
+  Workflow,
+  BookCopy,
+  UserPlus
 } from 'lucide-react';
 import Link from 'next/link';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { useUser } from '@/firebase';
 
-const SettingsItem = ({ title, description, href, icon: Icon }: { title: string, description: string, href: string, icon: React.ElementType }) => (
+const SettingsItem = ({ title, href, icon: Icon }: { title: string, href: string, icon: React.ElementType }) => (
   <Link href={href} passHref>
-    <div className="flex items-center justify-between p-4 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
-      <div className="flex items-center gap-4">
-        <div className="bg-muted p-3 rounded-lg">
-          <Icon className="h-6 w-6 text-muted-foreground" />
-        </div>
-        <div>
-          <h4 className="font-semibold">{title}</h4>
-          <p className="text-sm text-muted-foreground">{description}</p>
-        </div>
+    <div className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer ml-8 border-l border-dashed border-gray-300">
+      <div className="flex items-center gap-3">
+        <Icon className="h-5 w-5 text-muted-foreground" />
+        <h5 className="font-normal text-sm">{title}</h5>
       </div>
-      <ChevronRight className="h-5 w-5 text-muted-foreground" />
+      <ChevronRight className="h-4 w-4 text-muted-foreground" />
     </div>
   </Link>
+);
+
+
+const SubMenu = ({ title, icon: Icon, children }: { title: string, icon: React.ElementType, children: React.ReactNode }) => (
+    <AccordionItem value={title}>
+        <AccordionTrigger className="hover:no-underline text-base px-4">
+             <div className="flex items-center gap-4">
+                <div className="bg-muted p-3 rounded-lg">
+                  <Icon className="h-6 w-6 text-muted-foreground" />
+                </div>
+                <div>
+                  <h4 className="font-semibold text-left">{title}</h4>
+                </div>
+              </div>
+        </AccordionTrigger>
+        <AccordionContent className="pt-2 pb-0">
+            {children}
+        </AccordionContent>
+    </AccordionItem>
 );
 
 
@@ -48,14 +75,12 @@ export default function SettingsPage() {
   const { userProfile, isLoading: isProfileLoading } = useUserProfile();
 
   const isAdmin = useMemo(() => {
-    // This check is now robust. It ensures userProfile and its roles array exist.
     if (!userProfile || !Array.isArray(userProfile.roles)) return false;
-    // It checks for both lowercase and uppercase 'admin' for maximum safety.
     return userProfile.roles.map(role => role.toLowerCase()).includes('admin');
   }, [userProfile]);
   
   useEffect(() => {
-    setPageTitle('Settings');
+    setPageTitle('System Administration');
   }, [setPageTitle]);
 
   const isLoading = isUserLoading || isProfileLoading;
@@ -63,18 +88,16 @@ export default function SettingsPage() {
   if (isLoading) {
     return (
         <div className="space-y-6">
-            <h3 className="text-2xl font-bold text-gray-900">Hierarchy Management</h3>
+            <h3 className="text-2xl font-bold text-gray-900">System Administration</h3>
             <p className="text-gray-600 mt-1">Configure and manage all aspects of your organizational structure and system rules.</p>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <Skeleton className="h-72 w-full" />
-                <Skeleton className="h-72 w-full" />
-                <Skeleton className="h-72 w-full" />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Skeleton className="h-96 w-full" />
+                <Skeleton className="h-96 w-full" />
             </div>
         </div>
     )
   }
 
-  // If loading is done and we still don't have admin rights, deny access.
   if (!isAdmin) {
     return (
         <Card className="mt-8">
@@ -87,7 +110,6 @@ export default function SettingsPage() {
     )
   }
 
-  // If we have admin rights, render the page.
   return (
     <div className="fade-in space-y-8">
       <div>
@@ -95,47 +117,66 @@ export default function SettingsPage() {
         <p className="text-gray-600 mt-1">Configure and manage all aspects of your organizational structure and system rules.</p>
       </div>
       
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-
-        {/* Organization Structure */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        
         <Card>
-          <CardHeader>
-            <CardTitle>Organization Structure</CardTitle>
-            <CardDescription>Define how your company is organized and how decisions are made.</CardDescription>
-          </CardHeader>
-          <CardContent className="divide-y">
-            <SettingsItem title="Reporting Hierarchy" description="Manage the chain of command." href="#" icon={GitMerge} />
-            <SettingsItem title="Approval Hierarchy" description="Define who approves what." href="#" icon={FileCheck} />
-            <SettingsItem title="Delegation Management" description="Assign temporary responsibilities." href="#" icon={Share} />
-          </CardContent>
+            <CardHeader>
+                <CardTitle>🏢 Organization Management</CardTitle>
+                <CardDescription>Define how your company is organized, structured, and how decisions are made.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                 <Accordion type="multiple" className="w-full">
+                    <SubMenu title="Reporting Hierarchy" icon={GitMerge}>
+                        <SettingsItem title="Organization Chart" href="#" icon={Sitemap} />
+                        <SettingsItem title="Tree View" href="#" icon={Network} />
+                        <SettingsItem title="List View" href="#" icon={ListTree} />
+                        <SettingsItem title="Manage Structure" href="#" icon={FileCog} />
+                        <SettingsItem title="Reports & Analytics" href="#" icon={BarChart} />
+                    </SubMenu>
+                    <SubMenu title="Approval Hierarchy" icon={FileCheck}>
+                        <SettingsItem title="Approval Rules" href="#" icon={ClipboardList} />
+                        <SettingsItem title="Flow Builder" href="#" icon={Workflow} />
+                        <SettingsItem title="Conditions Manager" href="#" icon={FileCog} />
+                        <SettingsItem title="Approval Levels" href="#" icon={Users2} />
+                        <SettingsItem title="Test Simulator" href="#" icon={FlaskConical} />
+                        <SettingsItem title="Approval History" href="#" icon={History} />
+                    </SubMenu>
+                    <SubMenu title="Delegation Management" icon={Share}>
+                        <SettingsItem title="Active Delegations" href="#" icon={Users} />
+                        <SettingsItem title="Create Delegation" href="#" icon={UserPlus} />
+                        <SettingsItem title="Scheduled" href="#" icon={FileClock} />
+                        <SettingsItem title="History" href="#" icon={History} />
+                        <SettingsItem title="Templates" href="#" icon={BookCopy} />
+                    </SubMenu>
+                 </Accordion>
+            </CardContent>
         </Card>
         
-        {/* Master Data */}
         <Card>
-          <CardHeader>
-            <CardTitle>Master Data</CardTitle>
-            <CardDescription>Manage the core building blocks of your organization.</CardDescription>
-          </CardHeader>
-          <CardContent className="divide-y">
-            <SettingsItem title="Employees" description="Manage the employee master list." href="#" icon={BookUser} />
-            <SettingsItem title="Departments" description="Manage business units." href="#" icon={Building} />
-            <SettingsItem title="Positions" description="Manage job titles and levels." href="#" icon={Briefcase} />
-            <SettingsItem title="Roles" description="Manage system roles and permissions." href="#" icon={Users} />
-          </CardContent>
-        </Card>
-
-        {/* System Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle>System Settings</CardTitle>
-            <CardDescription>Configure system-wide rules and templates.</CardDescription>
-          </CardHeader>
-          <CardContent className="divide-y">
-            <SettingsItem title="User Management" description="Administer user accounts and access." href="#" icon={UserCog} />
-            <SettingsItem title="KPI Catalog" description="Manage the central library of KPIs." href="#" icon={List} />
-            <SettingsItem title="Approval Rules" description="Set rules for automated approvals." href="#" icon={FileCog} />
-            <SettingsItem title="Permission Templates" description="Create default permission sets." href="#" icon={Users2} />
-          </CardContent>
+            <CardHeader>
+                <CardTitle>📚 Master Data</CardTitle>
+                <CardDescription>Manage the core building blocks and entities of your organization.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <Accordion type="multiple" className="w-full" defaultValue={['Departments', 'Positions', 'Roles', 'Employees']}>
+                    <SubMenu title="Departments" icon={Building}>
+                        <SettingsItem title="View All Departments" href="#" icon={List} />
+                        <SettingsItem title="Add New Department" href="#" icon={PlusCircle} />
+                    </SubMenu>
+                    <SubMenu title="Positions" icon={Briefcase}>
+                         <SettingsItem title="View All Positions" href="#" icon={List} />
+                        <SettingsItem title="Add New Position" href="#" icon={PlusCircle} />
+                    </SubMenu>
+                    <SubMenu title="Roles" icon={Users}>
+                        <SettingsItem title="View All Roles" href="#" icon={List} />
+                        <SettingsItem title="Add New Role" href="#" icon={PlusCircle} />
+                    </SubMenu>
+                    <SubMenu title="Employees" icon={BookUser}>
+                        <SettingsItem title="View All Employees" href="#" icon={List} />
+                        <SettingsItem title="Add New Employee" href="#" icon={UserPlus} />
+                    </SubMenu>
+                </Accordion>
+            </CardContent>
         </Card>
         
       </div>
