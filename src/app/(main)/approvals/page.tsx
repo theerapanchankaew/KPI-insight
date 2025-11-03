@@ -29,6 +29,8 @@ import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { useKpiData } from '@/context/KpiDataContext';
+import type { Employee } from '@/context/KpiDataContext';
+
 
 // ==================== TYPE DEFINITIONS ====================
 
@@ -80,19 +82,13 @@ interface KpiSubmission {
     status: 'Manager Review' | 'Upper Manager Approval' | 'Closed' | 'Rejected';
 }
 
-interface Employee {
-  id: string;
-  name: string;
-  position: string;
-  department: string;
-  manager: string;
-}
 
 type Role = 'Admin' | 'VP' | 'AVP' | 'Manager' | 'Employee';
 
 interface AppUser {
-  role: Role;
-  name: string;
+  id: string;
+  employeeId: string;
+  roles: Role[];
 }
 
 // ==================== DIALOGS ====================
@@ -307,8 +303,8 @@ export default function ActionCenterPage() {
   const { user, isUserLoading } = useUser();
   
   const {
-      orgData: employeesData, 
-      isOrgDataLoading: isEmployeesLoading
+      employees: employeesData, 
+      isEmployeesLoading
   } = useKpiData();
 
   const userProfileRef = useMemoFirebase(() => {
@@ -317,15 +313,21 @@ export default function ActionCenterPage() {
   }, [user, firestore]);
   
   const { data: userProfile, isLoading: isProfileLoading } = useDoc<AppUser>(userProfileRef);
+
+  const currentEmployeeRecord = useMemo(() => {
+      if (!user || !employeesData) return null;
+      return employeesData.find(e => e.id === user.uid);
+  }, [user, employeesData])
   
-  const isManagerOrAdmin = useMemo(() => userProfile?.role && ['Admin', 'VP', 'AVP', 'Manager'].includes(userProfile.role), [userProfile]);
-  const isUpperManager = useMemo(() => userProfile?.role && ['Admin', 'VP'].includes(userProfile.role), [userProfile]);
+  const isManagerOrAdmin = useMemo(() => userProfile?.roles && userProfile.roles.some(r => ['admin', 'vp', 'avp', 'manager'].includes(r)), [userProfile]);
+  const isUpperManager = useMemo(() => userProfile?.roles && userProfile.roles.some(r => ['admin', 'vp'].includes(r)), [userProfile]);
+
 
   const directReportsQuery = useMemoFirebase(() => {
-    if (!firestore || !userProfile || !isManagerOrAdmin) return null;
+    if (!firestore || !currentEmployeeRecord) return null;
     // Find employees who report directly to the logged-in user
-    return query(collection(firestore, 'employees'), where('manager', '==', userProfile.name));
-  }, [firestore, userProfile, isManagerOrAdmin]);
+    return query(collection(firestore, 'employees'), where('managerId', '==', currentEmployeeRecord.id));
+  }, [firestore, currentEmployeeRecord]);
 
   const { data: directReports, isLoading: isDirectReportsLoading } = useCollection<Employee>(directReportsQuery);
   
@@ -344,13 +346,13 @@ export default function ActionCenterPage() {
 
   // KPIs submitted by this manager's reports, that have been agreed by the manager, now needing upper approval
   const pendingUpperManagerApprovalsQuery = useMemoFirebase(() => {
-      if (!firestore || reportIds.length === 0) return null;
+      if (!firestore || !isUpperManager || reportIds.length === 0) return null;
       return query(
           collection(firestore, 'individual_kpis'),
           where('employeeId', 'in', reportIds),
           where('status', '==', 'Upper Manager Approval')
       );
-  }, [firestore, reportIds]);
+  }, [firestore, isUpperManager, reportIds]);
   const { data: pendingUpperManagerApprovals, isLoading: isPendingUpperManagerApprovalsLoading } = useCollection<IndividualKpi>(pendingUpperManagerApprovalsQuery);
 
 
@@ -390,7 +392,7 @@ export default function ActionCenterPage() {
   const handleApproveCommitment = async (kpiId: string, notes: string) => {
     if (!firestore || !userProfile) return;
     const kpiRef = doc(firestore, 'individual_kpis', kpiId);
-    const nextStatus = ['Admin', 'VP'].includes(userProfile.role) ? 'In-Progress' : 'Upper Manager Approval';
+    const nextStatus = userProfile.roles.includes('admin') || userProfile.roles.includes('vp') ? 'In-Progress' : 'Upper Manager Approval';
     setDocumentNonBlocking(kpiRef, { status: nextStatus, managerNotes: notes, reviewedAt: serverTimestamp() }, { merge: true });
     toast({ title: "Commitment Agreed", description: nextStatus === 'In-Progress' ? "The KPI is now active." : "The KPI has been escalated for final approval." });
   };
