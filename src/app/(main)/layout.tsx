@@ -198,14 +198,15 @@ const AppHeader = () => {
   const { settings, kpiData, cascadedKpis, orgData, pendingSubmissions, pendingCommitmentRequests, pendingUpperManagerApprovals } = useKpiData();
   const { user, isUserLoading } = useUser();
   const auth = useAuth();
+  const firestore = useFirestore();
   const router = useRouter();
 
   const [openCommand, setOpenCommand] = React.useState(false);
   
   const userProfileRef = useMemoFirebase(() => {
-    if(!user || !auth) return null;
-    return doc(useFirestore(), 'users', user.uid);
-  }, [user, auth]);
+    if(!user || !firestore) return null;
+    return doc(firestore, 'users', user.uid);
+  }, [user, firestore]);
 
   const { data: userProfile } = useDoc(userProfileRef);
 
