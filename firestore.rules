@@ -29,7 +29,7 @@ service cloud.firestore {
 
     /**
      * @description Checks if the authenticated user is an Admin by checking for 'admin' in their roles token.
-     * This assumes 'roles' is a map or list on the custom claims.
+     * This assumes 'roles' is a list on the custom claims.
      */
     function isAdmin() {
       return isSignedIn() && request.auth.token.roles.hasAny(['admin']);
@@ -46,8 +46,9 @@ service cloud.firestore {
      * @description Checks if the user is a direct manager of a given employee.
      */
     function isDirectManagerOf(employeeId) {
-        let employeeDoc = get(/databases/$(database)/documents/employees/$(employeeId)).data;
-        return employeeDoc.managerId == request.auth.uid;
+        // Use `exists` to prevent errors on non-existent documents
+        return exists(/databases/$(database)/documents/employees/$(employeeId)) &&
+               get(/databases/$(database)/documents/employees/$(employeeId)).data.managerId == request.auth.uid;
     }
     
 
@@ -65,26 +66,26 @@ service cloud.firestore {
      * Writable only by Admins.
      */
     match /employees/{employeeId} {
-      allow read, write: if isAdmin();
       allow get, list: if isSignedIn();
+      allow write: if isAdmin();
     }
 
     /**
      * Departments, Positions, Roles: Configuration data readable by all, writable by admins.
      */
     match /departments/{departmentId} {
-      allow read, write: if isAdmin();
       allow get, list: if isSignedIn();
+      allow write: if isAdmin();
     }
     
     match /positions/{positionId} {
-      allow read, write: if isAdmin();
       allow get, list: if isSignedIn();
+      allow write: if isAdmin();
     }
     
     match /roles/{roleId} {
-      allow read, write: if isAdmin();
-      allow get, list: if isSignedIn();
+      allow get, list: if isSignedIn() || isAdmin(); // Explicitly add isAdmin for listing
+      allow write: if isAdmin();
     }
 
     /**
@@ -92,8 +93,8 @@ service cloud.firestore {
      * Readable by all, writable only by admins.
      */
     match /kpi_catalog/{kpiId} {
-      allow read, write: if isAdmin();
       allow get, list: if isSignedIn();
+      allow write: if isAdmin();
     }
 
     /**
@@ -101,9 +102,8 @@ service cloud.firestore {
      * Readable by all, writable by managers/admins.
      */
     match /cascaded_kpis/{cascadedKpiId} {
-      allow read, write: if isAdmin();
       allow get, list: if isSignedIn();
-      allow create, update, delete: if isManager();
+      allow create, update, delete: if isManager() || isAdmin();
     }
 
     /**
@@ -112,19 +112,18 @@ service cloud.firestore {
      * - Writable by the user (for status changes) or their manager/admin.
      */
     match /individual_kpis/{individualKpiId} {
-        allow read, write: if isAdmin();
-        allow get: if isSignedIn() && (isOwner(resource.data.employeeId) || isDirectManagerOf(resource.data.employeeId));
+        allow get: if isSignedIn() && (isOwner(resource.data.employeeId) || isDirectManagerOf(resource.data.employeeId) || isAdmin());
         allow list: if isSignedIn(); // Allow listing for portfolio views
-        allow create: if isManager();
+        allow create: if isManager() || isAdmin();
         
         // Allow employee to submit for review or acknowledge
         allow update: if isOwner(resource.data.employeeId) && 
                         (request.resource.data.status == 'Manager Review' || request.resource.data.status == 'In-Progress');
                         
-        // Allow manager to update or reject
-        allow update: if isDirectManagerOf(resource.data.employeeId) || isManager();
+        // Allow manager or admin to update or reject
+        allow update: if isDirectManagerOf(resource.data.employeeId) || isManager() || isAdmin();
         
-        allow delete: if isManager();
+        allow delete: if isManager() || isAdmin();
     }
 
     /**
@@ -133,9 +132,9 @@ service cloud.firestore {
      * - Writable only by the submitter.
      */
     match /kpi_submissions/{submissionId} {
-        allow read, write: if isAdmin();
         allow create: if isSignedIn();
-        allow get, list: if isSignedIn() && (isOwner(resource.data.submittedBy) || isDirectManagerOf(resource.data.submittedBy));
+        allow get, list: if isSignedIn() && (isOwner(resource.data.submittedBy) || isDirectManagerOf(resource.data.submittedBy) || isAdmin());
+        allow write: if isAdmin();
     }
 
     /**
@@ -143,16 +142,16 @@ service cloud.firestore {
      * Readable by all, writable by admins.
      */
     match /monthly_kpis/{monthlyKpiId} {
-      allow read, write: if isAdmin();
       allow get, list: if isSignedIn();
+      allow write: if isAdmin();
     }
 
     /**
      * Global Settings: Readable by all, writable only by admins.
      */
     match /settings/global {
-      allow read, write: if isAdmin();
       allow get: if isSignedIn();
+      allow write: if isAdmin();
     }
   }
 }
