@@ -1,11 +1,12 @@
 
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useAppLayout } from '../layout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useKpiData } from '@/context/KpiDataContext';
-import { useUser } from '@/firebase';
+import { useUser, useDoc, useFirestore, useMemoFirebase } from '@/firebase';
+import { doc } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   ChevronRight,
@@ -20,7 +21,6 @@ import {
   Users2,
 } from 'lucide-react';
 import Link from 'next/link';
-import { getIdTokenResult } from 'firebase/auth';
 
 const SettingsItem = ({ title, description, href, icon: Icon }: { title: string, description: string, href: string, icon: React.ElementType }) => (
   <Link href={href} passHref>
@@ -39,41 +39,32 @@ const SettingsItem = ({ title, description, href, icon: Icon }: { title: string,
   </Link>
 );
 
+interface AppUser {
+  roles: string[];
+}
+
 export default function SettingsPage() {
   const { setPageTitle } = useAppLayout();
-  const { isSettingsLoading } = useKpiData();
   const { user: authUser, isUserLoading: isAuthLoading } = useUser();
+  const firestore = useFirestore();
+
+  const userProfileRef = useMemoFirebase(() => {
+    if (!authUser || !firestore) return null;
+    return doc(firestore, 'users', authUser.uid);
+  }, [authUser, firestore]);
   
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [isCheckingAdmin, setIsCheckingAdmin] = useState(true);
+  const { data: userProfile, isLoading: isProfileLoading } = useDoc<AppUser>(userProfileRef);
 
-  // Securely check for admin role from the auth token claims
-  useEffect(() => {
-    if (authUser) {
-      setIsCheckingAdmin(true);
-      getIdTokenResult(authUser, true) // Force refresh the token
-        .then((idTokenResult) => {
-          const claims = idTokenResult.claims;
-          const userRole = claims.role as string;
-          setIsAdmin(userRole === 'Admin');
-          setIsCheckingAdmin(false);
-        })
-        .catch(() => {
-          setIsAdmin(false);
-          setIsCheckingAdmin(false);
-        });
-    } else if (!isAuthLoading) {
-      setIsAdmin(false);
-      setIsCheckingAdmin(false);
-    }
-  }, [authUser, isAuthLoading]);
-
+  const isAdmin = useMemo(() => {
+    if (!userProfile) return false;
+    return userProfile.roles.includes('admin') || userProfile.roles.includes('Admin');
+  }, [userProfile]);
 
   useEffect(() => {
     setPageTitle('Settings');
   }, [setPageTitle]);
 
-  const isLoading = isSettingsLoading || isAuthLoading || isCheckingAdmin;
+  const isLoading = isAuthLoading || isProfileLoading;
 
   if (isLoading) {
     return (
