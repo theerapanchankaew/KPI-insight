@@ -30,11 +30,13 @@ import {
   History,
   Workflow,
   BookCopy,
-  UserPlus
+  UserPlus,
+  PlusCircle
 } from 'lucide-react';
 import Link from 'next/link';
 import { useUserProfile } from '@/hooks/use-user-profile';
 import { useUser } from '@/firebase';
+import { useKpiData } from '@/context/KpiDataContext';
 
 const SettingsItem = ({ title, href, icon: Icon }: { title: string, href: string, icon: React.ElementType }) => (
   <Link href={href} passHref>
@@ -72,11 +74,19 @@ export default function SettingsPage() {
   const { setPageTitle } = useAppLayout();
   const { user, isUserLoading } = useUser();
   const { userProfile, isLoading: isProfileLoading } = useUserProfile();
+  const { employees } = useKpiData();
 
+  const isFirstUser = useMemo(() => {
+    if (!employees || employees.length === 0) return false;
+    if (employees.length === 1 && employees[0].id === user?.uid) return true;
+    return false;
+  }, [employees, user]);
+  
   const isAdmin = useMemo(() => {
+    if (isFirstUser) return true;
     if (!userProfile || !Array.isArray(userProfile.roles)) return false;
     return userProfile.roles.map(role => role.toLowerCase()).includes('admin');
-  }, [userProfile]);
+  }, [userProfile, isFirstUser]);
   
   useEffect(() => {
     setPageTitle('System Administration');
