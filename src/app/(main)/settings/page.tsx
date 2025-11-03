@@ -1,13 +1,11 @@
 
 "use client";
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAppLayout } from '../layout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { useToast } from '@/hooks/use-toast';
 import { useKpiData } from '@/context/KpiDataContext';
-import { useUser, useFirestore } from '@/firebase';
+import { useUser } from '@/firebase';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   ChevronRight,
@@ -43,7 +41,6 @@ const SettingsItem = ({ title, description, href, icon: Icon }: { title: string,
 
 export default function SettingsPage() {
   const { setPageTitle } = useAppLayout();
-  const { toast } = useToast();
   const { isSettingsLoading } = useKpiData();
   const { user: authUser, isUserLoading: isAuthLoading } = useUser();
   
