@@ -124,20 +124,12 @@ const SignUpForm = () => {
         name: name,
         email: email,
         role: role,
+        department: "Unassigned", // Add department to user profile
+        position: "Unassigned",  // Add position to user profile
+        manager: "",
         menuAccess: navItems.reduce((acc, item) => ({...acc, [item.href]: false}), {}),
       };
-      setDocumentNonBlocking(userRef, newUserProfile);
-
-      // Also create an employee document
-      const employeeRef = doc(firestore, 'employees', user.uid);
-      const newEmployeeRecord = {
-        id: user.uid,
-        name: name,
-        department: 'Unassigned',
-        position: 'Unassigned',
-        manager: '',
-      };
-      setDocumentNonBlocking(employeeRef, newEmployeeRecord, { merge: true });
+      setDocumentNonBlocking(userRef, newUserProfile, { merge: true });
       
       toast({
           title: "Account Created",
@@ -257,5 +249,3 @@ export default function LoginPage() {
     </div>
   );
 }
-
-    
