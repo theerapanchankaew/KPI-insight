@@ -312,6 +312,15 @@ const EditKpiDialog = ({
     const [task, setTask] = useState('');
     const [committedTargets, setCommittedTargets] = useState({ level1: '', level2: '', level3: '', level4: '', level5: '' });
 
+    const sortedTargetEntries = useMemo(() => {
+        if (!committedTargets) return [];
+        return Object.entries(committedTargets).sort(([keyA], [keyB]) => {
+            const numA = parseInt(keyA.replace('level', ''), 10);
+            const numB = parseInt(keyB.replace('level', ''), 10);
+            return numA - numB;
+        });
+    }, [committedTargets]);
+
     useEffect(() => {
         if (kpi) {
             setWeight(String(kpi.weight || ''));
@@ -319,7 +328,7 @@ const EditKpiDialog = ({
                 setCascadedTarget(kpi.target);
             } else {
                 setTask(kpi.task);
-                setCommittedTargets(kpi.targets);
+                setCommittedTargets(kpi.targets || { level1: '', level2: '', level3: '', level4: '', level5: '' });
             }
         }
     }, [kpi]);
@@ -369,11 +378,11 @@ const EditKpiDialog = ({
                          <div>
                             <Label>5-Level Performance Targets</Label>
                             <div className="space-y-2 mt-2">
-                                {Object.keys(committedTargets).map((level, i) => (
+                                {sortedTargetEntries.map(([level, value], i) => (
                                     <div key={level} className="flex items-center gap-3">
                                         <Label className="w-24 text-sm text-right">Level {i+1}</Label>
                                         <Input 
-                                            value={committedTargets[level as keyof typeof committedTargets]}
+                                            value={value}
                                             onChange={e => setCommittedTargets(prev => ({...prev, [level]: e.target.value}))}
                                             placeholder={`Description for level ${i+1} performance...`}
                                         />
@@ -668,22 +677,24 @@ const KpiDetailDialog = ({
           </div>
         </ScrollArea>
 
-        <DialogFooter className="flex gap-2 pt-4">
+        <DialogFooter className="flex-col sm:flex-row gap-2 pt-4">
           <DialogClose asChild>
-            <Button variant="outline">Close</Button>
+            <Button variant="outline" className="w-full sm:w-auto">Close</Button>
           </DialogClose>
-          {canAcknowledge && (
-            <Button onClick={handleAcknowledge} className="bg-blue-600 hover:bg-blue-700">
-                <Award className="mr-2 h-4 w-4" />
-                Acknowledge & Start KPI
-            </Button>
-          )}
-          {canAgree && (
-            <Button onClick={handleAgree} className={isRejected ? "bg-orange-500 hover:bg-orange-600" : "bg-green-600 hover:bg-green-700"}>
-                {isRejected ? <RefreshCw className="mr-2 h-4 w-4" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                {isRejected ? "Resubmit to Manager" : "Agree & Submit to Manager"}
-            </Button>
-          )}
+          <div className="flex w-full sm:w-auto gap-2">
+            {canAcknowledge && (
+                <Button onClick={handleAcknowledge} className="w-full bg-blue-600 hover:bg-blue-700">
+                    <Award className="mr-2 h-4 w-4" />
+                    Acknowledge & Start KPI
+                </Button>
+            )}
+            {canAgree && (
+                <Button onClick={handleAgree} className={cn("w-full", isRejected ? "bg-orange-500 hover:bg-orange-600" : "bg-green-600 hover:bg-green-700")}>
+                    {isRejected ? <RefreshCw className="mr-2 h-4 w-4" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                    {isRejected ? "Resubmit to Manager" : "Agree & Submit to Manager"}
+                </Button>
+            )}
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
