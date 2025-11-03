@@ -433,7 +433,7 @@ export default function SubmitPage() {
   const submissionsQuery = useMemoFirebase(() => {
     if (!firestore) return null;
     // Fetch all submissions to check which KPIs have been submitted
-    return collection(firestore, 'submissions');
+    return collection(firestore, 'kpi_submissions');
   }, [firestore]);
 
 
@@ -536,7 +536,7 @@ export default function SubmitPage() {
         submissionDate: serverTimestamp(),
     };
     
-    const submissionsCollection = collection(firestore, 'submissions');
+    const submissionsCollection = collection(firestore, 'kpi_submissions');
     addDocumentNonBlocking(submissionsCollection, submissionData);
 
     toast({
