@@ -20,7 +20,6 @@ import {
   Users2,
   BookUser,
   List,
-  UserCog,
   Network,
   ListTree,
   BarChart,
@@ -169,20 +168,20 @@ export default function SettingsPage() {
             <CardContent>
                 <Accordion type="multiple" className="w-full" defaultValue={['Departments', 'Positions', 'Roles', 'Employees']}>
                     <SubMenu title="Departments" icon={Building}>
-                        <SettingsItem title="View All Departments" href="#" icon={List} />
-                        <SettingsItem title="Add New Department" href="#" icon={PlusCircle} />
+                        <SettingsItem title="View All Departments" href="/master-data" icon={List} />
+                        <SettingsItem title="Add New Department" href="/master-data" icon={PlusCircle} />
                     </SubMenu>
                     <SubMenu title="Positions" icon={Briefcase}>
-                         <SettingsItem title="View All Positions" href="#" icon={List} />
-                        <SettingsItem title="Add New Position" href="#" icon={PlusCircle} />
+                         <SettingsItem title="View All Positions" href="/master-data" icon={List} />
+                        <SettingsItem title="Add New Position" href="/master-data" icon={PlusCircle} />
                     </SubMenu>
                     <SubMenu title="Roles" icon={Users}>
-                        <SettingsItem title="View All Roles" href="#" icon={List} />
-                        <SettingsItem title="Add New Role" href="#" icon={PlusCircle} />
+                        <SettingsItem title="View All Roles" href="/master-data" icon={List} />
+                        <SettingsItem title="Add New Role" href="/master-data" icon={PlusCircle} />
                     </SubMenu>
                     <SubMenu title="Employees" icon={BookUser}>
-                        <SettingsItem title="View All Employees" href="#" icon={List} />
-                        <SettingsItem title="Add New Employee" href="#" icon={UserPlus} />
+                        <SettingsItem title="View All Employees" href="/master-data" icon={List} />
+                        <SettingsItem title="Add New Employee" href="/master-data" icon={UserPlus} />
                     </SubMenu>
                 </Accordion>
             </CardContent>
@@ -192,3 +191,5 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+    
