@@ -160,6 +160,8 @@ const SignUpForm = () => {
         const adminRole = roles.find(r => r.code === 'admin');
         if (adminRole) {
             userRolesArray = [adminRole.code];
+            // Also merge menu access from the 'admin' role definition if it exists, ensuring full coverage
+            menuAccess = { ...menuAccess, ...(adminRole.menuAccess || {}) };
         }
 
       } else {
@@ -301,6 +303,8 @@ export default function LoginPage() {
     </div>
   );
 }
+
+    
 
     
 
