@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Button } from '@/components/ui/button';
@@ -138,7 +137,7 @@ const SignUpForm = () => {
       const selectedPosition = positions.find(p => p.id === positionId);
       if (!selectedPosition) throw new Error("Selected position not found.");
       
-      const userRole = isFirstUser ? 'Admin' : 'Employee';
+      const userRole = isFirstUser ? 'admin' : 'Employee';
 
       // This part is illustrative. In a real app, you'd call a Cloud Function
       // to set the custom claim, as it cannot be done securely from the client.
@@ -307,6 +306,3 @@ export default function LoginPage() {
     </div>
   );
 }
-
-    
-    
