@@ -77,7 +77,7 @@ const SignInForm = () => {
            {error && <p className="text-sm text-destructive">{error}</p>}
         </CardContent>
         <CardFooter className="flex flex-col gap-4">
-          <Button type="submit" className="w-full" disabled={isSigningIn}>
+          <Button type="submit" className="w-full" disabled={isSigningIn || !email || !password}>
             {isSigningIn ? 'Signing In...' : (
               <>
                 <LogIn className="mr-2 h-4 w-4"/>
@@ -139,15 +139,14 @@ const SignUpForm = () => {
       if (!selectedPosition) throw new Error("Selected position not found.");
       
       const userRole = isFirstUser ? 'Admin' : 'Employee';
-      const userRoleCode = isFirstUser ? 'admin' : 'employee';
 
       // This part is illustrative. In a real app, you'd call a Cloud Function
       // to set the custom claim, as it cannot be done securely from the client.
       // For this environment, we'll proceed assuming a backend mechanism handles this.
       console.log(`Assigning role '${userRole}' to ${email}. A backend function should set this custom claim.`);
 
-      let menuAccess: { [key: string]: boolean };
-      let userRolesArray = [userRoleCode];
+      let menuAccess: { [key: string]: boolean } = {};
+      let userRolesArray: string[] = [];
 
       if (isFirstUser) {
         // First user is an admin, grant all menu access
@@ -162,14 +161,19 @@ const SignUpForm = () => {
             userRolesArray = [adminRole.code];
             // Also merge menu access from the 'admin' role definition if it exists, ensuring full coverage
             menuAccess = { ...menuAccess, ...(adminRole.menuAccess || {}) };
+        } else {
+            userRolesArray = ['admin']; // Fallback
         }
 
       } else {
         // Subsequent users get roles based on their position's defaults
-        const defaultRoleTemplates = roles.filter(r => selectedPosition.defaultRoles.includes(r.code));
+        const defaultRoleCodes = selectedPosition.defaultRoles || [];
+        const defaultRoleTemplates = roles.filter(r => defaultRoleCodes.includes(r.code));
         menuAccess = defaultRoleTemplates.reduce((acc, role) => ({...acc, ...role.menuAccess}), {});
-        // Always include the base 'employee' role
-        userRolesArray = ['employee', ...defaultRoleTemplates.map(r => r.code)];
+        
+        // Always include the base 'employee' role if not already present
+        userRolesArray = ['employee', ...defaultRoleCodes];
+        userRolesArray = [...new Set(userRolesArray)];
       }
       
       const batch = writeBatch(firestore);
@@ -303,9 +307,5 @@ export default function LoginPage() {
     </div>
   );
 }
-
-    
-
-    
 
     

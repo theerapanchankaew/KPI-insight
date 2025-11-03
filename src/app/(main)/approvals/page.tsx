@@ -29,67 +29,8 @@ import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { useKpiData } from '@/context/KpiDataContext';
-import type { Employee } from '@/context/KpiDataContext';
+import type { Employee, IndividualKpi, KpiSubmission, User as AppUser } from '@/context/KpiDataContext';
 
-
-// ==================== TYPE DEFINITIONS ====================
-
-interface IndividualKpiBase {
-  employeeId: string;
-  kpiId: string;
-  kpiMeasure: string;
-  weight: number;
-  status: 'Draft' | 'Agreed' | 'In-Progress' | 'Manager Review' | 'Upper Manager Approval' | 'Employee Acknowledged' | 'Closed' | 'Rejected';
-  notes?: string;
-  employeeNotes?: string;
-  managerNotes?: string;
-  agreedAt?: any;
-  reviewedAt?: any;
-  acknowledgedAt?: any;
-  rejectionReason?: string;
-}
-
-interface AssignedCascadedKpi extends IndividualKpiBase {
-  type: 'cascaded';
-  target: string;
-}
-
-interface CommittedKpi extends IndividualKpiBase {
-  type: 'committed';
-  task: string;
-  targets: {
-    level1: string;
-    level2: string;
-    level3: string;
-    level4: string;
-    level5: string;
-  };
-}
-
-type IndividualKpi = (AssignedCascadedKpi | CommittedKpi);
-
-interface KpiSubmission {
-    id: string;
-    kpiId: string;
-    kpiMeasure: string;
-    submittedBy: string;
-    submitterName: string;
-    department: string;
-    actualValue: string;
-    targetValue: string;
-    notes: string;
-    submissionDate: any;
-    status: 'Manager Review' | 'Upper Manager Approval' | 'Closed' | 'Rejected';
-}
-
-
-type Role = 'admin' | 'vp' | 'avp' | 'manager' | 'employee';
-
-interface AppUser {
-  id: string;
-  employeeId: string;
-  roles: Role[];
-}
 
 // ==================== DIALOGS ====================
 
@@ -224,12 +165,12 @@ const ApprovalList = ({
                              <div className="md:col-span-3">
                                 <p className="font-semibold text-gray-800">{item.kpiMeasure}</p>
                                 <p className="text-sm text-gray-500">
-                                    Submitted by: {item.submitterName} ({item.department})
+                                    Submitted by: { (item as KpiSubmission).submitterName } ({ (item as KpiSubmission).department })
                                 </p>
                             </div>
                             <div>
                                 <Label className="text-xs">Target</Label>
-                                <p className="font-medium">{item.targetValue}</p>
+                                <p className="font-medium">{ (item as KpiSubmission).targetValue }</p>
                             </div>
                             <div>
                                 <Label className="text-xs">Actual</Label>
@@ -237,11 +178,11 @@ const ApprovalList = ({
                             </div>
                             <div className="md:col-span-6 border-t pt-4 mt-2 flex justify-end gap-2">
                                 <Button variant="destructive" size="sm" onClick={() => handleRejectClick(item.id)}>Reject</Button>
-                                <Button variant="default" size="sm" onClick={() => handleApproveClick(item.id, )}>{actionButtonText}</Button>
+                                <Button variant="default" size="sm" onClick={() => handleApproveClick(item.id)}>{actionButtonText}</Button>
                             </div>
-                             {item.notes && (
+                             {(item as KpiSubmission).notes && (
                                 <div className="md:col-span-6 text-sm text-gray-600 bg-gray-50 p-3 rounded-md">
-                                    <strong>Notes:</strong> {item.notes}
+                                    <strong>Notes:</strong> { (item as KpiSubmission).notes }
                                 </div>
                             )}
                         </CardContent>
@@ -326,9 +267,9 @@ export default function ActionCenterPage() {
 
 
   const directReportsQuery = useMemoFirebase(() => {
-    if (!firestore || !currentEmployeeRecord?.id) return null;
+    if (!firestore || !isManagerOrAdmin || !currentEmployeeRecord?.id) return null;
     return query(collection(firestore, 'employees'), where('managerId', '==', currentEmployeeRecord.id));
-  }, [firestore, currentEmployeeRecord]);
+  }, [firestore, currentEmployeeRecord, isManagerOrAdmin]);
 
   const { data: directReports, isLoading: isDirectReportsLoading } = useCollection<Employee>(directReportsQuery, { disabled: !isManagerOrAdmin });
   
@@ -336,30 +277,35 @@ export default function ActionCenterPage() {
 
   // KPIs submitted by direct reports for Manager Review
   const pendingCommitmentRequests = useMemo(() => {
-    if (!individualKpis || reportIds.length === 0) return [];
+    if (!individualKpis || !isManagerOrAdmin) return [];
+    if (!reportIds.length) return [];
     return individualKpis.filter(kpi => reportIds.includes(kpi.employeeId) && kpi.status === 'Manager Review');
-  }, [individualKpis, reportIds]);
-  const isPendingCommitmentRequestsLoading = isIndividualKpisLoading;
+  }, [individualKpis, reportIds, isManagerOrAdmin]);
+  const isPendingCommitmentRequestsLoading = isIndividualKpisLoading || isDirectReportsLoading;
 
 
   // KPIs submitted by this manager's reports, that have been agreed by the manager, now needing upper approval
   const pendingUpperManagerApprovals = useMemo(() => {
-      if (!individualKpis || !isUpperManager || reportIds.length === 0) return [];
+      if (!individualKpis || !isUpperManager) return [];
+      // Upper managers see approvals from employees whose manager is themselves.
+      if (!reportIds.length) return [];
       return individualKpis.filter(kpi => reportIds.includes(kpi.employeeId) && kpi.status === 'Upper Manager Approval');
   }, [individualKpis, isUpperManager, reportIds]);
-  const isPendingUpperManagerApprovalsLoading = isIndividualKpisLoading;
+  const isPendingUpperManagerApprovalsLoading = isIndividualKpisLoading || isDirectReportsLoading;
 
 
   // Data Submissions from direct reports
   const pendingSubmissionsQuery = useMemoFirebase(() => {
-    if (!firestore || reportIds.length === 0) return null;
+    // IMPORTANT: a 'where-in' query with an empty array is invalid.
+    if (!firestore || !isManagerOrAdmin || reportIds.length === 0) return null;
     return query(
         collection(firestore, 'kpi_submissions'), 
         where('submittedBy', 'in', reportIds),
         where('status', '==', 'Manager Review')
     );
-  }, [firestore, reportIds]);
-  const { data: pendingSubmissions, isLoading: isPendingSubmissionsLoading } = useCollection<KpiSubmission>(pendingSubmissionsQuery, { disabled: reportIds.length === 0 });
+  }, [firestore, reportIds, isManagerOrAdmin]);
+
+  const { data: pendingSubmissions, isLoading: isPendingSubmissionsLoading } = useCollection<KpiSubmission>(pendingSubmissionsQuery, { disabled: !isManagerOrAdmin || reportIds.length === 0 });
 
 
   useEffect(() => {
@@ -399,10 +345,10 @@ export default function ActionCenterPage() {
   };
 
   // Final approval from VP/Admin
-  const handleUpperManagerApprove = async (kpiId: string) => {
+  const handleUpperManagerApprove = async (kpiId: string, notes: string) => {
     if (!firestore) return;
     const kpiRef = doc(firestore, 'individual_kpis', kpiId);
-    setDocumentNonBlocking(kpiRef, { status: 'In-Progress' }, { merge: true });
+    setDocumentNonBlocking(kpiRef, { status: 'In-Progress', managerNotes: notes }, { merge: true });
     toast({ title: "Final Approval Given", description: "The KPI is now active." });
   };
 
@@ -522,6 +468,7 @@ export default function ActionCenterPage() {
                 onReject={handleUpperManagerReject}
                 noItemsMessage="No commitments are currently awaiting final approval."
                 actionButtonText="Final Approve"
+                approveDialog={true}
               />
           </TabsContent>}
       </Tabs>
@@ -529,3 +476,5 @@ export default function ActionCenterPage() {
     </div>
   );
 }
+
+    
