@@ -57,12 +57,6 @@ export const navItems = [
     icon: FileText,
   },
   {
-    href: '/kpi-import',
-    label: 'Intake Data',
-    description: 'นำเข้าข้อมูล',
-    icon: FileUp,
-  },
-  {
     href: '/settings',
     label: 'Settings',
     description: 'การตั้งค่า',
