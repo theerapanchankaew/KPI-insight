@@ -118,18 +118,30 @@ const SignUpForm = () => {
       const user = userCredential.user;
       await updateProfile(user, { displayName: name });
       
+      // Create user profile in 'users' collection
       const userRef = doc(firestore, 'users', user.uid);
       const newUserProfile = {
         id: user.uid,
         name: name,
         email: email,
         role: role,
-        department: "Unassigned", // Add department to user profile
-        position: "Unassigned",  // Add position to user profile
+        department: "Unassigned",
+        position: "Unassigned",
         manager: "",
         menuAccess: navItems.reduce((acc, item) => ({...acc, [item.href]: false}), {}),
       };
       setDocumentNonBlocking(userRef, newUserProfile, { merge: true });
+
+      // Create corresponding employee document in 'employees' collection
+      const employeeRef = doc(firestore, 'employees', user.uid);
+      const newEmployee = {
+        id: user.uid,
+        name: name,
+        department: 'Unassigned',
+        position: 'Unassigned',
+        manager: '',
+      };
+      setDocumentNonBlocking(employeeRef, newEmployee, { merge: true });
       
       toast({
           title: "Account Created",

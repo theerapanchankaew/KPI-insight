@@ -89,7 +89,8 @@ service cloud.firestore {
      */
     match /employees/{employeeId} {
       allow get, list: if isSignedIn();
-      allow create: if isAdmin();
+      // Allow user to create their OWN employee doc, or if the user is an admin.
+      allow create: if (isOwner(employeeId) && request.resource.data.id == employeeId) || isAdmin();
       allow update: if isAdmin() && resource != null;
       allow delete: if isAdmin() && resource != null;
     }
