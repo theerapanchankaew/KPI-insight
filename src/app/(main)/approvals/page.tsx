@@ -317,6 +317,9 @@ export default function ActionCenterPage() {
   
   const { data: userProfile, isLoading: isProfileLoading } = useDoc<AppUser>(userProfileRef);
 
+  const isManagerOrAdmin = useMemo(() => userProfile?.role && ['Admin', 'VP', 'AVP', 'Manager'].includes(userProfile.role), [userProfile]);
+  const isUpperManager = useMemo(() => userProfile?.role && ['Admin', 'VP'].includes(userProfile.role), [userProfile]);
+
   const directReportsQuery = useMemoFirebase(() => {
     if (!firestore || !userProfile || !isManagerOrAdmin) return null;
     // Find employees who report directly to the logged-in user
@@ -361,9 +364,6 @@ export default function ActionCenterPage() {
   }, [firestore, reportIds]);
   const { data: pendingSubmissions, isLoading: isPendingSubmissionsLoading } = useCollection<KpiSubmission>(pendingSubmissionsQuery);
 
-
-  const isManagerOrAdmin = useMemo(() => userProfile?.role && ['Admin', 'VP', 'AVP', 'Manager'].includes(userProfile.role), [userProfile]);
-  const isUpperManager = useMemo(() => userProfile?.role && ['Admin', 'VP'].includes(userProfile.role), [userProfile]);
 
   useEffect(() => {
     setPageTitle("Action Center");
@@ -532,5 +532,3 @@ export default function ActionCenterPage() {
     </div>
   );
 }
-
-    
