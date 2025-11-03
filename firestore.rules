@@ -7,6 +7,8 @@
  * - /users/{userId}: User profile information, accessible only to the user themselves and admins.
  * - /employees/{employeeId}: Public employee data, readable by all authenticated users, writable by admins.
  * - /departments/{departmentId}: Department information, readable by authenticated users, writable by admins.
+ * - /positions/{positionId}: Position information, readable by authenticated users, writable by admins.
+ * - /roles/{roleId}: Role information, readable by authenticated users, writable by admins.
  * - /kpi_categories/{kpiCategoryId}: KPI category information, readable by authenticated users, writable by admins.
  * - /kpi_catalog/{kpiId}: Master list of KPIs, readable by all authenticated users, writable by admins.
  * - /cascaded_kpis/{cascadedKpiId}: KPIs cascaded to departments, readable by authenticated users, writable by managers/admins.
@@ -118,6 +120,29 @@ service cloud.firestore {
       allow update: if isAdmin() && resource != null;
       allow delete: if isAdmin() && resource != null;
     }
+    
+    /**
+     * @description Defines access rules for position data.
+     * @path /positions/{positionId}
+     */
+    match /positions/{positionId} {
+      allow get, list: if isSignedIn();
+      allow create: if isAdmin();
+      allow update: if isAdmin() && resource != null;
+      allow delete: if isAdmin() && resource != null;
+    }
+    
+    /**
+     * @description Defines access rules for role data.
+     * @path /roles/{roleId}
+     */
+    match /roles/{roleId} {
+      allow get, list: if isSignedIn();
+      allow create: if isAdmin();
+      allow update: if isAdmin() && resource != null;
+      allow delete: if isAdmin() && resource != null;
+    }
+
 
     /**
      * @description Defines access rules for KPI category data.
@@ -229,5 +254,3 @@ service cloud.firestore {
     }
   }
 }
-
-    
