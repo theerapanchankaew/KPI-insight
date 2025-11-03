@@ -173,40 +173,40 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useUser();
 
   // Master Data Queries
-  const employeesQuery = useMemoFirebase(() => firestore ? collection(firestore, 'employees') : null, [firestore]);
+  const employeesQuery = useMemoFirebase(() => firestore && user ? collection(firestore, 'employees') : null, [firestore, user]);
   const { data: employees, isLoading: isEmployeesLoading } = useCollection<Employee>(employeesQuery);
 
-  const departmentsQuery = useMemoFirebase(() => firestore ? collection(firestore, 'departments') : null, [firestore]);
+  const departmentsQuery = useMemoFirebase(() => firestore && user ? collection(firestore, 'departments') : null, [firestore, user]);
   const { data: departments, isLoading: isDepartmentsLoading } = useCollection<Department>(departmentsQuery);
 
-  const positionsQuery = useMemoFirebase(() => firestore ? collection(firestore, 'positions') : null, [firestore]);
+  const positionsQuery = useMemoFirebase(() => firestore && user ? collection(firestore, 'positions') : null, [firestore, user]);
   const { data: positions, isLoading: isPositionsLoading } = useCollection<Position>(positionsQuery);
   
-  const rolesQuery = useMemoFirebase(() => firestore ? collection(firestore, 'roles') : null, [firestore]);
+  const rolesQuery = useMemoFirebase(() => firestore && user ? collection(firestore, 'roles') : null, [firestore, user]);
   const { data: roles, isLoading: isRolesLoading } = useCollection<Role>(rolesQuery);
 
   // Transactional Data Queries
-  const kpiQuery = useMemoFirebase(() => firestore ? collection(firestore, 'kpi_catalog') : null, [firestore]);
+  const kpiQuery = useMemoFirebase(() => firestore && user ? collection(firestore, 'kpi_catalog') : null, [firestore, user]);
   const { data: kpiData, isLoading: isKpiDataLoading } = useCollection<Kpi>(kpiQuery);
 
-  const cascadedKpisQuery = useMemoFirebase(() => firestore ? collection(firestore, 'cascaded_kpis') : null, [firestore]);
+  const cascadedKpisQuery = useMemoFirebase(() => firestore && user ? collection(firestore, 'cascaded_kpis') : null, [firestore, user]);
   const { data: cascadedKpis, isLoading: isCascadedKpisLoading } = useCollection<CascadedKpi>(cascadedKpisQuery);
   
   const monthlyKpisQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
+    if (!firestore || !user) return null;
     const today = new Date();
     const currentYear = today.getFullYear();
     const fiscalYearStartYear = today.getMonth() >= 9 ? currentYear : currentYear - 1;
     return query(collection(firestore, 'monthly_kpis'), where('year', 'in', [fiscalYearStartYear, fiscalYearStartYear + 1]));
-  }, [firestore]);
+  }, [firestore, user]);
   const { data: monthlyKpisData, isLoading: isMonthlyKpisLoading } = useCollection<MonthlyKpi>(monthlyKpisQuery);
 
   const individualKpisQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
+    if (!firestore || !user) return null;
     // This query is now simpler. It fetches all individual KPIs.
     // Security rules will ensure that users only get the data they are allowed to see.
     return collection(firestore, 'individual_kpis');
-  }, [firestore]);
+  }, [firestore, user]);
   const { data: individualKpis, isLoading: isIndividualKpisLoading } = useCollection<WithId<IndividualKpi>>(individualKpisQuery);
 
   // Settings
@@ -265,5 +265,3 @@ export const useKpiData = () => {
   }
   return context;
 };
-
-    
