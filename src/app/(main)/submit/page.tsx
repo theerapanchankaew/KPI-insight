@@ -29,7 +29,7 @@ import { getIdTokenResult } from 'firebase/auth';
 interface IndividualKpiBase {
     employeeId: string;
     employeeName: string;
-    department: string;
+    departmentId: string;
     kpiId: string;
     kpiMeasure: string;
     weight: number;
@@ -53,7 +53,7 @@ interface KpiSubmission {
     kpiMeasure: string;
     submittedBy: string;
     submitterName: string;
-    department: string;
+    departmentId: string;
     actualValue: string;
     targetValue: string;
     notes: string;
@@ -79,7 +79,7 @@ const SubmitDataDialog = ({ isOpen, onOpenChange, kpi, onSubmit }: {
     isOpen: boolean; 
     onOpenChange: (open: boolean) => void;
     kpi: WithId<IndividualKpi> | null;
-    onSubmit: (submission: Omit<KpiSubmission, 'submissionDate' | 'submittedBy' | 'submitterName' | 'department'>) => void;
+    onSubmit: (submission: Omit<KpiSubmission, 'submissionDate' | 'submittedBy' | 'submitterName' | 'departmentId'>) => void;
 }) => {
     const [actualValue, setActualValue] = useState('');
     const [notes, setNotes] = useState('');
@@ -391,7 +391,7 @@ export default function SubmitPage() {
   const { user, isUserLoading: isAuthLoading } = useUser();
   const firestore = useFirestore();
   const { toast } = useToast();
-  const { employees, isEmployeesLoading, kpiData: kpiCatalog, departments, individualKpis: allKpis, isIndividualKpisLoading } = useKpiData();
+  const { employees, isEmployeesLoading, kpiData: kpiCatalog, departments, individualKpis: allKpis, isIndividualKpisLoading, isManagerOrAdmin, isRoleLoading } = useKpiData();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isViewCommitmentOpen, setViewCommitmentOpen] = useState(false);
@@ -401,47 +401,13 @@ export default function SubmitPage() {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [employeeFilter, setEmployeeFilter] = useState('all');
   
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [isCheckingAdmin, setIsCheckingAdmin] = useState(true);
-
-  useEffect(() => {
-    if (user) {
-      setIsCheckingAdmin(true);
-      getIdTokenResult(user, true) 
-        .then((idTokenResult) => {
-          const claims = idTokenResult.claims;
-          const userRole = claims.role as string;
-          setIsAdmin(userRole === 'Admin');
-          setIsCheckingAdmin(false);
-        })
-        .catch(() => {
-          setIsAdmin(false);
-          setIsCheckingAdmin(false);
-        });
-    } else if (!isAuthLoading) {
-      setIsAdmin(false);
-      setIsCheckingAdmin(false);
-    }
-  }, [user, isAuthLoading]);
-
-  const [isManager, setIsManager] = useState(false);
-   useEffect(() => {
-    if (user) {
-      getIdTokenResult(user)
-        .then((idTokenResult) => {
-          const userRole = idTokenResult.claims.role as string;
-          setIsManager(['Admin', 'VP', 'AVP', 'Manager'].includes(userRole));
-        })
-    }
-  }, [user]);
-
   useEffect(() => {
     setPageTitle('Submit KPI');
   }, [setPageTitle]);
   
   const kpisForUser = useMemo(() => {
     if (!allKpis) return [];
-    if (isManager) return allKpis.filter(k => k.status !== 'Closed');
+    if (isManagerOrAdmin) return allKpis.filter(k => k.status !== 'Closed');
     if (user) {
       return allKpis.filter(k => 
         k.employeeId === user.uid && 
@@ -449,7 +415,7 @@ export default function SubmitPage() {
       );
     }
     return [];
-  }, [allKpis, user, isManager]);
+  }, [allKpis, user, isManagerOrAdmin]);
 
   const [submissionStatusMap, setSubmissionStatusMap] = useState<Map<string, KpiSubmission['status']>>(new Map());
   const [isSubmissionsLoading, setIsSubmissionsLoading] = useState(true);
@@ -500,9 +466,7 @@ export default function SubmitPage() {
   const filteredKpis = useMemo(() => {
     if (!kpisForUser) return [];
     return kpisForUser.filter(kpi => {
-        const department = departments?.find(d => d.id === kpi.department);
-        const departmentName = department ? department.name : kpi.department;
-        const departmentMatch = departmentFilter === 'all' || departmentName === departmentFilter;
+        const departmentMatch = departmentFilter === 'all' || kpi.departmentId === departmentFilter;
         
         const kpiInfo = kpi.type === 'cascaded' ? kpiCatalog?.find(k => k.id === kpi.corporateKpiId) : null;
         const category = kpiInfo?.category ?? (kpi as any).category;
@@ -512,12 +476,12 @@ export default function SubmitPage() {
 
         return departmentMatch && categoryMatch && employeeMatch;
     });
-  }, [kpisForUser, departmentFilter, categoryFilter, employeeFilter, kpiCatalog, departments]);
+  }, [kpisForUser, departmentFilter, categoryFilter, employeeFilter, kpiCatalog]);
 
   const kpisByDepartment = useMemo(() => {
       if (!filteredKpis) return {};
       return filteredKpis.reduce((acc, kpi) => {
-          const deptName = departments?.find(d => d.id === kpi.department)?.name || kpi.department || 'Unassigned';
+          const deptName = departments?.find(d => d.id === kpi.departmentId)?.name || 'Unassigned';
           if (!acc[deptName]) {
               acc[deptName] = [];
           }
@@ -552,7 +516,7 @@ export default function SubmitPage() {
     setViewCommitmentOpen(true);
   }
   
-  const handleDataSubmit = async (submission: Omit<KpiSubmission, 'submissionDate' | 'submittedBy' | 'submitterName' | 'department'>) => {
+  const handleDataSubmit = async (submission: Omit<KpiSubmission, 'submissionDate' | 'submittedBy' | 'submitterName' | 'departmentId'>) => {
     if (!firestore || !user) {
         toast({ title: "Error", description: "Could not connect to the database.", variant: "destructive"});
         return;
@@ -564,13 +528,11 @@ export default function SubmitPage() {
         return;
     }
 
-    const deptName = departments?.find(d => d.id === kpiOwner.department)?.name || kpiOwner.department;
-
     const submissionData: KpiSubmission = {
         ...submission,
         submittedBy: kpiOwner.employeeId,
         submitterName: kpiOwner.employeeName,
-        department: deptName,
+        departmentId: kpiOwner.departmentId,
         submissionDate: serverTimestamp(),
     };
     
@@ -584,7 +546,7 @@ export default function SubmitPage() {
     });
   };
 
-  const isLoading = isAuthLoading || isIndividualKpisLoading || isSubmissionsLoading || isEmployeesLoading || isCheckingAdmin;
+  const isLoading = isAuthLoading || isIndividualKpisLoading || isSubmissionsLoading || isEmployeesLoading || isRoleLoading;
 
   const statCards = [
     { label: 'Awaiting Action', value: summaryStats.totalInProgress, icon: Briefcase, color: 'text-primary' },
@@ -617,16 +579,16 @@ export default function SubmitPage() {
         <CardHeader>
           <CardTitle>KPI Submission Status</CardTitle>
           <div className="flex flex-col md:flex-row gap-4 pt-2">
-            <Select value={departmentFilter} onValueChange={setDepartmentFilter} disabled={!isManager}>
+            <Select value={departmentFilter} onValueChange={setDepartmentFilter} disabled={!isManagerOrAdmin}>
               <SelectTrigger className="w-full md:w-[200px]">
                 <SelectValue placeholder="Filter by Department" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Departments</SelectItem>
-                {departmentOptions.map(dept => <SelectItem key={dept.id} value={dept.name}>{dept.name}</SelectItem>)}
+                {departmentOptions.map(dept => <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Select value={employeeFilter} onValueChange={setEmployeeFilter} disabled={!isManager}>
+            <Select value={employeeFilter} onValueChange={setEmployeeFilter} disabled={!isManagerOrAdmin}>
                 <SelectTrigger className="w-full md:w-[200px]">
                     <SelectValue placeholder="Filter by Employee" />
                 </SelectTrigger>
@@ -673,7 +635,7 @@ export default function SubmitPage() {
                              submissionStatus={submissionStatusMap.get(kpi.id)}
                              onOpenSubmit={handleOpenSubmitDialog}
                              onViewCommitment={handleOpenViewCommitmentDialog}
-                             isManager={isManager}
+                             isManager={isManagerOrAdmin}
                            />
                         ))}
                     </div>
@@ -704,3 +666,4 @@ export default function SubmitPage() {
     </div>
   );
 }
+

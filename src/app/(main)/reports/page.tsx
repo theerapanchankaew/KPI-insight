@@ -19,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 const MonthlyReport = () => {
-    const { orgData, isOrgDataLoading, cascadedKpis, isCascadedKpisLoading, monthlyKpisData, isMonthlyKpisLoading } = useKpiData();
+    const { departments: departmentData, isDepartmentsLoading, cascadedKpis, isCascadedKpisLoading, monthlyKpisData, isMonthlyKpisLoading } = useKpiData();
 
     const [selectedMonthIndex, setSelectedMonthIndex] = useState<number>(new Date().getMonth());
     const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
@@ -38,46 +38,46 @@ const MonthlyReport = () => {
     const currentMonthName = MONTH_NAMES[selectedMonthIndex];
     
     const departments = useMemo(() => {
-        if (!orgData) return [];
-        return [...new Set(orgData.map(e => e.department).filter(Boolean))];
-    }, [orgData]);
+        if (!departmentData) return [];
+        return departmentData.sort((a,b) => a.name.localeCompare(b.name));
+    }, [departmentData]);
 
     const filteredCascadedKpis = useMemo(() => {
         if (!cascadedKpis) return [];
         if (selectedDepartment === 'all') return cascadedKpis;
-        return cascadedKpis.filter(kpi => kpi.department === selectedDepartment);
+        return cascadedKpis.filter(kpi => kpi.departmentId === selectedDepartment);
     }, [cascadedKpis, selectedDepartment]);
 
 
-    const isLoading = isOrgDataLoading || isCascadedKpisLoading || isMonthlyKpisLoading;
+    const isLoading = isDepartmentsLoading || isCascadedKpisLoading || isMonthlyKpisLoading;
 
 
     const aiInputData = useMemo(() => {
-        if (isLoading || !orgData || !filteredCascadedKpis || !monthlyKpisData) return "[]";
+        if (isLoading || !departmentData || !filteredCascadedKpis || !monthlyKpisData) return "[]";
         
         const dataForAI = {
             reportMonth: currentMonthName,
-            departments: orgData.map(e => e.department),
+            departments: departmentData.map(d => d.name),
             cascadedKpis: filteredCascadedKpis.map(kpi => {
                  const monthlyForKpi = monthlyKpisData?.filter(m => m.parentKpiId === kpi.corporateKpiId) || [];
                  const ytdActual = monthlyForKpi.reduce((sum, m) => sum + m.actual, 0);
-                 return { ...kpi, ytdActual };
+                 const deptName = departmentData.find(d => d.id === kpi.departmentId)?.name || 'N/A';
+                 return { ...kpi, departmentName: deptName, ytdActual };
             }),
         };
         
         return JSON.stringify(dataForAI, null, 2);
-    }, [orgData, filteredCascadedKpis, monthlyKpisData, isLoading, currentMonthName]);
+    }, [departmentData, filteredCascadedKpis, monthlyKpisData, isLoading, currentMonthName]);
 
     const departmentPerformance = useMemo(() => {
-        if (!cascadedKpis || !monthlyKpisData || !orgData) return [];
+        if (!cascadedKpis || !monthlyKpisData || !departmentData) return [];
         
-        // Use all departments for ranking, not just the selected one
-        const allDepts = [...new Set(orgData.map(e => e.department).filter(Boolean))];
+        const allDepts = [...departmentData];
 
         const performance = allDepts.map(dept => {
-            const deptKpis = cascadedKpis.filter(kpi => kpi.department === dept);
+            const deptKpis = cascadedKpis.filter(kpi => kpi.departmentId === dept.id);
             if (deptKpis.length === 0) {
-                return { department: dept, achievement: 0 };
+                return { department: dept.name, achievement: 0 };
             }
             
             let totalWeightedAchievement = 0;
@@ -95,12 +95,12 @@ const MonthlyReport = () => {
             });
             
             const overallAchievement = totalWeight > 0 ? totalWeightedAchievement / totalWeight : 0;
-            return { department: dept, achievement: overallAchievement };
+            return { department: dept.name, achievement: overallAchievement };
         });
 
         return performance.sort((a, b) => b.achievement - a.achievement).slice(0, 3);
 
-    }, [cascadedKpis, monthlyKpisData, orgData, selectedMonthIndex]);
+    }, [cascadedKpis, monthlyKpisData, departmentData, selectedMonthIndex]);
 
     const getAchievementBadgeVariant = (achievement: number): "success" | "warning" | "destructive" => {
         if (achievement >= 100) return 'success';
@@ -160,7 +160,7 @@ const MonthlyReport = () => {
                                 <SelectContent>
                                     <SelectItem value="all">All Departments</SelectItem>
                                     {departments.map(dept => (
-                                        <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                                        <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
@@ -208,11 +208,12 @@ const MonthlyReport = () => {
                                     const ytdTarget = ytdMonthlyData.reduce((sum, m) => sum + m.target, 0) * (kpi.weight / 100);
                                     const ytdActual = ytdMonthlyData.reduce((sum, m) => sum + m.actual, 0) * (kpi.weight / 100);
                                     const ytdAchievement = ytdTarget > 0 ? (ytdActual / ytdTarget) * 100 : 0;
+                                    const departmentName = departments.find(d => d.id === kpi.departmentId)?.name || 'N/A';
                                     
                                     return (
                                         <TableRow key={kpi.id}>
                                             <TableCell className="font-medium">{kpi.measure}</TableCell>
-                                            <TableCell>{kpi.department}</TableCell>
+                                            <TableCell>{departmentName}</TableCell>
                                             <TableCell>{monthTarget.toLocaleString(undefined, {maximumFractionDigits: 0})}</TableCell>
                                             <TableCell>{monthActual.toLocaleString(undefined, {maximumFractionDigits: 0})}</TableCell>
                                             <TableCell>
@@ -322,3 +323,4 @@ export default function ReportsPage() {
     </div>
   );
 }
+

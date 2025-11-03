@@ -135,6 +135,14 @@
       },
       "required": ["id", "measure", "target"]
     },
+    "CascadedKpi": {
+        "title": "CascadedKpi",
+        "type": "object",
+        "properties": {
+            "corporateKpiId": { "type": "string" },
+            "departmentId": { "type": "string" }
+        }
+    },
     "IndividualKpi": {
         "title": "IndividualKpi",
         "type": "object",
@@ -200,6 +208,10 @@
         "definition": { "schema": { "$ref": "#/entities/Kpi" } }
       },
       {
+        "path": "/cascaded_kpis/{cascadedKpiId}",
+        "definition": { "schema": { "$ref": "#/entities/CascadedKpi" } }
+      },
+      {
         "path": "/individual_kpis/{individualKpiId}",
         "definition": { "schema": { "$ref": "#/entities/IndividualKpi" } }
       },
@@ -215,3 +227,4 @@
     "reasoning": "The data model has been fully normalized to establish a single source of truth. 'employees' is the master for HR data. 'users' is for authentication and roles, linked via employeeId. 'departments', 'positions', and 'roles' are now separate, configurable collections, allowing for a highly flexible and scalable organizational structure. This eliminates data duplication and inconsistency."
   }
 }
+

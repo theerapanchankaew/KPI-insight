@@ -60,7 +60,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 interface IndividualKpiBase {
   employeeId: string;
   employeeName: string;
-  department: string;
+  departmentId: string;
   kpiId: string;
   kpiMeasure: string;
   weight: number;
@@ -120,8 +120,8 @@ interface AppUser {
 interface Employee {
     id: string;
     name: string;
-    position: string;
-    department: string;
+    positionId: string;
+    departmentId: string;
     managerId: string;
 }
 
@@ -179,7 +179,7 @@ const CreateCommittedKpiDialog = ({
     isOpen: boolean,
     onClose: () => void,
     onCreate: (kpi: Omit<CommittedKpi, 'id' | 'status' | 'kpiId'>) => void,
-    teamMembers: Employee[],
+    teamMembers: WithId<Employee>[],
     currentUserId: string,
     isManager: boolean
 }) => {
@@ -229,7 +229,7 @@ const CreateCommittedKpiDialog = ({
         onCreate({
             employeeId,
             employeeName: employee.name,
-            department: employee.departmentId,
+            departmentId: employee.departmentId,
             kpiMeasure: task,
             weight: Number(weight),
             type: 'committed',
@@ -860,14 +860,16 @@ const KpiProgressCard = ({
 
 // ==================== HIERARCHICAL COMPONENTS ====================
 
-const EmployeePortfolio = ({ employee, kpis, submissionsMap, handlers, isManagerView }: {
-    employee: Employee;
+const EmployeePortfolio = ({ employee, kpis, submissionsMap, handlers, isManagerView, positions }: {
+    employee: WithId<Employee>;
     kpis: WithId<IndividualKpi>[];
     submissionsMap: Map<string, WithId<KpiSubmission>>;
     handlers: any;
     isManagerView: boolean;
+    positions: WithId<any>[];
 }) => {
     const totalWeight = kpis.reduce((sum, kpi) => sum + kpi.weight, 0);
+    const positionName = positions.find(p => p.id === employee.positionId)?.name || 'N/A';
 
     return (
         <Collapsible defaultOpen={isManagerView || kpis.length > 0} className="border rounded-lg">
@@ -879,7 +881,7 @@ const EmployeePortfolio = ({ employee, kpis, submissionsMap, handlers, isManager
                         </Avatar>
                         <div>
                             <p className="font-semibold">{employee.name}</p>
-                            <p className="text-sm text-muted-foreground">{employee.position}</p>
+                            <p className="text-sm text-muted-foreground">{positionName}</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-4">
@@ -925,23 +927,24 @@ const EmployeePortfolio = ({ employee, kpis, submissionsMap, handlers, isManager
     );
 };
 
-const EmployeeNode = ({ node, allKpis, submissionsMap, handlers, level = 0 }: {
+const EmployeeNode = ({ node, allKpis, submissionsMap, handlers, level = 0, positions }: {
     node: TreeNode;
     allKpis: WithId<IndividualKpi>[];
     submissionsMap: Map<string, WithId<KpiSubmission>>;
     handlers: any;
     level?: number;
+    positions: WithId<any>[];
 }) => {
     const employeeKpis = allKpis.filter(kpi => kpi.employeeId === node.id);
 
     return (
         <div style={{ marginLeft: `${level * 20}px` }} className={cn("space-y-4", level > 0 && "mt-4")}>
-            <EmployeePortfolio employee={node} kpis={employeeKpis} submissionsMap={submissionsMap} handlers={handlers} isManagerView={false}/>
+            <EmployeePortfolio employee={node} kpis={employeeKpis} submissionsMap={submissionsMap} handlers={handlers} isManagerView={false} positions={positions}/>
             
             {node.reports && node.reports.length > 0 && (
                 <div className="space-y-4">
                     {node.reports.map(report => (
-                        <EmployeeNode key={report.id} node={report} allKpis={allKpis} submissionsMap={submissionsMap} handlers={handlers} level={level + 1} />
+                        <EmployeeNode key={report.id} node={report} allKpis={allKpis} submissionsMap={submissionsMap} handlers={handlers} level={level + 1} positions={positions} />
                     ))}
                 </div>
             )}
@@ -957,7 +960,7 @@ export default function MyPortfolioPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
-  const { employees: allEmployees, isEmployeesLoading, monthlyKpisData, isMonthlyKpisLoading, individualKpis: allKpis, isIndividualKpisLoading } = useKpiData();
+  const { employees: allEmployees, isEmployeesLoading, monthlyKpisData, isMonthlyKpisLoading, individualKpis: allKpis, isIndividualKpisLoading, positions, isPositionsLoading } = useKpiData();
 
   const [selectedKpi, setSelectedKpi] = useState<WithId<IndividualKpi> | null>(null);
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
@@ -965,13 +968,7 @@ export default function MyPortfolioPage() {
   const [isEditDialogOpen, setEditDialogOpen] = useState(false);
   const [isCreateDialogOpen, setCreateDialogOpen] = useState(false);
 
-  const userProfileRef = useMemoFirebase(() => {
-    if (!user || !firestore) return null;
-    return doc(firestore, 'users', user.uid);
-  }, [user, firestore]);
-
-  const { data: userProfile, isLoading: isProfileLoading } = useDoc<AppUser>(userProfileRef);
-  const isManagerOrAdmin = useMemo(() => userProfile?.roles && ['Admin', 'VP', 'AVP', 'Manager'].some(r => userProfile.roles.includes(r)), [userProfile]);
+  const { isManagerOrAdmin, isRoleLoading } = useKpiData();
   
   useEffect(() => {
     setPageTitle("My Portfolio");
@@ -997,27 +994,20 @@ export default function MyPortfolioPage() {
   
   const teamMembers = useMemo(() => {
     if (!allEmployees || !user) return [];
-    if (userProfile?.roles?.includes('Admin')) return allEmployees;
-
-    const userEmployeeRecord = allEmployees.find(e => e.id === user.uid);
-    if (!userEmployeeRecord) return [];
-
-    const getAllReports = (managerId: string): Employee[] => {
-        let reports: Employee[] = [];
-        const directReports = allEmployees.filter(e => e.managerId === managerId);
-        reports = reports.concat(directReports);
-        directReports.forEach(report => {
-            reports = reports.concat(getAllReports(report.id));
-        });
-        return reports;
-    };
-
     if (isManagerOrAdmin) {
-        return [userEmployeeRecord, ...getAllReports(userEmployeeRecord.id)];
+        const currentUserAsEmployee = allEmployees.find(e => e.id === user.uid);
+        if (!currentUserAsEmployee) return [];
+
+        const buildReportTree = (managerId: string): WithId<Employee>[] => {
+            const reports = allEmployees.filter(e => e.managerId === managerId);
+            return reports.reduce((acc, report) => [...acc, report, ...buildReportTree(report.id)], [] as WithId<Employee>[]);
+        };
+        
+        return [currentUserAsEmployee, ...buildReportTree(user.uid)];
     }
-    
-    return [userEmployeeRecord];
-  }, [allEmployees, user, isManagerOrAdmin, userProfile]);
+    const userEmployee = allEmployees.find(e => e.id === user.uid);
+    return userEmployee ? [userEmployee] : [];
+  }, [allEmployees, user, isManagerOrAdmin]);
 
   const organizationalTree = useMemo(() => {
     if (!allEmployees || !user) return [];
@@ -1151,7 +1141,7 @@ export default function MyPortfolioPage() {
 
   // ==================== RENDER ====================
 
-  const isLoading = isUserLoading || isIndividualKpisLoading || isProfileLoading || isEmployeesLoading || isSubmissionsLoading || isMonthlyKpisLoading;
+  const isLoading = isUserLoading || isIndividualKpisLoading || isRoleLoading || isEmployeesLoading || isSubmissionsLoading || isMonthlyKpisLoading || isPositionsLoading;
 
   if (isLoading) {
     return (
@@ -1200,7 +1190,7 @@ export default function MyPortfolioPage() {
       <div className="space-y-4">
         {organizationalTree && organizationalTree.length > 0 ? (
            organizationalTree.map(node => (
-                <EmployeeNode key={node.id} node={node} allKpis={allKpis || []} submissionsMap={submissionsMap} handlers={handlers} />
+                <EmployeeNode key={node.id} node={node} allKpis={allKpis || []} submissionsMap={submissionsMap} handlers={handlers} positions={positions || []}/>
             ))
         ) : (
             <Card>
@@ -1258,3 +1248,4 @@ export default function MyPortfolioPage() {
     </div>
   );
 }
+

@@ -32,7 +32,7 @@ import type { Employee, Kpi as CorporateKpi, CascadedKpi, MonthlyKpi, Department
 interface IndividualKpiBase {
     employeeId: string;
     employeeName: string;
-    department: string;
+    departmentId: string;
     kpiId: string; // This would link to a cascadedKpi ID for cascaded, or be its own for committed
     kpiMeasure: string;
     weight: number;
@@ -132,8 +132,7 @@ const AssignKpiDialog = ({
         }
 
         const selectedEmployee = teamMembers.find(e => e.id === employeeId);
-        const departmentName = departments?.find(d => d.id === selectedEmployee?.departmentId)?.name || 'N/A';
-
+        
         if (!selectedEmployee) {
             toast({ title: "Employee not found", description: "The selected employee could not be found.", variant: 'destructive'});
             return;
@@ -142,7 +141,7 @@ const AssignKpiDialog = ({
         const individualKpi: Omit<AssignedCascadedKpi, 'id'> = {
             employeeId,
             employeeName: selectedEmployee.name,
-            department: departmentName,
+            departmentId: selectedEmployee.departmentId,
             kpiId: departmentKpi.id, // Link to the department KPI
             corporateKpiId: departmentKpi.corporateKpiId,
             kpiMeasure: departmentKpi.measure,
@@ -161,6 +160,8 @@ const AssignKpiDialog = ({
     };
 
     if (!departmentKpi) return null;
+    
+    const departmentName = departments?.find(d => d.id === departmentKpi.departmentId)?.name || 'N/A';
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
@@ -168,7 +169,7 @@ const AssignKpiDialog = ({
                 <DialogHeader>
                     <DialogTitle>Assign KPI to Employee</DialogTitle>
                     <DialogDescription>
-                        Assign '<span className="font-semibold">{departmentKpi.measure}</span>' to an employee in the {departmentKpi.department} department.
+                        Assign '<span className="font-semibold">{departmentKpi.measure}</span>' to an employee in the {departmentName} department.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="py-4 space-y-4">
@@ -239,7 +240,7 @@ const DeployAndCascadeDialog = ({
 
     useEffect(() => {
         if (corporateKpi) {
-            const initialCascades = existingCascades.length > 0 ? existingCascades : [{ department: '', weight: 0, target: '' }];
+            const initialCascades = existingCascades.length > 0 ? existingCascades : [{ departmentId: '', weight: 0, target: '' }];
             setCascades(initialCascades);
             
             // Recalculate equal distribution when KPI changes
@@ -267,14 +268,15 @@ const DeployAndCascadeDialog = ({
     };
 
     const addCascade = () => {
-        setCascades([...cascades, { department: '', weight: 0, target: '' }]);
+        setCascades([...cascades, { departmentId: '', weight: 0, target: '' }]);
     };
 
     const removeCascade = (index: number) => {
         const cascadeToRemove = cascades[index];
         if (cascadeToRemove && (cascadeToRemove as WithId<CascadedKpi>).id && firestore) {
             deleteDocumentNonBlocking(doc(firestore, 'cascaded_kpis', (cascadeToRemove as WithId<CascadedKpi>).id));
-            toast({ title: 'Cascade Removed', description: `Removed cascade for ${cascadeToRemove.department}.`, variant: 'destructive'});
+            const deptName = departments.find(d => d.id === cascadeToRemove.departmentId)?.name || 'N/A';
+            toast({ title: 'Cascade Removed', description: `Removed cascade for ${deptName}.`, variant: 'destructive'});
         }
         setCascades(cascades.filter((_, i) => i !== index));
     };
@@ -309,12 +311,11 @@ const DeployAndCascadeDialog = ({
         
         // Save/Update Cascaded KPIs
         cascades.forEach(c => {
-            if (c.department && c.weight && c.target) {
-                const departmentName = departments.find(d => d.id === c.department)?.name || 'N/A';
+            if (c.departmentId && c.weight && c.target) {
                 const cascadeData: Omit<CascadedKpi, 'id'> = {
                     corporateKpiId: corporateKpi.id,
                     measure: corporateKpi.measure,
-                    department: departmentName,
+                    departmentId: c.departmentId!,
                     weight: Number(c.weight),
                     target: c.target!,
                     unit: corporateKpi.unit,
@@ -396,8 +397,8 @@ const DeployAndCascadeDialog = ({
                                     <div className="col-span-5">
                                         <Label>Department</Label>
                                         <Select 
-                                            value={cascade.department} 
-                                            onValueChange={(val) => handleCascadeChange(index, 'department', val)}
+                                            value={cascade.departmentId} 
+                                            onValueChange={(val) => handleCascadeChange(index, 'departmentId', val)}
                                         >
                                             <SelectTrigger><SelectValue placeholder="Select Department" /></SelectTrigger>
                                             <SelectContent>
@@ -529,11 +530,13 @@ const DepartmentKpiRow = ({
     individualKpis, 
     monthlyKpis,
     onOpenAssign,
+    departments
 }: { 
     kpi: WithId<CascadedKpi>, 
     individualKpis: WithId<IndividualKpi>[], 
     monthlyKpis: WithId<MonthlyKpi>[],
     onOpenAssign: (kpi: WithId<CascadedKpi>) => void,
+    departments: WithId<Department>[]
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const relevantIndividualKpis = individualKpis.filter(indKpi => indKpi.kpiId === kpi.id);
@@ -554,6 +557,7 @@ const DepartmentKpiRow = ({
     }, [monthlyKpis, kpi.corporateKpiId, kpi.weight]);
 
     const achievement = ytdTarget > 0 ? (ytdActual / ytdTarget) * 100 : 0;
+    const departmentName = departments.find(d => d.id === kpi.departmentId)?.name || 'N/A';
 
     return (
         <>
@@ -562,7 +566,7 @@ const DepartmentKpiRow = ({
                     <div className="flex items-center justify-between">
                          <div className="flex items-center gap-2 cursor-pointer" onClick={() => setIsOpen(!isOpen)}>
                             {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                            <span className="font-semibold text-blue-900">{kpi.department}</span>
+                            <span className="font-semibold text-blue-900">{departmentName}</span>
                         </div>
                         <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => onOpenAssign(kpi)}>
                             <UserPlus className="h-4 w-4 mr-2" />
@@ -609,6 +613,7 @@ const CorporateKpiRow = ({
     onOpenCascade,
     onOpenAssign,
     onDelete,
+    departments,
 }: { 
     kpi: WithId<CorporateKpi>, 
     cascadedKpis: WithId<CascadedKpi>[], 
@@ -617,6 +622,7 @@ const CorporateKpiRow = ({
     onOpenCascade: (kpi: WithId<CorporateKpi>) => void,
     onOpenAssign: (kpi: WithId<CascadedKpi>) => void,
     onDelete: (kpiId: string) => void,
+    departments: WithId<Department>[]
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const relevantCascadedKpis = cascadedKpis.filter(cascaded => cascaded.corporateKpiId === kpi.id);
@@ -695,6 +701,7 @@ const CorporateKpiRow = ({
                                 individualKpis={individualKpis} 
                                 monthlyKpis={monthlyKpis}
                                 onOpenAssign={onOpenAssign}
+                                departments={departments}
                             />
                        ))
                     ) : (
@@ -756,11 +763,8 @@ export default function KPICascadeManagement() {
 
   const teamMembersForSelectedDept = useMemo(() => {
       if (!selectedDepartmentKpi || !employees) return [];
-      const departmentName = selectedDepartmentKpi.department;
-      const deptId = departments?.find(d => d.name === departmentName)?.id;
-      if (!deptId) return [];
-      return employees.filter(emp => emp.departmentId === deptId);
-  }, [selectedDepartmentKpi, employees, departments]);
+      return employees.filter(emp => emp.departmentId === selectedDepartmentKpi.departmentId);
+  }, [selectedDepartmentKpi, employees]);
 
 
   const isLoading = isKpiDataLoading || isCascadedKpisLoading || isEmployeesLoading || isIndividualKpisLoading || isMonthlyKpisLoading || isDepartmentsLoading;
@@ -822,6 +826,7 @@ export default function KPICascadeManagement() {
             onOpenCascade={handleOpenCascadeDialog}
             onOpenAssign={handleOpenAssignDialog}
             onDelete={handleDeleteCorporateKpi}
+            departments={departments || []}
           />
         ))}
       </TableBody>
@@ -875,3 +880,4 @@ export default function KPICascadeManagement() {
     </>
   );
 }
+

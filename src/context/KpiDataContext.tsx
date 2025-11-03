@@ -27,7 +27,6 @@ export interface User {
   email: string;
   roles: string[]; // Array of role codes
   menuAccess: { [key: string]: boolean };
-  permissions: { [key: string]: boolean };
 }
 
 export interface Department {
@@ -68,7 +67,7 @@ export interface CascadedKpi {
   id: string;
   corporateKpiId: string;
   measure: string;
-  department: string;
+  departmentId: string;
   weight: number;
   target: string;
   category?: string;
@@ -296,3 +295,4 @@ export const useKpiData = () => {
   }
   return context;
 };
+
