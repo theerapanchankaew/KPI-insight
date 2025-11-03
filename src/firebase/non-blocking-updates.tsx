@@ -9,6 +9,7 @@ import {
   CollectionReference,
   DocumentReference,
   SetOptions,
+  serverTimestamp,
 } from 'firebase/firestore';
 import { errorEmitter } from '@/firebase/error-emitter';
 import {FirestorePermissionError} from '@/firebase/errors';
@@ -18,13 +19,14 @@ import {FirestorePermissionError} from '@/firebase/errors';
  * Does NOT await the write operation internally.
  */
 export function setDocumentNonBlocking(docRef: DocumentReference, data: any, options?: SetOptions) {
-  setDoc(docRef, data, options || {}).catch(error => {
+  const writeData = { ...data, updatedAt: serverTimestamp() };
+  setDoc(docRef, writeData, options || {}).catch(error => {
     errorEmitter.emit(
       'permission-error',
       new FirestorePermissionError({
         path: docRef.path,
-        operation: 'write', // or 'create'/'update' based on options
-        requestResourceData: data,
+        operation: options && 'merge' in options ? 'update' : 'create',
+        requestResourceData: writeData,
       })
     )
   })
@@ -38,14 +40,15 @@ export function setDocumentNonBlocking(docRef: DocumentReference, data: any, opt
  * Returns the Promise for the new doc ref, but typically not awaited by caller.
  */
 export function addDocumentNonBlocking(colRef: CollectionReference, data: any) {
-  const promise = addDoc(colRef, data)
+  const writeData = { ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
+  const promise = addDoc(colRef, writeData)
     .catch(error => {
       errorEmitter.emit(
         'permission-error',
         new FirestorePermissionError({
           path: colRef.path,
           operation: 'create',
-          requestResourceData: data,
+          requestResourceData: writeData,
         })
       )
     });
@@ -58,14 +61,15 @@ export function addDocumentNonBlocking(colRef: CollectionReference, data: any) {
  * Does NOT await the write operation internally.
  */
 export function updateDocumentNonBlocking(docRef: DocumentReference, data: any) {
-  updateDoc(docRef, data)
+  const writeData = { ...data, updatedAt: serverTimestamp() };
+  updateDoc(docRef, writeData)
     .catch(error => {
       errorEmitter.emit(
         'permission-error',
         new FirestorePermissionError({
           path: docRef.path,
           operation: 'update',
-          requestResourceData: data,
+          requestResourceData: writeData,
         })
       )
     });
