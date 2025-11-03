@@ -29,21 +29,17 @@ service cloud.firestore {
 
     /**
      * @description Checks if the authenticated user is an Admin by checking for 'admin' in their roles token.
+     * This assumes 'roles' is a map or list on the custom claims.
      */
     function isAdmin() {
-      return isSignedIn() && 'admin' in request.auth.token.roles;
+      return isSignedIn() && request.auth.token.roles.hasAny(['admin']);
     }
     
     /**
      * @description Checks if the user is a manager or above.
      */
     function isManager() {
-      return isSignedIn() && (
-        'admin' in request.auth.token.roles ||
-        'vp' in request.auth.token.roles ||
-        'avp' in request.auth.token.roles ||
-        'manager' in request.auth.token.roles
-      );
+      return isSignedIn() && request.auth.token.roles.hasAny(['admin', 'vp', 'avp', 'manager']);
     }
     
     /**
@@ -56,8 +52,8 @@ service cloud.firestore {
     
 
     /**
-     * User Profiles: Only the user or an admin can read/write their own profile.
-     * Admins can list all users.
+     * User Profiles: Only the user can read/write their own profile.
+     * Admins can list and manage all users.
      */
     match /users/{userId} {
       allow read, write: if isOwner(userId) || isAdmin();
@@ -69,8 +65,8 @@ service cloud.firestore {
      * Writable only by Admins.
      */
     match /employees/{employeeId} {
+      allow read, write: if isAdmin();
       allow get, list: if isSignedIn();
-      allow write: if isAdmin();
     }
 
     /**
@@ -107,7 +103,7 @@ service cloud.firestore {
     match /cascaded_kpis/{cascadedKpiId} {
       allow read, write: if isAdmin();
       allow get, list: if isSignedIn();
-      allow write: if isManager();
+      allow create, update, delete: if isManager();
     }
 
     /**
@@ -117,7 +113,8 @@ service cloud.firestore {
      */
     match /individual_kpis/{individualKpiId} {
         allow read, write: if isAdmin();
-        allow get, list: if isSignedIn() && (isOwner(resource.data.employeeId) || isDirectManagerOf(resource.data.employeeId));
+        allow get: if isSignedIn() && (isOwner(resource.data.employeeId) || isDirectManagerOf(resource.data.employeeId));
+        allow list: if isSignedIn(); // Allow listing for portfolio views
         allow create: if isManager();
         
         // Allow employee to submit for review or acknowledge
