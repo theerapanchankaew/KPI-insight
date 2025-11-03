@@ -15,10 +15,17 @@ export const exampleJson = `{
 
 export const exampleOrgData = `[
   {
+    "id": "0",
+    "name": "ธีระพันธุ์",
+    "position": "VP",
+    "department": "Executive",
+    "manager": ""
+  },
+  {
     "id": "1",
     "name": "ชวลิต แก้วน้ำดี",
     "position": "ผู้จัดการแผนกอาวุโส",
-    "department": "HQMS",
+    "department": "QMS",
     "manager": "ธีระพันธุ์"
   },
   {
