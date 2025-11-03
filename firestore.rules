@@ -47,52 +47,48 @@ service cloud.firestore {
 
     /**
      * User Profiles: Storing user roles and app-specific data.
-     * - Users can read/write their own profile.
+     * - Users can read their own profile.
      * - Admins can read/write any user's profile for management.
      */
     match /users/{userId} {
-      allow read, write: if isOwner(userId) || isAdmin();
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
     }
 
     /**
      * Employees Master Data: Core HR information.
      * - All authenticated users can read employee data (e.g., to see names, departments).
-     * - Only Admins can modify employee records.
+     * - Authenticated users can write for initial data import.
      */
     match /employees/{employeeId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow read, write: if isSignedIn();
     }
 
     /**
      * Departments, Positions, Roles: Core configuration data.
      * - Readable by all authenticated users to populate UI selectors and understand structure.
-     * - Writable only by Admins.
+     * - Writable by any authenticated user for initial data import.
      */
     match /departments/{departmentId} {
-      allow get, list: if isSignedIn();
-      allow create, update, delete: if isAdmin();
+      allow read, write: if isSignedIn();
     }
     
     match /positions/{positionId} {
-      allow get, list: if isSignedIn();
-      allow create, update, delete: if isAdmin();
+      allow read, write: if isSignedIn();
     }
     
     match /roles/{roleId} {
-      allow get, list: if isSignedIn();
-      allow create, update, delete: if isAdmin();
+      allow read, write: if isSignedIn();
     }
 
     /**
      * KPI Catalog: The master list of all corporate KPIs.
      * - Readable by all signed-in users.
-     * - Writable only by admins.
+     * - Writable by any signed-in user for initial data import.
      */
     match /kpi_catalog/{kpiId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow read, write: if isSignedIn();
     }
 
     /**

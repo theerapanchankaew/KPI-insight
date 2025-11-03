@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useUser } from '@/firebase';
 import { writeBatch, collection, doc } from 'firebase/firestore';
-import type { Kpi, Department, Position, Employee } from '@/context/KpiDataContext';
+import type { Kpi, Department, Position, Employee, Role } from '@/context/KpiDataContext';
 
 
 const KpiCatalogImport = () => {
@@ -346,14 +346,119 @@ const EmployeeImport = () => {
     )
 };
 
+const RoleImport = () => {
+    const [jsonInput, setJsonInput] = useState(`{
+  "roles": [
+    {
+      "id": "admin",
+      "code": "Admin",
+      "name": "Administrator",
+      "menuAccess": {
+        "dashboard": true,
+        "cascade": true,
+        "portfolio": true,
+        "submit": true,
+        "approvals": true,
+        "reports": true,
+        "master-data": true,
+        "settings": true
+      }
+    },
+    {
+        "id": "manager",
+        "code": "Manager",
+        "name": "Manager",
+        "menuAccess": {
+            "dashboard": true,
+            "cascade": false,
+            "portfolio": true,
+            "submit": true,
+            "approvals": true,
+            "reports": true,
+            "master-data": false,
+            "settings": false
+        }
+    },
+    {
+        "id": "employee",
+        "code": "Employee",
+        "name": "Employee",
+        "menuAccess": {
+            "dashboard": true,
+            "cascade": false,
+            "portfolio": true,
+            "submit": true,
+            "approvals": false,
+            "reports": false,
+            "master-data": false,
+            "settings": false
+        }
+    }
+  ]
+}`);
+    const { toast } = useToast();
+    const firestore = useFirestore();
+    const [isImporting, setIsImporting] = useState(false);
 
-const MasterDataItem = ({ title, description, icon: Icon }: { title: string, description: string, icon: React.ElementType }) => (
-    <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed rounded-lg">
-        <Icon className="w-16 h-16 text-gray-300 mb-4" />
-        <h4 className="text-lg font-semibold">{title}</h4>
-        <p className="text-muted-foreground">{description}</p>
-    </div>
-);
+    const handleImport = async () => {
+        if (!firestore) {
+            toast({ title: "Error", description: "You must be logged in to import data.", variant: "destructive" });
+            return;
+        }
+
+        setIsImporting(true);
+        try {
+            const data = JSON.parse(jsonInput);
+            if (!data.roles || !Array.isArray(data.roles)) {
+                throw new Error("Invalid JSON format: 'roles' array not found.");
+            }
+
+            const roles: Role[] = data.roles;
+            const batch = writeBatch(firestore);
+            const roleCollectionRef = collection(firestore, 'roles');
+
+            roles.forEach(role => {
+                const docRef = doc(roleCollectionRef, role.id);
+                batch.set(docRef, role);
+            });
+
+            await batch.commit();
+
+            toast({
+                title: "Import Successful",
+                description: `${roles.length} roles have been imported.`,
+            });
+
+        } catch (error: any) {
+            toast({
+                title: "Import Failed",
+                description: error.message || "Please check the JSON format and try again.",
+                variant: "destructive",
+            });
+        } finally {
+            setIsImporting(false);
+        }
+    };
+    
+    return (
+        <div className="space-y-6">
+            <p className="text-muted-foreground">
+                Paste your application roles JSON below. The `id` and `code` should be unique.
+            </p>
+            <Textarea 
+                value={jsonInput}
+                onChange={(e) => setJsonInput(e.target.value)}
+                rows={15}
+                placeholder="Paste your JSON here..."
+                className="font-mono text-xs"
+            />
+            <Button onClick={handleImport} disabled={isImporting}>
+                {isImporting ? "Importing..." : "Import Roles"}
+            </Button>
+        </div>
+    )
+};
+
 
 export default function MasterDataPage() {
   const { setPageTitle } = useAppLayout();
@@ -404,12 +509,8 @@ export default function MasterDataPage() {
             <TabsContent value="positions" className="mt-6">
                  <PositionImport />
             </TabsContent>
-            <TabsContent value="roles" className="mt-4">
-                 <MasterDataItem 
-                    title="Roles" 
-                    description="Role and permission management features will be implemented here." 
-                    icon={Users} 
-                />
+            <TabsContent value="roles" className="mt-6">
+                 <RoleImport />
             </TabsContent>
             <TabsContent value="employees" className="mt-6">
                  <EmployeeImport />
