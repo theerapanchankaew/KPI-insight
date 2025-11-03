@@ -411,6 +411,19 @@ export default function SubmitPage() {
     setPageTitle('Submit KPI');
   }, [setPageTitle]);
   
+  const teamMembers = useMemo(() => {
+    if (!allKpis || !user) return [];
+    if (isManagerOrAdmin) {
+      // For managers, we find all unique employee IDs from the KPIs they can see
+      const employeeIds = [...new Set(allKpis.map(kpi => kpi.employeeId))];
+      return employees?.filter(emp => employeeIds.includes(emp.id)) || [];
+    }
+    // For regular users, it's just them
+    return employees?.filter(e => e.id === user.uid) || [];
+  }, [allKpis, user, isManagerOrAdmin, employees]);
+
+  const teamMemberIds = useMemo(() => teamMembers.map(m => m.id), [teamMembers]);
+
   const kpisForUser = useMemo(() => {
     if (!allKpis) return [];
     if (isManagerOrAdmin) return allKpis.filter(k => k.status !== 'Closed');
@@ -423,26 +436,24 @@ export default function SubmitPage() {
     return [];
   }, [allKpis, user, isManagerOrAdmin]);
 
-  const kpiIdsForQuery = useMemo(() => kpisForUser.map(kpi => kpi.id), [kpisForUser]);
-
   const submissionsQuery = useMemoFirebase(() => {
-    if (!firestore || kpiIdsForQuery.length === 0) return null;
-
-    // Firestore 'in' queries are limited to 30 elements. We need to chunk.
+    if (!firestore || teamMemberIds.length === 0) return null;
+  
+    // Firestore 'in' queries are limited to 30 elements. Chunking is required for larger sets.
     const chunks: string[][] = [];
-    for (let i = 0; i < kpiIdsForQuery.length; i += 30) {
-      chunks.push(kpiIdsForQuery.slice(i, i + 30));
+    for (let i = 0; i < teamMemberIds.length; i += 30) {
+      chunks.push(teamMemberIds.slice(i, i + 30));
     }
-    
+  
+    // For this hook, we'll just use the first chunk. A more robust solution might involve multiple hooks or a backend process.
     if (chunks.length > 1) {
-        console.warn("Querying for submissions in multiple chunks. This is less efficient.");
+      console.warn(`Querying for submissions in multiple chunks. Displaying data for the first ${chunks[0].length} members only.`);
     }
-    
-    // For this hook, we'll just use the first chunk. A more robust solution might involve multiple hooks.
-    return query(collection(firestore, 'kpi_submissions'), where('kpiId', 'in', chunks[0]));
-  }, [firestore, kpiIdsForQuery]);
+  
+    return query(collection(firestore, 'kpi_submissions'), where('submittedBy', 'in', chunks[0]));
+  }, [firestore, teamMemberIds]);
 
-  const { data: submissions, isLoading: isSubmissionsLoading } = useCollection<KpiSubmission>(submissionsQuery, { disabled: kpiIdsForQuery.length === 0 });
+  const { data: submissions, isLoading: isSubmissionsLoading } = useCollection<KpiSubmission>(submissionsQuery, { disabled: teamMemberIds.length === 0 });
   
   const submissionStatusMap = useMemo(() => {
     const newMap = new Map<string, KpiSubmission['status']>();
