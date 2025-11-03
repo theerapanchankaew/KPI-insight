@@ -251,20 +251,14 @@ export default function ActionCenterPage() {
       individualKpis,
       isIndividualKpisLoading,
   } = useKpiData();
-
-  const currentEmployeeRecord = useMemo(() => {
-      if (!user || !employeesData) return null;
-      return employeesData.find(e => e.id === user.uid);
-  }, [user, employeesData])
   
-  const isManagerOrAdmin = useMemo(() => userProfile?.roles && userProfile.roles.some(r => ['admin', 'vp', 'avp', 'manager'].includes(r.toLowerCase())), [userProfile]);
-  const isUpperManager = useMemo(() => userProfile?.roles && userProfile.roles.some(r => ['admin', 'vp'].includes(r.toLowerCase())), [userProfile]);
-
+  const isManagerOrAdmin = useMemo(() => userProfile?.roles?.some(r => ['admin', 'vp', 'avp', 'manager'].includes(r.toLowerCase())), [userProfile]);
+  const isUpperManager = useMemo(() => userProfile?.roles?.some(r => ['admin', 'vp'].includes(r.toLowerCase())), [userProfile]);
 
   const directReportsQuery = useMemoFirebase(() => {
-    if (!firestore || !isManagerOrAdmin || !currentEmployeeRecord?.id) return null;
-    return query(collection(firestore, 'employees'), where('managerId', '==', currentEmployeeRecord.id));
-  }, [firestore, currentEmployeeRecord, isManagerOrAdmin]);
+    if (!firestore || !isManagerOrAdmin || !user?.uid) return null;
+    return query(collection(firestore, 'employees'), where('managerId', '==', user.uid));
+  }, [firestore, user, isManagerOrAdmin]);
 
   const { data: directReports, isLoading: isDirectReportsLoading } = useCollection<Employee>(directReportsQuery, { disabled: !isManagerOrAdmin });
   
@@ -471,7 +465,3 @@ export default function ActionCenterPage() {
     </div>
   );
 }
-
-    
-
-    

@@ -977,9 +977,9 @@ export default function MyPortfolioPage() {
   }, [setPageTitle]);
   
   const submissionsQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
+    if (!firestore || !user) return null;
     return collection(firestore, 'kpi_submissions');
-  }, [firestore]);
+  }, [firestore, user]);
   const { data: submissions, isLoading: isSubmissionsLoading } = useCollection<WithId<KpiSubmission>>(submissionsQuery);
 
   const submissionsMap = useMemo(() => {
@@ -1250,5 +1250,3 @@ export default function MyPortfolioPage() {
     </div>
   );
 }
-
-    

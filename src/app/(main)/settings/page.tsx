@@ -44,7 +44,6 @@ export default function SettingsPage() {
 
   const isAdmin = useMemo(() => {
     if (!userProfile || !userProfile.roles) return false;
-    // Standardize to lowercase for case-insensitive check
     return userProfile.roles.map(role => role.toLowerCase()).includes('admin');
   }, [userProfile]);
   
@@ -129,5 +128,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-
-    

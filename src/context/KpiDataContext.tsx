@@ -6,6 +6,7 @@ import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from '@
 import { collection, doc, query, where } from 'firebase/firestore';
 import { WithId } from '@/firebase/firestore/use-collection';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { getIdTokenResult } from 'firebase/auth';
 
 // ==================== NORMALIZED ENTITY TYPES ====================
 
@@ -203,8 +204,6 @@ export const KpiDataProvider = ({ children }: { children: ReactNode }) => {
 
   const individualKpisQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
-    // This query is now simpler. It fetches all individual KPIs.
-    // Security rules will ensure that users only get the data they are allowed to see.
     return collection(firestore, 'individual_kpis');
   }, [firestore, user]);
   const { data: individualKpis, isLoading: isIndividualKpisLoading } = useCollection<WithId<IndividualKpi>>(individualKpisQuery);
