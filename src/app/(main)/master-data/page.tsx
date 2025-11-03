@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useUser } from '@/firebase';
 import { writeBatch, collection, doc } from 'firebase/firestore';
-import type { Kpi, Department, Position } from '@/context/KpiDataContext';
+import type { Kpi, Department, Position, Employee } from '@/context/KpiDataContext';
 
 
 const KpiCatalogImport = () => {
@@ -268,6 +268,84 @@ const PositionImport = () => {
     )
 };
 
+const EmployeeImport = () => {
+    const [jsonInput, setJsonInput] = useState(`{
+  "employees": [
+    {
+      "id": "emp-001",
+      "name": "สมชาย ใจดี",
+      "email": "somchai.jaidee@example.com",
+      "departmentId": "EXEC",
+      "positionId": "ceo",
+      "managerId": "",
+      "level": 10,
+      "status": "active"
+    }
+  ]
+}`);
+    const { toast } = useToast();
+    const firestore = useFirestore();
+    const [isImporting, setIsImporting] = useState(false);
+
+    const handleImport = async () => {
+        if (!firestore) {
+            toast({ title: "Error", description: "You must be logged in to import data.", variant: "destructive" });
+            return;
+        }
+
+        setIsImporting(true);
+        try {
+            const data = JSON.parse(jsonInput);
+            if (!data.employees || !Array.isArray(data.employees)) {
+                throw new Error("Invalid JSON format: 'employees' array not found.");
+            }
+
+            const employees: Employee[] = data.employees;
+            const batch = writeBatch(firestore);
+            const empCollectionRef = collection(firestore, 'employees');
+
+            employees.forEach(emp => {
+                const docRef = doc(empCollectionRef, emp.id);
+                batch.set(docRef, emp);
+            });
+
+            await batch.commit();
+
+            toast({
+                title: "Import Successful",
+                description: `${employees.length} employees have been imported.`,
+            });
+
+        } catch (error: any) {
+            toast({
+                title: "Import Failed",
+                description: error.message || "Please check the JSON format and try again.",
+                variant: "destructive",
+            });
+        } finally {
+            setIsImporting(false);
+        }
+    };
+    
+    return (
+        <div className="space-y-6">
+            <p className="text-muted-foreground">
+                Paste your employee master data JSON below. The `id` for each employee should be unique. For system users, this `id` should match their Firebase Authentication UID.
+            </p>
+            <Textarea 
+                value={jsonInput}
+                onChange={(e) => setJsonInput(e.target.value)}
+                rows={15}
+                placeholder="Paste your JSON here..."
+                className="font-mono text-xs"
+            />
+            <Button onClick={handleImport} disabled={isImporting}>
+                {isImporting ? "Importing..." : "Import Employees"}
+            </Button>
+        </div>
+    )
+};
+
 
 const MasterDataItem = ({ title, description, icon: Icon }: { title: string, description: string, icon: React.ElementType }) => (
     <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed rounded-lg">
@@ -333,12 +411,8 @@ export default function MasterDataPage() {
                     icon={Users} 
                 />
             </TabsContent>
-            <TabsContent value="employees" className="mt-4">
-                 <MasterDataItem 
-                    title="Employees" 
-                    description="Employee record management features will be implemented here." 
-                    icon={BookUser} 
-                />
+            <TabsContent value="employees" className="mt-6">
+                 <EmployeeImport />
             </TabsContent>
           </Tabs>
         </CardContent>
