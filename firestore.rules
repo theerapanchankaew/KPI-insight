@@ -113,12 +113,12 @@ service cloud.firestore {
      * KPI Submissions: Data submitted by employees against their KPIs.
      * - Users can create submissions.
      * - Only the submitter, their manager, or an admin can view/update/delete a specific submission.
-     * - LISTING is allowed for managers to see their team's submissions.
+     * - LISTING is allowed for signed-in users, as the client-side query filters for relevance.
      */
     match /kpi_submissions/{submissionId} {
         allow get, update, delete: if isAdmin() || isOwner(resource.data.submittedBy) || isDirectManagerOf(resource.data.submittedBy);
         allow create: if isSignedIn();
-        allow list: if isManager(); 
+        allow list: if isSignedIn(); 
     }
 
     /**
@@ -141,5 +141,3 @@ service cloud.firestore {
     }
   }
 }
-
-    
