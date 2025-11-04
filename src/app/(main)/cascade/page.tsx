@@ -26,41 +26,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 
 
 // ==================== TYPE DEFINITIONS ====================
-import type { Employee, Kpi as CorporateKpi, CascadedKpi, MonthlyKpi, Department } from '@/context/KpiDataContext';
-
-// This was missing from the context, let's define it here for this page's purpose
-interface IndividualKpiBase {
-    employeeId: string;
-    employeeName: string;
-    departmentId: string;
-    kpiId: string; // This would link to a cascadedKpi ID for cascaded, or be its own for committed
-    kpiMeasure: string;
-    weight: number;
-    status: 'Draft' | 'Agreed' | 'In-Progress' | 'Manager Review' | 'Upper Manager Approval' | 'Employee Acknowledged' | 'Closed' | 'Rejected';
-    notes?: string;
-    type: 'cascaded' | 'committed';
-}
-
-interface AssignedCascadedKpi extends IndividualKpiBase {
-    type: 'cascaded';
-    target?: string;
-    corporateKpiId: string;
-    unit?: string;
-}
-
-interface CommittedKpi extends IndividualKpiBase {
-    type: 'committed';
-    task: string;
-    targets: {
-        level1: string;
-        level2: string;
-        level3: string;
-        level4: string;
-        level5: string;
-    };
-}
-
-type IndividualKpi = (AssignedCascadedKpi | CommittedKpi) & { id: string };
+import type { Employee, Kpi as CorporateKpi, CascadedKpi, MonthlyKpi, Department, IndividualKpi } from '@/context/KpiDataContext';
 
 type MonthlyBreakdown = {
     month: number;
@@ -138,7 +104,7 @@ const AssignKpiDialog = ({
             return;
         }
 
-        const individualKpi: Omit<AssignedCascadedKpi, 'id'> = {
+        const individualKpi: Omit<IndividualKpi, 'id'> = {
             employeeId,
             employeeName: selectedEmployee.name,
             departmentId: selectedEmployee.departmentId,
@@ -507,11 +473,47 @@ const DeployAndCascadeDialog = ({
 
 // ==================== ROW COMPONENTS FOR HIERARCHICAL TABLE ====================
 
-const IndividualKpiRow = ({ kpi }: { kpi: WithId<IndividualKpi> }) => (
-    <TableRow className="bg-gray-50/50 hover:bg-gray-100/50">
+const IndividualKpiRow = ({ 
+    kpi,
+    onEdit,
+    onDelete,
+}: { 
+    kpi: WithId<IndividualKpi>,
+    onEdit: (kpi: WithId<IndividualKpi>) => void,
+    onDelete: (kpiId: string) => void,
+}) => (
+    <TableRow className="bg-gray-50/50 hover:bg-gray-100/50 group">
         <TableCell className="pl-24 py-2">
-            <div className="font-medium text-gray-800">{kpi.employeeName}</div>
-            <div className="text-xs text-gray-500">{kpi.kpiMeasure}</div>
+            <div className="flex justify-between items-center">
+              <div>
+                <div className="font-medium text-gray-800">{kpi.employeeName}</div>
+                <div className="text-xs text-gray-500">{kpi.kpiMeasure}</div>
+              </div>
+               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit(kpi)}>
+                        <Edit className="h-4 w-4 text-gray-600" />
+                    </Button>
+                    <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-7 w-7">
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    This will permanently delete the individual KPI for {kpi.employeeName}. This action cannot be undone.
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => onDelete(kpi.id)} className="bg-destructive hover:bg-destructive/90">Delete KPI</AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+               </div>
+            </div>
         </TableCell>
         <TableCell className="py-2 text-center">
             <Badge className={cn('text-xs', getStatusColor(kpi.status))}>{kpi.status}</Badge>
@@ -532,6 +534,8 @@ const DepartmentKpiRow = ({
     onOpenAssign,
     onOpenCascade,
     onDelete,
+    onEditIndividual,
+    onDeleteIndividual,
     departments
 }: { 
     kpi: WithId<CascadedKpi>, 
@@ -540,6 +544,8 @@ const DepartmentKpiRow = ({
     onOpenAssign: (kpi: WithId<CascadedKpi>) => void,
     onOpenCascade: (kpi: WithId<CorporateKpi>) => void,
     onDelete: (kpiId: string) => void,
+    onEditIndividual: (kpi: WithId<IndividualKpi>) => void,
+    onDeleteIndividual: (kpiId: string) => void,
     departments: WithId<Department>[]
 }) => {
     const { kpiData } = useKpiData();
@@ -625,7 +631,12 @@ const DepartmentKpiRow = ({
                 <>
                     {relevantIndividualKpis.length > 0 ? (
                        relevantIndividualKpis.map(indKpi => (
-                           <IndividualKpiRow key={indKpi.id} kpi={indKpi} />
+                           <IndividualKpiRow 
+                            key={indKpi.id} 
+                            kpi={indKpi} 
+                            onEdit={onEditIndividual}
+                            onDelete={onDeleteIndividual}
+                           />
                        ))
                     ) : (
                         <TableRow>
@@ -650,6 +661,8 @@ const CorporateKpiRow = ({
     onOpenAssign,
     onDeleteCorporate,
     onDeleteCascaded,
+    onEditIndividual,
+    onDeleteIndividual,
     departments,
 }: { 
     kpi: WithId<CorporateKpi>, 
@@ -660,6 +673,8 @@ const CorporateKpiRow = ({
     onOpenAssign: (kpi: WithId<CascadedKpi>) => void,
     onDeleteCorporate: (kpiId: string) => void,
     onDeleteCascaded: (kpiId: string) => void,
+    onEditIndividual: (kpi: WithId<IndividualKpi>) => void,
+    onDeleteIndividual: (kpiId: string) => void,
     departments: WithId<Department>[]
 }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -741,6 +756,8 @@ const CorporateKpiRow = ({
                                 onOpenAssign={onOpenAssign}
                                 onOpenCascade={onOpenCascade}
                                 onDelete={onDeleteCascaded}
+                                onEditIndividual={onEditIndividual}
+                                onDeleteIndividual={onDeleteIndividual}
                                 departments={departments}
                             />
                        ))
@@ -775,6 +792,10 @@ export default function KPICascadeManagement() {
 
   const [isAssignDialogOpen, setAssignDialogOpen] = useState(false);
   const [selectedDepartmentKpi, setSelectedDepartmentKpi] = useState<WithId<CascadedKpi> | null>(null);
+  
+  const [selectedIndividualKpi, setSelectedIndividualKpi] = useState<WithId<IndividualKpi> | null>(null);
+  const [isIndividualKpiDialogOpen, setIndividualKpiDialogOpen] = useState(false);
+
 
   // Unified data fetching
   const { 
@@ -838,6 +859,24 @@ export default function KPICascadeManagement() {
         variant: "destructive"
     });
   }
+  
+  const handleEditIndividualKpi = (kpi: WithId<IndividualKpi>) => {
+      setSelectedIndividualKpi(kpi);
+      // For now, we can reuse the portfolio edit dialog, or create a new one.
+      // To keep it simple, let's just log it. A proper implementation would open a dialog.
+      console.log("Editing individual KPI:", kpi);
+       toast({ title: "Edit Individual KPI", description: `This would open an edit dialog for ${kpi.kpiMeasure}` });
+  }
+
+  const handleDeleteIndividualKpi = (kpiId: string) => {
+    if (!firestore) return;
+    deleteDocumentNonBlocking(doc(firestore, 'individual_kpis', kpiId));
+    toast({
+        title: "Individual KPI Deleted",
+        description: "The assigned KPI has been removed.",
+        variant: "destructive"
+    });
+  }
 
   const renderContent = () => {
     if (isLoading) {
@@ -877,6 +916,8 @@ export default function KPICascadeManagement() {
             onOpenAssign={handleOpenAssignDialog}
             onDeleteCorporate={handleDeleteCorporateKpi}
             onDeleteCascaded={handleDeleteCascadedKpi}
+            onEditIndividual={handleEditIndividualKpi}
+            onDeleteIndividual={handleDeleteIndividualKpi}
             departments={departments || []}
           />
         ))}
