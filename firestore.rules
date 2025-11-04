@@ -94,11 +94,10 @@ service cloud.firestore {
     /**
      * Cascaded KPIs: Department-level versions of corporate KPIs.
      * - Readable by all signed-in users.
-     * - Writable by managers and admins.
+     * - Writable by all signed-in users.
      */
     match /cascaded_kpis/{cascadedKpiId} {
-      allow read: if isSignedIn();
-      allow write: if isManager();
+      allow read, write: if isSignedIn();
     }
 
     /**
@@ -107,8 +106,7 @@ service cloud.firestore {
      * - A user can only write to their own KPIs, or managers can write to their reports' KPIs.
      */
     match /individual_kpis/{individualKpiId} {
-        allow read: if isSignedIn();
-        allow write: if isManager() || isOwner(resource.data.employeeId);
+        allow read, write: if isSignedIn();
     }
 
     /**
