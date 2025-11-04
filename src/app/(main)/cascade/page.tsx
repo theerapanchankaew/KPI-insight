@@ -530,14 +530,19 @@ const DepartmentKpiRow = ({
     individualKpis, 
     monthlyKpis,
     onOpenAssign,
+    onOpenCascade,
+    onDelete,
     departments
 }: { 
     kpi: WithId<CascadedKpi>, 
     individualKpis: WithId<IndividualKpi>[], 
     monthlyKpis: WithId<MonthlyKpi>[],
     onOpenAssign: (kpi: WithId<CascadedKpi>) => void,
+    onOpenCascade: (kpi: WithId<CorporateKpi>) => void,
+    onDelete: (kpiId: string) => void,
     departments: WithId<Department>[]
 }) => {
+    const { kpiData } = useKpiData();
     const [isOpen, setIsOpen] = useState(false);
     const relevantIndividualKpis = individualKpis.filter(indKpi => indKpi.kpiId === kpi.id);
 
@@ -559,6 +564,13 @@ const DepartmentKpiRow = ({
     const achievement = ytdTarget > 0 ? (ytdActual / ytdTarget) * 100 : 0;
     const departmentName = departments.find(d => d.id === kpi.departmentId)?.name || 'N/A';
 
+    const handleEdit = () => {
+        const corporateKpi = kpiData?.find(c => c.id === kpi.corporateKpiId);
+        if (corporateKpi) {
+            onOpenCascade(corporateKpi);
+        }
+    };
+
     return (
         <>
             <TableRow className="bg-blue-50 hover:bg-blue-100/60 group">
@@ -568,10 +580,34 @@ const DepartmentKpiRow = ({
                             {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                             <span className="font-semibold text-blue-900">{departmentName}</span>
                         </div>
-                        <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => onOpenAssign(kpi)}>
-                            <UserPlus className="h-4 w-4 mr-2" />
-                            Assign
-                        </Button>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button variant="ghost" size="sm" onClick={() => onOpenAssign(kpi)}>
+                                <UserPlus className="h-4 w-4 mr-2" />
+                                Assign
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleEdit}>
+                                <Edit className="h-4 w-4 text-gray-600" />
+                            </Button>
+                            <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7">
+                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                    </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                            This will permanently delete the cascaded KPI for {departmentName}. This action cannot be undone.
+                                        </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction onClick={() => onDelete(kpi.id)} className="bg-destructive hover:bg-destructive/90">Delete Cascade</AlertDialogAction>
+                                    </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
+                        </div>
                     </div>
                 </TableCell>
                 <TableCell className="py-3 text-center">-</TableCell>
@@ -612,7 +648,8 @@ const CorporateKpiRow = ({
     monthlyKpis,
     onOpenCascade,
     onOpenAssign,
-    onDelete,
+    onDeleteCorporate,
+    onDeleteCascaded,
     departments,
 }: { 
     kpi: WithId<CorporateKpi>, 
@@ -621,7 +658,8 @@ const CorporateKpiRow = ({
     monthlyKpis: WithId<MonthlyKpi>[],
     onOpenCascade: (kpi: WithId<CorporateKpi>) => void,
     onOpenAssign: (kpi: WithId<CascadedKpi>) => void,
-    onDelete: (kpiId: string) => void,
+    onDeleteCorporate: (kpiId: string) => void,
+    onDeleteCascaded: (kpiId: string) => void,
     departments: WithId<Department>[]
 }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -670,7 +708,7 @@ const CorporateKpiRow = ({
                                         </AlertDialogHeader>
                                         <AlertDialogFooter>
                                             <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                            <AlertDialogAction onClick={() => onDelete(kpi.id)} className="bg-destructive hover:bg-destructive/90">Delete KPI</AlertDialogAction>
+                                            <AlertDialogAction onClick={() => onDeleteCorporate(kpi.id)} className="bg-destructive hover:bg-destructive/90">Delete KPI</AlertDialogAction>
                                         </AlertDialogFooter>
                                     </AlertDialogContent>
                                 </AlertDialog>
@@ -701,6 +739,8 @@ const CorporateKpiRow = ({
                                 individualKpis={individualKpis} 
                                 monthlyKpis={monthlyKpis}
                                 onOpenAssign={onOpenAssign}
+                                onOpenCascade={onOpenCascade}
+                                onDelete={onDeleteCascaded}
                                 departments={departments}
                             />
                        ))
@@ -789,6 +829,16 @@ export default function KPICascadeManagement() {
     });
   }
 
+  const handleDeleteCascadedKpi = (kpiId: string) => {
+    if (!firestore) return;
+    deleteDocumentNonBlocking(doc(firestore, 'cascaded_kpis', kpiId));
+    toast({
+        title: "Cascaded KPI Deleted",
+        description: "The department KPI has been removed.",
+        variant: "destructive"
+    });
+  }
+
   const renderContent = () => {
     if (isLoading) {
       return (
@@ -825,7 +875,8 @@ export default function KPICascadeManagement() {
             monthlyKpis={monthlyKpisData || []}
             onOpenCascade={handleOpenCascadeDialog}
             onOpenAssign={handleOpenAssignDialog}
-            onDelete={handleDeleteCorporateKpi}
+            onDeleteCorporate={handleDeleteCorporateKpi}
+            onDeleteCascaded={handleDeleteCascadedKpi}
             departments={departments || []}
           />
         ))}
@@ -881,3 +932,4 @@ export default function KPICascadeManagement() {
   );
 }
 
+    
